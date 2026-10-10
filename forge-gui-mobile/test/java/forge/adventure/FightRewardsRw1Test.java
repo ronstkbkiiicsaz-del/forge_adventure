@@ -300,6 +300,25 @@ public class FightRewardsRw1Test {
     }
 
     @Test
+    public void homePlaneSetCardsSpreadAcrossTheStandardWindow() {
+        assumeCardDb();
+        FightRewards.setCurrentSetCodeForTest("ROE");
+        FightRewards.setWindowSetsForTest(List.of("ZEN", "WWK", "ROE"));
+        try {
+            Map<String, Integer> split = FightRewards.splitAcrossWindow("ROE", 400, new Random(7));
+            Assert.assertEquals(split.values().stream().mapToInt(Integer::intValue).sum(), 400);
+            int newest = split.getOrDefault("ROE", 0);
+            Assert.assertTrue(newest > 150 && newest < 250, "about half from the newest set; " + split);
+            Assert.assertTrue(split.getOrDefault("ZEN", 0) > 50 && split.getOrDefault("WWK", 0) > 50,
+                    "the rest spread over the older sets; " + split);
+        } finally {
+            FightRewards.setWindowSetsForTest(null);
+        }
+        // Forced single set (set plane / old tests): everything from that set.
+        Assert.assertEquals(FightRewards.splitAcrossWindow("ZEN", 10, new Random(1)), Map.of("ZEN", 10));
+    }
+
+    @Test
     public void unthemedWinGivesADeckSignaturePlusZenCards() {
         assumeCardDb();
         FightRewards.setCurrentSetCodeForTest("ZEN");
@@ -551,6 +570,7 @@ public class FightRewardsRw1Test {
         Assert.assertTrue(text.contains("\"rw1SignatureCardCount\""));
         Assert.assertTrue(text.contains("\"rw1CurrentSetCardShare\""));
         Assert.assertTrue(text.contains("\"rw1AllRegularFights\""));
+        Assert.assertTrue(text.contains("\"rw1NewestSetShare\""));
         // No BOM.
         Assert.assertFalse(text.charAt(0) == '\uFEFF');
     }
