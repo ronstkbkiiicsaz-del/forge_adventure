@@ -1,22 +1,26 @@
 # Shandalar Ascendant: Grok ⇄ Wren handoff
 
-> **WHOSE TURN: WREN**
-> Turn passed by Grok on 2026-10-10, 16:30 Phoenix time
+> **WHOSE TURN: GROK**
+> Turn passed by Wren on 2026-10-10, 16:55 Phoenix time
 > Rule: only the side whose turn it is acts. When you finish, update this header and **Outstanding**, add a log entry at the top of the **Log**, flip the turn, then give Steve a copyable paste for the other side.
 
 ## Outstanding
 
-### Waiting on Wren (review / test / merge; never while Steve is playing Forge)
-| PR | Round | Head | What changed |
-|---|---|---|---|
-| #55 DS4 | r5 | `b1a26073e23` (r5 code `fb41a00b8fc` + restore of `docs/HANDOFF.md` to base) | **D1** atomic check-and-stop (pending only set if that IPP is still current), inline pool-thread restore deleted (pool path clears pending), mobile calls `takeBackLastAction` on the render thread. Tests: `takeBackPoolThreadClearsPendingInsteadOfRestoringMidCast`, `takeBackPhaseHandlerContinueRestoresOnLoopThread`. **D2** `PROTOCOL_VERSION` = **12**. **D5** mill cost always bumps; exile-from-library-top bumps. Tests: `millCostBumpsEpoch` (Millikin), `exileFromLibraryTopCostBumpsEpoch` (Thought Lash). Optionals done: **D3** mana abilities exempt from H-A (`manaAbilityDoesNotInvalidateTakeBack`); **D4** missing entry reinserted at its snapshot index (`pushForRestoreInsertsMissingEntryAtSnapshotIndex`); **D6** ScriptedPch cleanup; H-A positive case `tapAbilityAfterLandInvalidatesTakeBack` (land + Prodigal Sorcerer). `TakeBackDs4Test` 17/17, mobile 313/0, desktop 869 with only the co-op Netty timeouts. |
+### Waiting on Wren
+- Nothing.
 
-Note: the #55 agent wrongly edited `docs/HANDOFF.md` on its branch (4e4643ea9d6); Grok had it restored to base so the PR no longer touches this file.
-
-### Waiting on Grok
-- **SV1** (save anywhere + autosave before every fight) in progress on its own branch from feature/set-start, per the roadmap spec. PR to follow.
-- Then, in roadmap order: **MX1** (Moxfield round trip), **DS1** (Arena-style duel screen, rewritten), **EC1**, **DS5**. FT2 stays queued until Steve says go.
-- Later small follow-ups, not started: #63 doc line "lists must be truly empty, not a space" + tileset test also checking PNGs and `.tx` template tilesets; #60 test asserting `playerTitle` sits inside `stats`.
+### Waiting on Grok: next packages, in this order (all specified in `docs/Adventure/Ascendant-Roadmap.md`)
+1. **QL1** track any quest (urgent: Steve's arrow is stuck pointing at town for a "do a side quest" stage).
+2. **SV1** save inside dungeons and towns + autosave before every fight.
+3. **MX1** Moxfield export (Scryfall set codes) and import limited to the collection.
+4. **DS1** Arena-style duel screen (rewritten 2026-10-10; 6 PRs, skeleton first).
+5. **EC1**, then **DB1** deck builder, **GN1** gather-node variety, **DS5** active effects tooltip, **QL2** quest log.
+- Small fix any time: `SourcePrintingsCs0Test.generateDnDShopFallsBackToRotation` (and the SpaceMarine twin) fail
+  intermittently on a Linux runner (got `Thriving Isle [MSC]` instead of a ZEN/WWK/ROE printing): test-order state
+  leak, not seen on Windows. Make the test set up its own config, rotation and caches.
+- Housekeeping: old open PRs #58, #57, #51, #47, #44, #43, #39. Say per PR whether it is merged elsewhere,
+  superseded (close it) or still wanted.
+- Not yet for Grok: CL1 (Collecting sub-skills per set + styles) and FX1 (live foil shader) wait on Steve's answers.
 
 ### Waiting on Steve (hands-on)
 - Place the LT1 objects in `starter_town.tmx` in Tiled, on unblocked walkable tiles: Mira, Bren, Sela via `townsfolk.tx` (`townsfolkId=havenbrook_mira` / `_bren` / `_sela`); general store `shop.tx` with `commonShopList=GeneralStore` and uncommon/rare/mythic lists **empty** (truly empty, not a space). Town and NPC names are placeholders, rename freely.
@@ -30,6 +34,16 @@ Note: the #55 agent wrongly edited `docs/HANDOFF.md` on its branch (4e4643ea9d6)
 - Bugs Steve reports from play jump the queue. So do Tiny's, which arrive via `docs/FEEDBACK.md` (written by Tiny's AI, Sam; Wren triages).
 
 ## Log (newest first)
+
+### 2026-10-10 16:55 · Wren → Grok
+- Merged **#55** DS4 r5 (869 desktop tests green on the new Linux runner, CT 110 on Ark). r5 review left two small
+  gaps; Wren fixed them in `wren/ds4-pending-fix` (merged): a take-back request only counts for the priority window it
+  stopped (a chosen action wins, stale requests are dropped), mobile game menu calls take back on the render thread.
+- Wren also merged: RW1 for every regular fight (dungeon/town/unthemed enemies get current-set cards), signature card
+  from the played deck when no theme applies (e.g. red-white enemies: there is no RW theme), material icons
+  (`sprites/material_icons.atlas`), Thrull easy deck swap (The Abyss → Thrull Surgeon).
+- Roadmap added: QL1/QL2, DB1, GN1, MX1, SV1, DS5; DS1 rewritten as a full Arena-style screen.
+- Tiny's feedback inbox is `docs/FEEDBACK.md` (Sam writes, Wren triages).
 
 ### 2026-10-10 16:30 · Grok → Wren
 - #55 r5 done: D1, D2 (protocol 12), D5, plus optionals D3, D4, D6 and the H-A positive test. Details in Outstanding.
