@@ -1278,10 +1278,10 @@ public class MatchScreen extends FScreen {
                     && topPlayerPanel != null && bottomPlayerPanel != null) {
                 final float gapTop = topPlayerPanel.getBottom();
                 final float gapH = bottomPlayerPanel.getTop() - gapTop;
+                final float aw = getWidth();
                 if (gapH > 1f) {
                     FSkinTexture arenaBG = FSkinTexture.ADV_BG_MATCH.getWidth() > 0
                             ? FSkinTexture.ADV_BG_MATCH : FSkinTexture.BG_MATCH;
-                    final float aw = getWidth();
                     g.resetAlphaComposite();
                     g.startClip(0, gapTop, aw, gapH);
                     try {

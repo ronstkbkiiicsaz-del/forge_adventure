@@ -695,6 +695,22 @@ public class VPlayerPanel extends FContainer {
     }
 
     @Override
+    public void draw(Graphics g) {
+        // Arena: scissor the whole panel so field-row / zone clips cannot paint into the
+        // other half and zero FBO alpha (reads as a flat dark void in captures).
+        if (isArenaDuelLayout()) {
+            g.startClip(0, 0, getWidth(), getHeight());
+            try {
+                super.draw(g);
+            } finally {
+                g.endClip();
+            }
+            return;
+        }
+        super.draw(g);
+    }
+
+    @Override
     public void drawBackground(Graphics g) {
         float y;
         InfoTab infoTab = selectedTab;
