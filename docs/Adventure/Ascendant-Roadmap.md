@@ -1167,6 +1167,25 @@ nothing for the player's current set progress.
 13. EN1 data and AC1 can start now; K after MV2; CS1 after AC1; EN2 after EN1.
 14. Core loop: LT1 + FR1 (first living town) → AR1 → SE1 → BL1 with WAR1; CH1 alongside.
 
+## Sound
+
+### AU1. Sound effects overhaul (Steve, 2026-10-10; after DS1, alongside its animation PR)
+Today Forge plays one generic clip per event from `forge-gui/res/sound/` (`creature.mp3`, `instant.mp3`, `destroy.mp3`,
+`draw.mp3`...), and the overworld has very few sounds. Goal: the game sounds as good as it plays.
+- **Duel:** distinct, layered sounds for draw, play land (per color), cast (by card type and mana value: a 1-drop
+  sounds light, a 7-drop lands heavy), resolve, counter, attack declared, block, combat damage (scaled by amount),
+  creature dies, exile, token created, life gain and loss, mulligan, shuffle, win and lose stingers. Hooks into the
+  existing `SoundSystem` / game events, so it also works with DS1's animations.
+- **Overworld and maps:** footsteps by terrain, gathering sounds per family (chop, pick, chisel, splash, rummage),
+  node depleted, item pickup, door and portal, shop buy and sell, level-up and skill-up jingles, quest accepted and
+  completed, enemy noticed, chest open, dialog blip.
+- **UI:** menu hover and confirm, pack opening (rip, card flip, rare reveal sparkle), reward reveal, achievement toast.
+- **Sources:** CC0 or permissively licensed packs only (Kenney audio packs, OpenGameArt, freesound CC0), each listed
+  in `CREDITS.md`; Steve can swap any file by replacing it under the same name.
+- **Settings:** separate volume sliders for music, effects and UI; an option to mute overworld ambience.
+- Ascendant only for anything that changes stock sound behaviour; files the stock modes also use stay as they are.
+- Tests: every sound key the code plays maps to an existing file; licence entries exist for every new file.
+
 ## Art
 
 Every material, tool, potion and gear piece needs an icon. Start with recolored existing sprites from
