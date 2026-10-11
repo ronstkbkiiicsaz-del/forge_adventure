@@ -384,10 +384,14 @@ public final class LlmOpponent {
             prompt.append(combatOutlook(ai, legal.get(i)));
         }
         prompt.append("Forge's cautious default would attack with: ").append(names(forgeSuggestion)).append('\n');
+        prompt.append(defenseCheck(ai, legal));
         prompt.append("\nRules reminders: summoning-sick creatures CAN still block. A creature whose death creates tokens "
                 + "or other value loses little by being blocked, so attacking with it is usually free damage or a good trade.\n");
         prompt.append("\nDecide which creatures attack. Think about the opponent's possible blocks, combat tricks, "
-                + "racing, and keeping blockers back. Reply only with JSON: {\"attackers\": [<numbers>], \"reason\": \"<one sentence>\"}");
+                + "racing, and keeping blockers back. Do the race math from the DEFENSE CHECK: if attacking with a "
+                + "creature leaves you unable to survive or to block well on their next turn, keep it home, especially "
+                + "a creature that would block and kill an attacker and survive. A point or two of chip damage is not "
+                + "worth losing the race. Reply only with JSON: {\"attackers\": [<numbers>], \"reason\": \"<one sentence>\"}");
 
         String answer = ask(prompt.toString());
         List<Integer> picks = findIntList(answer, "attackers");
@@ -608,6 +612,48 @@ public final class LlmOpponent {
      * Rough combat preview for one attacker: unblocked damage, and the result against each creature that
      * could block it (power vs toughness only; first strike, deathtouch and tricks are not modelled).
      */
+    /**
+     * Race math for the attack decision: what the opponent can swing back for next turn and which of our
+     * creatures could block it, so the model doesn't trade a needed blocker for chip damage.
+     */
+    static String defenseCheck(Player ai, List<Card> canAttack) {
+        int theirDamage = 0;
+        List<String> theirAttackers = new ArrayList<>();
+        for (Player opp : ai.getOpponents()) {
+            for (Card c : opp.getCreaturesInPlay()) {
+                int power = Math.max(0, c.getNetCombatDamage());
+                if (power <= 0 || c.hasKeyword(forge.game.keyword.Keyword.DEFENDER)) {
+                    continue;
+                }
+                int hits = c.hasDoubleStrike() ? 2 : 1;
+                theirDamage += power * hits;
+                theirAttackers.add(c.getName() + " " + c.getNetPower() + "/" + c.getNetToughness()
+                        + (hits == 2 ? " (double strike)" : c.hasFirstStrike() ? " (first strike)" : "")
+                        + (c.hasKeyword(forge.game.keyword.Keyword.FLYING) ? " (flying)" : ""));
+            }
+        }
+        List<String> stayHome = new ArrayList<>();
+        for (Card c : ai.getCreaturesInPlay()) {
+            if (!canAttack.contains(c) || c.hasKeyword(forge.game.keyword.Keyword.VIGILANCE)) {
+                stayHome.add(c.getName() + " " + c.getNetPower() + "/" + c.getNetToughness());
+            }
+        }
+        StringBuilder sb = new StringBuilder("\nDEFENSE CHECK: your life is ").append(ai.getLife())
+                .append(". On their next turn the opponent could attack with ").append(theirAttackers.size())
+                .append(" creature(s) for up to ").append(theirDamage).append(" damage");
+        if (!theirAttackers.isEmpty()) {
+            sb.append(": ").append(String.join(", ", theirAttackers));
+        }
+        sb.append(". Blockers you keep even if you attack (can't attack or have vigilance): ")
+                .append(stayHome.isEmpty() ? "none" : String.join(", ", stayHome)).append('.');
+        if (theirDamage >= ai.getLife()) {
+            sb.append(" WARNING: their full swing is lethal unless you keep enough blockers back.");
+        } else if (theirDamage * 2 >= ai.getLife()) {
+            sb.append(" Their swing would put you in danger; value blockers highly.");
+        }
+        return sb.append('\n').toString();
+    }
+
     private static String combatOutlook(Player ai, Card attacker) {
         StringBuilder sb = new StringBuilder("   If it attacks: unblocked = ")
                 .append(Math.max(0, attacker.getNetCombatDamage())).append(" damage.");
