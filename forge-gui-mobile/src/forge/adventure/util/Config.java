@@ -178,6 +178,11 @@ public class Config {
         return instance().configData != null && instance().configData.ascendantRules;
     }
 
+    /** QL1: Ascendant quest-tracking behaviour (Track button, discovered side-quest targets). */
+    public static boolean ql1QuestTracking() {
+        return ascendant() && instance().configData != null && instance().configData.ql1QuestTracking;
+    }
+
     // Push the plane's allowed/restricted editions and restricted token pairs into TokenDb.
     private void applyTokenEditionFilter() {
         if (configData == null) return;
