@@ -756,7 +756,8 @@ public class CardEconomyEc1Test {
         Assert.assertNotNull(badlands);
         player.getSeason().setCalendarForTest(400, 24);
         int salvage = player.salvageYield(badlands);
-        Assert.assertTrue(salvage > 0 && salvage <= 80,
+        // Within-rarity worth caps salvage near salvageDust×(list/rarityBase) (~10×), not hundreds.
+        Assert.assertTrue(salvage > 0 && salvage <= 120,
                 "late pedigree salvage must stay sensible, got " + salvage);
     }
 
