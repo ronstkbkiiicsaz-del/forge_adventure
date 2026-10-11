@@ -30,7 +30,9 @@ import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.lang.reflect.Field;
 import java.nio.file.Files;
@@ -38,6 +40,7 @@ import java.nio.file.Path;
 import java.util.Collections;
 import java.util.List;
 import java.util.zip.DeflaterOutputStream;
+import java.util.zip.InflaterInputStream;
 
 /**
  * SV1: save inside maps, restore position, pre-duel autosave, quest-safe ENTERPOI,
@@ -145,7 +148,7 @@ public class SaveAnywhereSv1Test {
             nameField.set(player, COOP_CHR_NAME);
 
             CoopCharacterStore.savePlayer(player);
-            SaveFileData raw = CoopCharacterStore.readRaw(COOP_CHR_NAME);
+            SaveFileData raw = readRawChr(COOP_CHR_NAME);
             Assert.assertNotNull(raw);
             Assert.assertFalse(raw.containsKey(InteriorMapSave.KEY_POI_ID),
                     "co-op .chr must not carry WorldSave interior keys");
@@ -318,7 +321,7 @@ public class SaveAnywhereSv1Test {
             // startArena order: autosave, then take fee. Load must restore pre-fee gold.
             int goldBefore = Current.player().getGold();
             if (goldBefore < 5) {
-                Current.player().addGold(50);
+                Current.player().giveGold(50);
                 goldBefore = Current.player().getGold();
             }
             InteriorMapSave.maybeAutosaveBeforeDuel();
@@ -496,6 +499,18 @@ public class SaveAnywhereSv1Test {
             state.setAccessible(true);
             state.set(session, CoopSession.State.IDLE);
         } catch (Exception ignored) {
+        }
+    }
+
+    private static SaveFileData readRawChr(String name) throws Exception {
+        File file = CoopCharacterStore.characterFile(name);
+        if (!file.isFile()) {
+            return null;
+        }
+        try (FileInputStream fis = new FileInputStream(file);
+             InflaterInputStream inf = new InflaterInputStream(fis);
+             ObjectInputStream ois = new ObjectInputStream(inf)) {
+            return (SaveFileData) ois.readObject();
         }
     }
 
