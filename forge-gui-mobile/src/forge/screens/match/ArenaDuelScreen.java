@@ -180,6 +180,12 @@ public class ArenaDuelScreen extends MatchScreen {
             bottomPanel.setSelectedZone(forge.game.zone.ZoneType.Hand);
         }
 
+        // Classic VStack dropdown is replaced by VArenaStackColumn — keep it hidden so a
+        // spell on the stack cannot reopen the leftover green card strip at top-left.
+        if (getStack() != null) {
+            getStack().hide();
+        }
+
         refreshContextLabel();
     }
 
@@ -214,19 +220,14 @@ public class ArenaDuelScreen extends MatchScreen {
         final float w = getWidth();
         final float h = getHeight();
         g.resetAlphaComposite();
-        g.fillRect(new Color(0.07f, 0.09f, 0.12f, 1f), 0, 0, w, h);
+        // Forest-biased stretch so the lower play area isn't the plate's dark water band.
+        g.fillRect(new Color(0.10f, 0.16f, 0.12f, 1f), 0, 0, w, h);
         final FSkinTexture matchBG = resolveMatchBackground();
-        final float imgAspect = matchBG.getWidth() / (float) Math.max(1, matchBG.getHeight());
-        float bgW = w;
-        float bgH = bgW / imgAspect;
-        if (bgH < h) {
-            bgH = h;
-            bgW = bgH * imgAspect;
+        if (matchBG.getWidth() > 0) {
+            g.drawImage(matchBG, 0, -h * 0.18f, w, h * 1.40f);
         }
-        g.drawImage(matchBG, (w - bgW) / 2f, (h - bgH) / 2f, bgW, bgH);
         // No setAlphaComposite darken: multiplicative alpha punches FBO holes that the
         // GL capture composites to a flat void (centre lane / player field in landscape).
-        // ADV_BG_MATCH is already dark enough for readable contrast.
         g.resetAlphaComposite();
     }
 

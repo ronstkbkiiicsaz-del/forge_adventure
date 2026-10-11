@@ -42,6 +42,9 @@ public class VField extends FContainer {
     }
 
     private static boolean arenaLayoutActive() {
+        if (Forge.getCurrentScreen() instanceof forge.screens.match.ArenaDuelScreen) {
+            return true;
+        }
         final MatchScreen view = MatchController.getView();
         return view != null && view.isArenaDuelScreen();
     }
@@ -263,6 +266,28 @@ public class VField extends FContainer {
         row1.clear(); //clear rows instead of removing the rows
         row2.clear();
         rowSide.clear();
+    }
+
+    @Override
+    protected void drawBackground(forge.Graphics g) {
+        if (!arenaLayoutActive()) {
+            return;
+        }
+        // Stretch a forest-biased slice of the match plate into this field so the
+        // player half isn't a flat dark void (screen-aligned UVs hit dark water).
+        g.resetAlphaComposite();
+        forge.assets.FSkinTexture plate = forge.assets.FSkinTexture.ADV_BG_MATCH;
+        if (plate.getWidth() <= 0) {
+            plate = forge.assets.FSkinTexture.BG_MATCH;
+        }
+        final float w = getWidth();
+        final float h = getHeight();
+        g.fillRect(new com.badlogic.gdx.graphics.Color(0.10f, 0.16f, 0.12f, 1f), 0, 0, w, h);
+        if (plate.getWidth() > 0) {
+            // Bias upward: map upper ~70% of the art into the field rect.
+            g.drawImage(plate, 0, -h * 0.35f, w, h * 1.55f);
+        }
+        g.resetAlphaComposite();
     }
 
     @Override

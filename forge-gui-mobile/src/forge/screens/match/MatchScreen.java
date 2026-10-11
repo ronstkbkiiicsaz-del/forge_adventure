@@ -1173,7 +1173,9 @@ public class MatchScreen extends FScreen {
             // DS1 Arena: always paint a full-bleed match backdrop inside the scroller
             // (before the classic UI_MATCH_IMAGE_VISIBLE early-return). Classic midField
             // geometry leaves wide landscape lanes empty otherwise.
-            if (MatchController.getView() != null && MatchController.getView().isArenaDuelScreen()) {
+            final boolean arenaDuel = (Forge.getCurrentScreen() instanceof ArenaDuelScreen)
+                    || (MatchController.getView() != null && MatchController.getView().isArenaDuelScreen());
+            if (arenaDuel) {
                 FSkinTexture arenaBG = Forge.isMobileAdventureMode ? currentBG : FSkinTexture.BG_MATCH;
                 if (!Forge.isMobileAdventureMode && daytime != null) {
                     arenaBG = "Day".equals(daytime) ? FSkinTexture.BG_MATCH_DAY : FSkinTexture.BG_MATCH_NIGHT;
@@ -1185,17 +1187,14 @@ public class MatchScreen extends FScreen {
                 }
                 final float aw = getWidth();
                 final float ah = getHeight();
-                final float aspect = arenaBG.getWidth() / (float) Math.max(1, arenaBG.getHeight());
-                float bgW = aw;
-                float bgH = bgW / aspect;
-                if (bgH < ah) {
-                    bgH = ah;
-                    bgW = bgH * aspect;
-                }
-                // Force opaque blit so later translucent children cannot leave the
-                // scroller's backdrop as an FBO alpha hole (reads as black in captures).
+                // Stretch a forest-biased slice across the whole scroller. Aspect-fit
+                // centering maps the lower player band onto dark water in the plate
+                // art and reads as a flat void next to the opponent half.
                 g.resetAlphaComposite();
-                g.drawImage(arenaBG, (aw - bgW) / 2f, (ah - bgH) / 2f, bgW, bgH);
+                g.fillRect(new com.badlogic.gdx.graphics.Color(0.10f, 0.16f, 0.12f, 1f), 0, 0, aw, ah);
+                if (arenaBG.getWidth() > 0) {
+                    g.drawImage(arenaBG, 0, -ah * 0.20f, aw, ah * 1.45f);
+                }
                 g.resetAlphaComposite();
                 return;
             }
@@ -1273,7 +1272,9 @@ public class MatchScreen extends FScreen {
             // DS1 Arena: re-seal the centre band between panels with a stretched match
             // plate (same treatment as each VPlayerPanel backdrop) so landscape doesn't
             // leave a flat void between the two halves. Stack column draws above.
-            if (MatchController.getView() != null && MatchController.getView().isArenaDuelScreen()
+            final boolean arenaSeal = (Forge.getCurrentScreen() instanceof ArenaDuelScreen)
+                    || (MatchController.getView() != null && MatchController.getView().isArenaDuelScreen());
+            if (arenaSeal
                     && topPlayerPanel != null && bottomPlayerPanel != null) {
                 final float gapTop = topPlayerPanel.getBottom();
                 final float gapH = bottomPlayerPanel.getTop() - gapTop;
@@ -1284,10 +1285,12 @@ public class MatchScreen extends FScreen {
                     g.resetAlphaComposite();
                     g.startClip(0, gapTop, aw, gapH);
                     try {
-                        g.fillRect(new com.badlogic.gdx.graphics.Color(0.07f, 0.10f, 0.09f, 1f),
+                        g.fillRect(new com.badlogic.gdx.graphics.Color(0.10f, 0.16f, 0.12f, 1f),
                                 0, gapTop, aw, gapH);
-                        // Stretch across the gap so it matches the panel plates.
-                        g.drawImage(arenaBG, 0, gapTop, aw, gapH);
+                        // Forest-biased slice — match FieldScroller / panel plates.
+                        if (arenaBG.getWidth() > 0) {
+                            g.drawImage(arenaBG, 0, gapTop - gapH * 0.25f, aw, gapH * 1.50f);
+                        }
                     } finally {
                         g.endClip();
                     }

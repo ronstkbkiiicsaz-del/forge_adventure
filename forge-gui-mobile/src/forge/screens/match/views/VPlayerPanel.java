@@ -499,10 +499,11 @@ public class VPlayerPanel extends FContainer {
         }
         final float w = getWidth();
         final float h = getHeight();
-        // Opaque bed first so FBO alpha stays 1 even on texture edges.
-        g.fillRect(new Color(0.07f, 0.10f, 0.09f, 1f), 0, 0, w, h);
+        // Opaque forest-biased plate (same treatment as FieldScroller / VField) so the
+        // player half isn't a flat dark void from the water band of ADV_BG_MATCH.
+        g.fillRect(new Color(0.10f, 0.16f, 0.12f, 1f), 0, 0, w, h);
         if (plate.getWidth() > 0) {
-            g.drawImage(plate, 0, 0, w, h);
+            g.drawImage(plate, 0, -h * 0.25f, w, h * 1.50f);
         }
     }
 
@@ -543,6 +544,9 @@ public class VPlayerPanel extends FContainer {
 
     /** True when the active match view is the DS1 Arena skeleton (hand stays bottom-stacked). */
     private static boolean isArenaDuelLayout() {
+        if (Forge.getCurrentScreen() instanceof forge.screens.match.ArenaDuelScreen) {
+            return true;
+        }
         final MatchScreen view = MatchController.getView();
         return view != null && view.isArenaDuelScreen();
     }
@@ -599,6 +603,11 @@ public class VPlayerPanel extends FContainer {
     }
 
     private void updateTabLayout(float width, float height) {
+        // Arena keeps portrait-stacked field/hand; never re-apply classic landscape chrome.
+        if (isArenaDuelLayout()) {
+            doArenaLayout(width, height);
+            return;
+        }
         float x = avatar.getRight();
         phaseIndicator.resetFont();
         phaseIndicator.setBounds(x, 0, avatar.getWidth() * 0.6f, height);

@@ -24,12 +24,19 @@ public class VPhaseIndicator extends FContainer {
     public static final float PADDING_X = Utils.scale(1);
     public static final float PADDING_Y = Utils.scale(2);
 
+    private static boolean arenaPhaseChromeSuppressed() {
+        if (Forge.getCurrentScreen() instanceof forge.screens.match.ArenaDuelScreen) {
+            return true;
+        }
+        return forge.screens.match.MatchController.getView() != null
+                && forge.screens.match.MatchController.getView().isArenaDuelScreen();
+    }
+
     @Override
     public void draw(final Graphics g) {
         // DS1 Arena owns phase UI in the phase-rail band; never paint the classic
         // green phase strip inside player panels (it survives as a leftover bar).
-        if (forge.screens.match.MatchController.getView() != null
-                && forge.screens.match.MatchController.getView().isArenaDuelScreen()) {
+        if (arenaPhaseChromeSuppressed()) {
             return;
         }
         super.draw(g);
@@ -231,6 +238,9 @@ public class VPhaseIndicator extends FContainer {
 
         @Override
         public void draw(final Graphics g) {
+            if (arenaPhaseChromeSuppressed()) {
+                return;
+            }
             float x = PADDING_X;
             float w = getWidth() - 2 * PADDING_X;
             float h = getHeight();

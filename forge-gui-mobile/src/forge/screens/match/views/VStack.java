@@ -103,6 +103,16 @@ public class VStack extends FDropDown {
         restoreOldZones();
 
         final FCollectionView<StackItemView> stack = MatchController.instance.getGameView().getStack();
+        // DS1 Arena owns the stack in VArenaStackColumn. Never auto-show the classic
+        // VStack dropdown — it paints as a leftover green card strip at the top-left.
+        if (arenaOwnsStackUi()) {
+            stackSize = stack.size();
+            if (getMenuTab() != null) {
+                getMenuTab().setText(Forge.getLocalizer().getMessage("lblStack") + " (" + stackSize + ")");
+            }
+            hide();
+            return;
+        }
         if (stackSize != stack.size()) {
             int oldStackSize = stackSize;
             stackSize = stack.size();
@@ -122,6 +132,22 @@ public class VStack extends FDropDown {
             }
         }
         super.update();
+    }
+
+    private static boolean arenaOwnsStackUi() {
+        if (Forge.getCurrentScreen() instanceof forge.screens.match.ArenaDuelScreen) {
+            return true;
+        }
+        final MatchScreen view = MatchController.getView();
+        return view != null && view.isArenaDuelScreen();
+    }
+
+    @Override
+    public void show() {
+        if (arenaOwnsStackUi()) {
+            return; // Arena centre column is the only stack surface
+        }
+        super.show();
     }
 
     @Override
