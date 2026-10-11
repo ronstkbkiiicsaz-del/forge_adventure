@@ -1188,14 +1188,14 @@ public class MatchScreen extends FScreen {
                 }
                 final float aw = getWidth();
                 final float ah = getHeight();
-                // Map the upper half of ADV_BG_MATCH (sky/trees) across the whole
-                // scroller so opponent and local fields share one forest atmosphere.
+                // Forest/meadow slice of ADV_BG_MATCH across the whole scroller
+                // (skip the art's dark top band so the opponent half stays textured).
                 g.resetAlphaComposite();
                 g.fillRect(ARENA_SEAL_PLATE, 0, 0, aw, ah);
                 if (arenaBG.getWidth() > 0) {
                     g.startClip(0, 0, aw, ah);
                     try {
-                        g.drawImage(arenaBG, 0, 0, aw, ah / 0.50f);
+                        g.drawImage(arenaBG, 0, -ah * 0.08f, aw, ah / 0.42f);
                     } finally {
                         g.endClip();
                     }
@@ -1294,7 +1294,7 @@ public class MatchScreen extends FScreen {
                     try {
                         g.fillRect(ARENA_SEAL_PLATE, 0, gapY, aw, gapH);
                         if (arenaBG.getWidth() > 0) {
-                            g.drawImage(arenaBG, 0, 0, aw, ah / 0.50f);
+                            g.drawImage(arenaBG, 0, -ah * 0.08f, aw, ah / 0.42f);
                         }
                     } finally {
                         g.endClip();

@@ -625,10 +625,12 @@ public class VPlayerPanel extends FContainer {
         g.startClip(0, 0, w, h);
         try {
             g.fillRect(ARENA_PANEL_PLATE, 0, 0, w, h);
-            if (plate.getWidth() > 0) {
-                // Map upper half of ADV_BG_MATCH (sky/trees) across the whole scroller.
-                final float imgH = fullH / 0.50f;
-                g.drawImage(plate, 0, -scrollerY, w, imgH);
+            if (plate.getWidth() > 0 && fullH > 1f) {
+                // Skip the texture's dark top band; stretch the forest/meadow slice
+                // across the full scroller so opponent and local halves match.
+                final float imgH = fullH / 0.42f;
+                final float imgY = -scrollerY - fullH * 0.08f;
+                g.drawImage(plate, 0, imgY, w, imgH);
             }
         } finally {
             g.endClip();
@@ -834,13 +836,11 @@ public class VPlayerPanel extends FContainer {
         InfoTab infoTab = selectedTab;
         float pad = Forge.isHorizontalTabLayout() ? avatarWidth / 16f : 0f;
         final VDisplayArea selectedDisplayArea = infoTab == null ? null : infoTab.getDisplayArea();
-        // Arena: do NOT paint a per-panel plate. FieldScroller already draws one
-        // continuous forest-biased ADV_BG_MATCH across both halves; an opaque panel
-        // fill here covered the opponent half with a flat dark void when the
-        // scroller-relative image blit failed under flipped field rows. Hand scrim
-        // still sits on top for card readability.
+        // Arena: opaque scroller-relative forest plate so child alpha cannot punch
+        // FBO voids; same UV mapping as FieldScroller so both halves match.
         if (isArenaDuelLayout()) {
             g.resetAlphaComposite();
+            paintArenaPanelBackdrop(g);
             final VZoneDisplay handZone = getZoneDisplay(ZoneType.Hand);
             if (handZone != null && handZone.isVisible() && handZone.getHeight() > 1f) {
                 g.fillRect(ARENA_HAND_SCRIM,
