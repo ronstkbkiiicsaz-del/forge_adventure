@@ -1,26 +1,34 @@
 # Shandalar Ascendant: Grok ⇄ Wren handoff
 
-> **WHOSE TURN: GROK**
-> Turn passed by Wren on 2026-10-10, 16:55 Phoenix time
+> **WHOSE TURN: WREN**
+> Turn passed by Grok on 2026-10-10, 18:40 Phoenix time
 > Rule: only the side whose turn it is acts. When you finish, update this header and **Outstanding**, add a log entry at the top of the **Log**, flip the turn, then give Steve a copyable paste for the other side.
 
 ## Outstanding
 
-### Waiting on Wren
-- Nothing.
+### Waiting on Wren (review / test / merge; never while Steve is playing Forge). All three are marked ready, clean against base.
+| PR | What | Head | Notes |
+|---|---|---|---|
+| #67 QL1 | Track any quest (urgent) | `e8a6ff2e870` | **Root cause:** when POI tag matching left `validPOIs` empty, `AdventureQuestStage.setTargetPOI` fell back to *every* POI, so `getClosestValidPOI` picked the nearest town (often Havenbrook, not a QuestSource). Track per quest row (controller-reachable) + details; one tracked, saved via `isTracked`; new quests don't steal; finishing moves to next; old saves track the first active quest; "any side quest" = nearest **discovered** QuestSource/Sidequest or "no known location" (arrow hidden). Stock keeps the old fallback. QL1 block tunables. `QuestTrackingQl1Test` 8/8, mobile 330/0, desktop 870 (3 co-op Netty only). |
+| #66 SV1 | Save anywhere + autosave before fights | `b62405a23df` | `InteriorMapSave` stores POI id, map path, entrance id, x/y; load via `TileMapScene.loadForRestore`/`MapStage.loadMap`, blocked/out-of-bounds → entrance; restore re-fires `updateEnteredPOI` once; `lblGameNotSaved` lifted for Ascendant; `DuelScene.maybeAutosaveBeforeDuel()` at start of `initDuels`, skipped when `CoopSession.isActive()`. `SaveAnywhereSv1Test` headless 4/4 + GL 5/5 (dungeon position + dead enemy, blocked → entrance, autosave/co-op, quest done stays done, pending completes once). Mobile 317/0. Branched before #55 merged; GitHub still reports clean. |
+| #68 | CS0 DnD/SpaceMarine shop flake | `32b28bf3877` | Real bug, not only test state: `RewardData`'s unusable-pin fallback set `editions = null`, so staples already loaded by earlier tests (e.g. `FightRewardsRw1Test`) appeared in newest-normal printings (MSC/FRC/FIC). Now falls back to `SourcePrintings.currentRotationSets()`; `Config.installConfigDataForTest` invalidates the RewardData pool/filter; CS0 test owns its config/window/caches; RW1 Pauper test restores its mutations. Mobile 325/0 in alphabetical, reversealphabetical, random seeds 1 and 42 (1 and 42 failed before). |
 
-### Waiting on Grok: next packages, in this order (all specified in `docs/Adventure/Ascendant-Roadmap.md`)
-1. **QL1** track any quest (urgent: Steve's arrow is stuck pointing at town for a "do a side quest" stage).
-2. **SV1** save inside dungeons and towns + autosave before every fight.
-3. **MX1** Moxfield export (Scryfall set codes) and import limited to the collection.
-4. **DS1** Arena-style duel screen (rewritten 2026-10-10; 6 PRs, skeleton first).
-5. **EC1**, then **DB1** deck builder, **GN1** gather-node variety, **DS5** active effects tooltip, **QL2** quest log.
-- Small fix any time: `SourcePrintingsCs0Test.generateDnDShopFallsBackToRotation` (and the SpaceMarine twin) fail
-  intermittently on a Linux runner (got `Thriving Isle [MSC]` instead of a ZEN/WWK/ROE printing): test-order state
-  leak, not seen on Windows. Make the test set up its own config, rotation and caches.
-- Housekeeping: old open PRs #58, #57, #51, #47, #44, #43, #39. Say per PR whether it is merged elsewhere,
-  superseded (close it) or still wanted.
-- Not yet for Grok: CL1 (Collecting sub-skills per set + styles) and FX1 (live foil shader) wait on Steve's answers.
+### Old PR triage (read-only check vs base `3d93a14e94`; Wren closes)
+| PR | Verdict | Evidence |
+|---|---|---|
+| #44 EN2 | **Close**: merged elsewhere | PR head has the same parents as base merge `db8904ac1a`; `git diff db8904ac1a pr44` is empty. |
+| #47 EN1 | **Close**: merged / superseded | First merge in base (`1a578459fa`); exact-99 lock reached base (`d7e676ef84f`), extended by #53. Its last commit dropped the hard interaction check, which Steve deliberately kept. |
+| #57 dialogs | **Close**: superseded | Portal prompt already uses the MapStage dialog inline (`4ba3bb987e`); the only other change is co-op (`CoopDuelRuntime`). |
+| #39 CO1 r2 | **Close** (or park with #27/#40/#45) | Co-op, 202 behind, heavy `CoopSession` conflict; its `characterId` migration would rewrite every solo save on load. |
+| #58 EN1 nits | **Keep**, merges clean as-is | Banlist-aware deterministic Commander filler pick, Dragonspeaker relabel, 3 tests: none in base. |
+| #43 AC1 follow-up | **Keep**, merges clean as-is | StaticData save/restore in PlayerHooksTest, RealDbTest no null pin, `setPlaneMinTiles` indent: none in base. Same leak class as #68. |
+| #51 K follow-up | **Keep the single-player parts, redo small** | Missing in base: strict-refuse knock-back + 1.5 s grace; stamp format only after successful travel (portal + console `plane go`); `invalidateCardPool` after New Game / NG+; hide NG+ format box for Commander. Drop co-op items. Conflicts in `PortalActor` (`4ba3bb987e`). Grok can redo it as a fresh PR on request. |
+
+### Waiting on Grok
+- **MX1** (Moxfield export + collection-limited import) in progress on its own branch per the roadmap spec. PR to follow.
+- Then in order: **DS1** (Arena-style duel screen, 6 PRs, skeleton first), **EC1**, **DB1**, **GN1**, **DS5**, **QL2**. FT2 waits for Steve.
+- Not yet for Grok: CL1, FX1 (waiting on Steve's answers).
+- Later small follow-ups, not started: #63 doc line "lists must be truly empty, not a space" + tileset test also checking PNGs and `.tx` template tilesets; #60 test asserting `playerTitle` sits inside `stats`.
 
 ### Waiting on Steve (hands-on)
 - Place the LT1 objects in `starter_town.tmx` in Tiled, on unblocked walkable tiles: Mira, Bren, Sela via `townsfolk.tx` (`townsfolkId=havenbrook_mira` / `_bren` / `_sela`); general store `shop.tx` with `commonShopList=GeneralStore` and uncommon/rare/mythic lists **empty** (truly empty, not a space). Town and NPC names are placeholders, rename freely.
@@ -34,6 +42,11 @@
 - Bugs Steve reports from play jump the queue. So do Tiny's, which arrive via `docs/FEEDBACK.md` (written by Tiny's AI, Sam; Wren triages).
 
 ## Log (newest first)
+
+### 2026-10-10 18:40 · Grok → Wren
+- QL1 (#67), SV1 (#66) and the CS0 flake fix (#68) done and marked ready. Details in Outstanding.
+- Old PR triage done (close #44 #47 #57 #39; keep #58 #43; redo #51's single-player parts small).
+- Started MX1 per the roadmap.
 
 ### 2026-10-10 16:55 · Wren → Grok
 - Merged **#55** DS4 r5 (869 desktop tests green on the new Linux runner, CT 110 on Ark). r5 review left two small
