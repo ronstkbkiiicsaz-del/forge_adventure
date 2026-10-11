@@ -273,8 +273,7 @@ public class VField extends FContainer {
         if (!arenaLayoutActive()) {
             return;
         }
-        // Stretch a forest-biased slice of the match plate into this field so the
-        // player half isn't a flat dark void (screen-aligned UVs hit dark water).
+        // In-bounds match plate (no negative-Y bias — that escaped flipped panels).
         g.resetAlphaComposite();
         forge.assets.FSkinTexture plate = forge.assets.FSkinTexture.ADV_BG_MATCH;
         if (plate.getWidth() <= 0) {
@@ -286,7 +285,7 @@ public class VField extends FContainer {
         try {
             g.fillRect(new com.badlogic.gdx.graphics.Color(0.10f, 0.16f, 0.12f, 1f), 0, 0, w, h);
             if (plate.getWidth() > 0) {
-                g.drawImage(plate, 0, -h * 0.35f, w, h * 1.55f);
+                g.drawImage(plate, 0, 0, w, h);
             }
         } finally {
             g.endClip();
@@ -345,6 +344,17 @@ public class VField extends FContainer {
 
         private FieldRow() {
             setVisible(true); //make visible by default unlike other display areas
+        }
+
+        @Override
+        protected void startClip(forge.Graphics g) {
+            // Classic expands the clip 3x vertically so tapped cards paint. In Arena that
+            // lets a row scissor into the other player half and zero FBO alpha there.
+            if (arenaLayoutActive()) {
+                g.startClip(0, 0, getWidth(), getHeight());
+                return;
+            }
+            super.startClip(g);
         }
 
         @Override

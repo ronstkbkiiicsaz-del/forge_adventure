@@ -229,11 +229,11 @@ public class ArenaDuelScreen extends MatchScreen {
         final float w = getWidth();
         final float h = getHeight();
         g.resetAlphaComposite();
-        // Forest-biased stretch so the lower play area isn't the plate's dark water band.
+        // Full-bleed opaque plate (in-bounds). Panel plates reinforce each half.
         g.fillRect(new Color(0.10f, 0.16f, 0.12f, 1f), 0, 0, w, h);
         final FSkinTexture matchBG = resolveMatchBackground();
         if (matchBG.getWidth() > 0) {
-            g.drawImage(matchBG, 0, -h * 0.18f, w, h * 1.40f);
+            g.drawImage(matchBG, 0, 0, w, h);
         }
         // No setAlphaComposite darken: multiplicative alpha punches FBO holes that the
         // GL capture composites to a flat void (centre lane / player field in landscape).

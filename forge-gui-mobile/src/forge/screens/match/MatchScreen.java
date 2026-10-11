@@ -1187,13 +1187,13 @@ public class MatchScreen extends FScreen {
                 }
                 final float aw = getWidth();
                 final float ah = getHeight();
-                // Stretch a forest-biased slice across the whole scroller. Aspect-fit
-                // centering maps the lower player band onto dark water in the plate
-                // art and reads as a flat void next to the opponent half.
+                // Fill the whole scroller with an opaque stretched plate. Aspect-fit
+                // centering mapped the lower band onto dark water; negative-Y bias
+                // escaped clips and punched alpha holes into the other half.
                 g.resetAlphaComposite();
                 g.fillRect(new com.badlogic.gdx.graphics.Color(0.10f, 0.16f, 0.12f, 1f), 0, 0, aw, ah);
                 if (arenaBG.getWidth() > 0) {
-                    g.drawImage(arenaBG, 0, -ah * 0.20f, aw, ah * 1.45f);
+                    g.drawImage(arenaBG, 0, 0, aw, ah);
                 }
                 g.resetAlphaComposite();
                 return;
@@ -1287,9 +1287,8 @@ public class MatchScreen extends FScreen {
                     try {
                         g.fillRect(new com.badlogic.gdx.graphics.Color(0.10f, 0.16f, 0.12f, 1f),
                                 0, gapTop, aw, gapH);
-                        // Forest-biased slice — match FieldScroller / panel plates.
                         if (arenaBG.getWidth() > 0) {
-                            g.drawImage(arenaBG, 0, gapTop - gapH * 0.25f, aw, gapH * 1.50f);
+                            g.drawImage(arenaBG, 0, gapTop, aw, gapH);
                         }
                     } finally {
                         g.endClip();
