@@ -17,6 +17,7 @@ import forge.adventure.scene.DuelScene;
 import forge.adventure.scene.Scene;
 import forge.adventure.scene.TileMapScene;
 import forge.adventure.stage.MapStage;
+import forge.adventure.util.AdventureModes;
 import forge.adventure.util.AdventureQuestController;
 import forge.adventure.util.Config;
 import forge.adventure.util.Current;
@@ -141,11 +142,13 @@ public class SaveAnywhereSv1Test {
         assumeAscendantConfig();
         AdventurePlayer player = WorldSave.getCurrentSave().getPlayer();
         String originalName = player.getName();
+        Object originalMode = getPlayerField(player, "adventureMode");
         try {
-            // Rename briefly so the .chr path is isolated under the test user dir.
-            Field nameField = AdventurePlayer.class.getDeclaredField("name");
-            nameField.setAccessible(true);
-            nameField.set(player, COOP_CHR_NAME);
+            // Headless default player may lack adventureMode; seed fields savePlayer needs.
+            setPlayerField(player, "name", COOP_CHR_NAME);
+            if (originalMode == null) {
+                setPlayerField(player, "adventureMode", AdventureModes.Chaos);
+            }
 
             CoopCharacterStore.savePlayer(player);
             SaveFileData raw = readRawChr(COOP_CHR_NAME);
@@ -163,9 +166,8 @@ public class SaveAnywhereSv1Test {
                     "CoopCharacterStore.loadPlayer must not set interior restore pending");
         } finally {
             try {
-                Field nameField = AdventurePlayer.class.getDeclaredField("name");
-                nameField.setAccessible(true);
-                nameField.set(player, originalName);
+                setPlayerField(player, "name", originalName);
+                setPlayerField(player, "adventureMode", originalMode);
             } catch (Exception ignored) {
             }
         }
@@ -500,6 +502,19 @@ public class SaveAnywhereSv1Test {
             state.set(session, CoopSession.State.IDLE);
         } catch (Exception ignored) {
         }
+    }
+
+    private static Object getPlayerField(AdventurePlayer player, String field) throws Exception {
+        Field f = AdventurePlayer.class.getDeclaredField(field);
+        f.setAccessible(true);
+        return f.get(player);
+    }
+
+    private static void setPlayerField(AdventurePlayer player, String field, Object value)
+            throws Exception {
+        Field f = AdventurePlayer.class.getDeclaredField(field);
+        f.setAccessible(true);
+        f.set(player, value);
     }
 
     private static SaveFileData readRawChr(String name) throws Exception {
