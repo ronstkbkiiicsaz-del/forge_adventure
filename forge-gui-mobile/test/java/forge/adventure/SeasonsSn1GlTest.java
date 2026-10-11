@@ -42,14 +42,21 @@ public class SeasonsSn1GlTest {
                 throw new RuntimeException(e);
             }
 
+            // Clear any leftover co-op session from earlier GL tests so season display works.
+            try {
+                forge.adventure.coop.CoopSession.get().disconnect();
+            } catch (Throwable ignored) {
+            }
             StandardWindow window = new StandardWindow();
             window.init(java.util.List.of("M11", "ZEN"));
             AdventureSeason season = new AdventureSeason();
             season.initNewGame(window);
+            Assert.assertTrue(season.isConfigured(), "SN1 must be configured under Ascendant GL boot");
             String hud = season.hudLine(window);
             String status = season.statusLine(window);
-            Assert.assertFalse(hud.isEmpty());
-            Assert.assertFalse(status.isEmpty());
+            Assert.assertFalse(hud == null || hud.isEmpty(), "hudLine empty: configured="
+                    + season.isConfigured() + " init=" + season.isInitialized());
+            Assert.assertFalse(status == null || status.isEmpty(), "statusLine empty");
 
             renderAndSave(true, hud, status, "sn1_season_ui_landscape.png");
             renderAndSave(false, hud, status, "sn1_season_ui_portrait.png");

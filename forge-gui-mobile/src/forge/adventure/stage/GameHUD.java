@@ -525,7 +525,7 @@ public class GameHUD extends Stage {
         }
         try {
             AdventurePlayer player = Current.player();
-            if (player == null || player.getSeason() == null || !player.getSeason().isEnabled()) {
+            if (player == null || player.getSeason() == null || !player.getSeason().isConfigured()) {
                 seasonHud.setVisible(false);
                 return;
             }

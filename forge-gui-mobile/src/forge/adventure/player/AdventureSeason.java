@@ -49,8 +49,20 @@ public final class AdventureSeason {
     private long shortlistSeed;
     private boolean initialized;
 
-    public boolean isEnabled() {
+    /** Ascendant + sn1Seasons — true even in co-op (display / status). */
+    public boolean isConfigured() {
         if (!Config.ascendant())
+            return false;
+        ConfigData cfg = cfg();
+        return cfg == null || cfg.sn1Seasons;
+    }
+
+    /**
+     * Season mutations (calendar ticks, picks) run only outside co-op sessions.
+     * Co-op is frozen; display still uses {@link #isConfigured()}.
+     */
+    public boolean isEnabled() {
+        if (!isConfigured())
             return false;
         try {
             if (CoopSession.get().isActive())
@@ -58,8 +70,7 @@ public final class AdventureSeason {
         } catch (Throwable ignored) {
             // CoopSession may be unavailable in some tests.
         }
-        ConfigData cfg = cfg();
-        return cfg == null || cfg.sn1Seasons;
+        return true;
     }
 
     private static ConfigData cfg() {
@@ -139,7 +150,7 @@ public final class AdventureSeason {
     }
 
     public String hudLine(StandardWindow window) {
-        if (!isEnabled() || window == null || !window.isActive())
+        if (!isConfigured() || !initialized || window == null || !window.isActive())
             return "";
         if (choicePending)
             return "Day " + calendarDayNumber() + " · pick next set";
@@ -149,7 +160,7 @@ public final class AdventureSeason {
     }
 
     public String statusLine(StandardWindow window) {
-        if (!isEnabled() || window == null || !window.isActive())
+        if (!isConfigured() || !initialized || window == null || !window.isActive())
             return "";
         StringBuilder sb = new StringBuilder();
         sb.append(seasonDisplayName(window));

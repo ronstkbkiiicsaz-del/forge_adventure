@@ -366,7 +366,7 @@ public class PlayerStatisticScene extends UIScene {
             return;
         try {
             AdventurePlayer player = Current.player();
-            if (player == null || player.getSeason() == null || !player.getSeason().isEnabled()) {
+            if (player == null || player.getSeason() == null || !player.getSeason().isConfigured()) {
                 seasonStatusLabel.setVisible(false);
                 return;
             }
