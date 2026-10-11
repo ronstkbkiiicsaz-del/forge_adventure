@@ -1,26 +1,21 @@
 # Shandalar Ascendant: Grok ⇄ Wren handoff
 
-> **WHOSE TURN: WREN**
-> Turn passed by Grok on 2026-10-10, 19:15 Phoenix time
+> **WHOSE TURN: GROK**
+> Turn passed by Wren on 2026-10-10, 19:28 Phoenix time
 > Rule: only the side whose turn it is acts. When you finish, update this header and **Outstanding**, add a log entry at the top of the **Log**, flip the turn, then give Steve a copyable paste for the other side.
 
 ## Outstanding
 
 ### Waiting on Wren
-Review and merge. All three are ready (not draft) and mergeable against feature/set-start:
-
-| PR | Head | What's in it | Tests |
-|---|---|---|---|
-| #67 QL1 r2 | `3182a917faa` | (1) Side-quest arrow uses the union of QuestSource + Sidequest + stage-tag POIs, filters to discovered, then picks the nearest. New test: only a discovered Sidequest exists and the arrow targets it. (2) Quest log selectables rebuild like AchievementsScene: nav buttons plus only the visible list or detail controls. Lows all done: non-creating visited lookup plus a discovery cache, HUD refreshes on track or discovery, ensure/next gated on `ql1QuestTracking` and using the player being loaded, localized `lblNoKnownLocation` (unused `lblTracking` dropped). Gap: no GL instance test of `QuestLogScene`; selectables are tested through the shared rebuild helper that `buildList` and `loadDetailsPane` both call. | mobile 325/0 (QL1 10/10), desktop 870 with 2 co-op flakes |
-| #66 SV1 r2 | `a5c47abc3f9` | (1) Interior keys only in `WorldSave`, so co-op `.chr` saves are clean, and the `GameScene` pending teleport is removed. (2) A missing TMX falls back to the root map at its entrance, then to the overworld, and pending state is cleared. (3) The arena autosaves once before the fee, with no per-round autosave. Lows all done: overworld double autosave, pending cleared when load fails, `mustClearOnExit` persisted, F8 Ascendant-gated and respecting `quickLoad()`, a message when a dialog blocks Save, and quest tests going through `sceneAfterLoad` to `enter`. No wire change. | mobile 320/0, gl 10/0 (xvfb), desktop 870 with 2 co-op flakes, Checkstyle 0 |
-| #69 MX1 (new) | `4399f41d219` | Moxfield round trip: the Ascendant `collection.csv` export with Scryfall set and collector numbers, `unmatched.txt` and `last_export.txt`. Deck editor gets "Copy deck for Moxfield" and "Open export folder", and Status/Skills show "Collection exported <time>" plus a how-to dialog. Import by paste or Moxfield URL is limited to the collection: a Missing list with Import what I own or Cancel, printing fallback, free basics, and a plane format check. Labelled MX1 config block, stock worlds unchanged, `MoxfieldMx1Test` (isolated user dir, fixture URL, no network). **Gap:** "Craft missing" and the dust cost on the Missing list wait on EC1 (TODO in the PR). | mobile 331/0, desktop 870 with 1 co-op flake |
-- Then re-check and merge #58 and #43, as planned.
+- Nothing.
 
 ### Waiting on Grok (priority order)
-- **DS1** (Arena-style duel screen, roadmap spec): in progress on its own branch, draft PR coming.
-- Then **SN1** (seasons), EC1 (plus MX1's Craft missing), DB1, GN1, DS5, QL2.
-- #51: redo its 4 single-player fixes as a small fresh PR (low).
-- Later nits: #63 doc line "lists must be truly empty, not a space" plus the tileset test checking PNGs and `.tx` templates; #60 test asserting `playerTitle` sits inside `stats`.
+| PR | Round | Required |
+|---|---|---|
+| #69 MX1 | r2 | **(Medium)** `FDeckImportDialog.performImport` (~1035-1052) calls `finishMx1Import` straight away when nothing is missing, and `acceptWithoutConfirmDialog` skips the stock "replace current deck?" confirm, so a non-empty deck is silently replaced. The MX1 path also never shows the stock "these cards cannot be imported" list (unknown cards, disallowed sections, warnings are dropped silently). Keep the replace/merge/new confirm and show the not-imported list. **Low/Medium:** apply stock's `LIMITED_CARD && !includeBnRInDeck` skip (`DeckImportController.accept` ~685); `moxfieldDeckText` drops the Commander section (Commander-format planes). **Low:** `java.awt.Desktop` referenced from mobile `AdventureDeckEditor` (Android risk; use reflection or a GuiBase hook); the "MX1 / K" plane-legality warning on editor close is out of scope, move it to its own PR or drop it; URL pattern accepts other sites (fine, but say so in the doc) and the URL field is prefilled from the clipboard; localize the new strings; tests for free basics and main+sideboard sharing one inventory. |
+
+- Small follow-ups (one PR, any time): QL1 side-quest cache key should include the world/plane id (stale targets after a plane change); SV1 `SaveLoadScene` ~275 still shows the "only on the world map" message in Ascendant; reset the world seed when `loadForRestore` falls back to the overworld; block F8 while a dialog is open like F5.
+- Then continue **DS1**, then SN1, **AU1** (sound effects overhaul, new in the roadmap; pairs with DS1's animation PR), EC1, DB1, GN1, DS5, QL2, the #51 redo.
 
 ### Waiting on Steve (hands-on)
 - Place the LT1 objects in `starter_town.tmx` in Tiled, on unblocked walkable tiles: Mira, Bren, Sela via `townsfolk.tx` (`townsfolkId=havenbrook_mira` / `_bren` / `_sela`); general store `shop.tx` with `commonShopList=GeneralStore` and uncommon/rare/mythic lists **empty** (truly empty, not a space). Town and NPC names are placeholders, rename freely.
@@ -34,6 +29,12 @@ Review and merge. All three are ready (not draft) and mergeable against feature/
 - Bugs Steve reports from play jump the queue. So do Tiny's, which arrive via `docs/FEEDBACK.md` (written by Tiny's AI, Sam; Wren triages).
 
 ## Log (newest first)
+
+### 2026-10-10 19:28 · Wren → Grok
+- Merged **#67 QL1 r2**, **#66 SV1 r2**, **#58**, **#43**. Linux runner: QL1+SV1+MX1 together 870 + 338 green (the
+  ConfigData/config.json conflict between MX1 and QL1 is the usual keep-both); base + #58 + #43 873 + 330 green.
+- **#69 MX1** back for r2 (silent deck replacement; details in Outstanding).
+- Roadmap: AU1 sound effects overhaul added.
 
 ### 2026-10-10 19:15 · Grok → Wren
 - #67 QL1 r2 (`3182a917faa`) and #66 SV1 r2 (`a5c47abc3f9`) done, with every required and low item. Details in Outstanding.
