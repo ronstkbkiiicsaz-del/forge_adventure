@@ -1,24 +1,26 @@
 # Shandalar Ascendant: Grok ⇄ Wren handoff
 
-> **WHOSE TURN: GROK**
-> Turn passed by Wren on 2026-10-10, 18:39 Phoenix time
+> **WHOSE TURN: WREN**
+> Turn passed by Grok on 2026-10-10, 19:15 Phoenix time
 > Rule: only the side whose turn it is acts. When you finish, update this header and **Outstanding**, add a log entry at the top of the **Log**, flip the turn, then give Steve a copyable paste for the other side.
 
 ## Outstanding
 
 ### Waiting on Wren
-- Nothing. (#58 and #43: Wren will re-check and merge after this round.)
+Review and merge. All three are ready (not draft) and mergeable against feature/set-start:
 
-### Waiting on Grok (priority order; MX1 continues after these)
-Tested together on the Linux runner: 870 desktop + 327 mobile, 0 failures. Code review found:
+| PR | Head | What's in it | Tests |
+|---|---|---|---|
+| #67 QL1 r2 | `3182a917faa` | (1) Side-quest arrow uses the union of QuestSource + Sidequest + stage-tag POIs, filters to discovered, then picks the nearest. New test: only a discovered Sidequest exists and the arrow targets it. (2) Quest log selectables rebuild like AchievementsScene: nav buttons plus only the visible list or detail controls. Lows all done: non-creating visited lookup plus a discovery cache, HUD refreshes on track or discovery, ensure/next gated on `ql1QuestTracking` and using the player being loaded, localized `lblNoKnownLocation` (unused `lblTracking` dropped). Gap: no GL instance test of `QuestLogScene`; selectables are tested through the shared rebuild helper that `buildList` and `loadDetailsPane` both call. | mobile 325/0 (QL1 10/10), desktop 870 with 2 co-op flakes |
+| #66 SV1 r2 | `a5c47abc3f9` | (1) Interior keys only in `WorldSave`, so co-op `.chr` saves are clean, and the `GameScene` pending teleport is removed. (2) A missing TMX falls back to the root map at its entrance, then to the overworld, and pending state is cleared. (3) The arena autosaves once before the fee, with no per-round autosave. Lows all done: overworld double autosave, pending cleared when load fails, `mustClearOnExit` persisted, F8 Ascendant-gated and respecting `quickLoad()`, a message when a dialog blocks Save, and quest tests going through `sceneAfterLoad` to `enter`. No wire change. | mobile 320/0, gl 10/0 (xvfb), desktop 870 with 2 co-op flakes, Checkstyle 0 |
+| #69 MX1 (new) | `4399f41d219` | Moxfield round trip: the Ascendant `collection.csv` export with Scryfall set and collector numbers, `unmatched.txt` and `last_export.txt`. Deck editor gets "Copy deck for Moxfield" and "Open export folder", and Status/Skills show "Collection exported <time>" plus a how-to dialog. Import by paste or Moxfield URL is limited to the collection: a Missing list with Import what I own or Cancel, printing fallback, free basics, and a plane format check. Labelled MX1 config block, stock worlds unchanged, `MoxfieldMx1Test` (isolated user dir, fixture URL, no network). **Gap:** "Craft missing" and the dust cost on the Missing list wait on EC1 (TODO in the PR). | mobile 331/0, desktop 870 with 1 co-op flake |
+- Then re-check and merge #58 and #43, as planned.
 
-| PR | Round | Required |
-|---|---|---|
-| #67 QL1 | r2 | **(1)** `collectSideQuestNavigationPois` (`AdventureQuestStage.java` ~336-366) prefers stage-tag matches over the QuestSource/Sidequest list, then filters to discovered. Ascendant CompleteQuest stages are tagged `QuestSource` (23 POIs) so the 187 `Sidequest` POIs are never candidates, and with no QuestSource visited it shows "no known location" even when a discovered Sidequest exists. Build the **union** of QuestSource + Sidequest (+ tag matches), filter to discovered, pick nearest. This is Steve's actual complaint. **(2)** Controller: `QuestLogScene.buildList()` now calls `clearSelectable()` (~112), dropping Return/Status/Skills/Achievements from `selectActors` (re-add them like `AchievementsScene.build`); `loadDetailsPane` (~227) adds detail buttons without clearing, so hidden list buttons stay selectable. Low (later is fine): `isDiscovered` uses the creating `getPointOfInterestChanges` (adds empty entries to the save) and runs per frame via `drawNavigationArrow`; use a non-creating lookup + cache. HUD line only refreshes on `GameHUD.enter()`. `ensureTrackedQuest`/`trackNextAfterRemoval` not gated by `ql1QuestTracking`; uses `Current.player()` inside load. Unused `lblNoKnownLocation`/`lblTracking` (no-location text comes from config, not localized). |
-| #66 SV1 | r2 | **(1) Co-op save path touched.** `InteriorMapSave.write/readPending` run inside `AdventurePlayer.save/load`, so co-op `.chr` saves (`CoopCharacterStore.savePlayer`, `stashGuestSave`) gain interior keys and co-op loads (`CoopCharacterStore.loadPlayer`, `CoopSession` restore ~797) set pending state that `GameScene.enter` (~82-86) consumes: guests could be teleported into a map. Write/read only from `WorldSave.save`/`load` (or skip when `CoopSession` is active) and drop the hasPending branch from `GameScene.enter`. **(2) Missing/renamed TMX:** `prepareRestoredMap` → `loadForRestore` has no try/catch; the loader throws inside the TransitionScreen. Catch, retry the root map at its entrance, else go to `GameScene`. Test it. **(3) Arena:** fee is taken (`ArenaScene` ~156) before every round's `initDuels` autosave, so loading after a loss leaves the fee paid and the arena gone. Autosave once before the fee, not per round. Low: overworld fights now autosave twice (`WorldStage` ~490 + `initDuels`), drop one. Clear pending if `WorldSave.load` fails after `player.load`. Persist `mustClearOnExit`. F8 quickload change (`GameStage` ~500) also alters stock mode and ignores `quickLoad()`'s result. `StartScene.Save` silently no-ops when a dialog blocks it; show a message. Quest tests should go through `sceneAfterLoad` → `TileMapScene.enter`. |
-
-- Then continue **MX1**, **DS1**, EC1, DB1, GN1, DS5, QL2. **Add SN1** (seasons, roadmap "SN1") after DS1, ahead of EC1.
-- #51: yes, redo its 4 single-player fixes as a small fresh PR (low priority).
+### Waiting on Grok (priority order)
+- **DS1** (Arena-style duel screen, roadmap spec): in progress on its own branch, draft PR coming.
+- Then **SN1** (seasons), EC1 (plus MX1's Craft missing), DB1, GN1, DS5, QL2.
+- #51: redo its 4 single-player fixes as a small fresh PR (low).
+- Later nits: #63 doc line "lists must be truly empty, not a space" plus the tileset test checking PNGs and `.tx` templates; #60 test asserting `playerTitle` sits inside `stats`.
 
 ### Waiting on Steve (hands-on)
 - Place the LT1 objects in `starter_town.tmx` in Tiled, on unblocked walkable tiles: Mira, Bren, Sela via `townsfolk.tx` (`townsfolkId=havenbrook_mira` / `_bren` / `_sela`); general store `shop.tx` with `commonShopList=GeneralStore` and uncommon/rare/mythic lists **empty** (truly empty, not a space). Town and NPC names are placeholders, rename freely.
@@ -32,6 +34,11 @@ Tested together on the Linux runner: 870 desktop + 327 mobile, 0 failures. Code 
 - Bugs Steve reports from play jump the queue. So do Tiny's, which arrive via `docs/FEEDBACK.md` (written by Tiny's AI, Sam; Wren triages).
 
 ## Log (newest first)
+
+### 2026-10-10 19:15 · Grok → Wren
+- #67 QL1 r2 (`3182a917faa`) and #66 SV1 r2 (`a5c47abc3f9`) done, with every required and low item. Details in Outstanding.
+- MX1 is up as #69 (`4399f41d219`), ready. Craft missing waits on EC1.
+- Started DS1. SN1 is queued after it, ahead of EC1.
 
 ### 2026-10-10 18:39 · Wren → Grok
 - Merged **#68** (CS0 shop fallback; flaky test fixed for real). Closed #44, #47, #57, #39 per Grok's triage.
