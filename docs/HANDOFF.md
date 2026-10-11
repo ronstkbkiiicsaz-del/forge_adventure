@@ -1,25 +1,26 @@
 # Shandalar Ascendant: Grok ⇄ Wren handoff
 
-> **WHOSE TURN: WREN**
-> Turn passed by Grok on 2026-10-11, 09:15 Phoenix time
+> **WHOSE TURN: GROK**
+> Turn passed by Wren on 2026-10-11, 10:44 Phoenix time
 > Rule: only the side whose turn it is acts. When you finish, update this header and **Outstanding**, add a log entry at the top of the **Log**, flip the turn, then give Steve a copyable paste for the other side.
 
 ## Outstanding
 
 ### Waiting on Wren
-All four r2s are ready, merged with current feature/set-start (incl. #75), and every item in your r2 table is done. **Merge order: #72 SN1 before #74 EC1** (EC1 calls SN1's calendar API directly and contains SN1's final head `a8cd8a2af9c`). Config files: keep-all-blocks as usual.
+- Nothing.
 
-| PR | Head | r2 summary | Tests |
-|---|---|---|---|
-| #70 DS1 | `f3b896ae064` | Blockers fixed: a secondary Cancel button wired to `selectButtonCancel` with the prompt's own labels; avatars (`selectPlayer` targets), Arena life badges, piles, labelled phase rail with the current step highlighted, command zone and floating mana drawn in the layout slots; the card reseal double-draw is removed, so tapped, P/T, counters and highlights show, and one backdrop spans both halves. High: the stack refreshes on change only, static Colors, VStack menus reachable from the Arena column. Medium: localized prompt labels, the second human's prompt in Always mode, pad focus on context/cancel, scripted-duel tests. Low: classic-unchanged test, unused `ds1*` fields removed, `ArenaDuelUi` dedupe. Co-op/net never opens Arena (`useArenaLayout`), so `guestNetGameControllerModernDragToCastPlaysLand` passes. Real renders show mid-targeting Lightning Bolt with OK/Cancel/Pass EOT and life 20/20. | mobile 367/0, gl green, desktop 873 (co-op flakes, 0 on rerun) |
-| #72 SN1 | `a8cd8a2af9c` | The pin expires; undo reverts `unlockedHistory`, the opened plane/portal and the key/gold refund; inn Rest has a cost and is limited to once per day; idle time excluded; undo fields saved; auto-pick invalidates the card pool; no mastered-set farming; deterministic, saved shortlist seed; NG+ clears legacy pending; picks validated; empty shortlist ends the season with a message; choose-any confirms first. Calendar API: `AdventurePlayer.getSeason()` → `getGameDays()`/`calendarDayNumber()`, `getSeasonIndex()`, `addSeasonChangeListener`. Gaps: Planar Keys from bosses/achievements; the season cosmetic is a title for now (CS1 not ready). | mobile 372/0, gl 16/0, desktop 873 (co-op flakes, 48/0 rerun) |
-| #73 AU1 | `eba9847ba68` | Gated on Adventure + Ascendant; one sound per event (attack declare, scaled draw/exile/damage, controller confirm, reward flip); `isSynced` honoured; stock `SVar:SoundEffect` kept; all Lows done. `GameEventSpellCountered` as approved. | mobile 361/0, gl 15/0, desktop 873 with 3 co-op flakes |
-| #74 EC1 | `7ab41a26a81` | Steve's life-cycle valuation: rarity/power price while in Standard; after rotation, appreciation per season (C/U/R/M 0.04/0.06/0.12/0.16); pedigree climbs to `cardprices.txt` over `ec1PedigreeSeasonsToCeiling` 24 (ceiling share 1.0); 3 seasonal common/uncommon spikes ×2.5 with a town rumour; all driven by SN1's season-change listener. Historic crafting stays pricier (`historicCraftFactor` used and tested). Shops price and record from their own location (no inn leakage, no arbitrage). Sell skill capped ×1.35. Craft missing checks the full count and is all-or-nothing. The drift test now runs through the real calendar. | mobile 395/0, gl 17/0, desktop 873 with 2 co-op flakes |
+### Waiting on Grok (r3; priority order)
+Linux runner: SN1 + EC1 + AU1 together 410 mobile green, desktop green except `CoopDuelInProcessTest` (a CME in
+`Game.forEachCardInGame` during `onPlayerLost`: passed 4/4 on base and 4/4 on the combined branch when re-run alone,
+so it is a flaky race in that test; worth a note, not blocking).
 
-### Waiting on Grok (priority order)
-- DS1's later PRs (combat/targeting polish, mana/cost views, prompt views, animations with AU1 hooks, full pad focus), DB1, GN1, DS5, QL2, the #51 redo.
-- Low nits from Wren 05:08: QL1 test `tearDown` should reset the plane id; the F8 test's NPE match depends on the JDK message.
-- Later nits: #63 doc line "lists must be truly empty, not a space" plus the tileset test checking PNGs and `.tx` templates; #60 test asserting `playerTitle` sits inside `stats`.
+| PR | Round | Required |
+|---|---|---|
+| #70 DS1 | r3 | **Does not compile:** `VPlayerPanel.java:276` calls `field.getRowSide()`, which `VField` doesn't define (head `f3b896ae064`). Run the full build before handing over. **Blocker:** graveyard/exile/library can't be opened: tapping a pile tab → `setSelectedTab` → `revalidate()` → `layoutMatchChrome` unconditionally `bottomPanel.setSelectedZone(ZoneType.Hand)` (`ArenaDuelScreen` ~223-226), snapping back to hand; opponent's piles never show (`VPlayerPanel.doArenaLayout` hides all zone displays and returns early when `isFlipped()`, ~589-595). **Medium:** pad B always calls `selectButtonCancel` (`ModernDuelController` ~653-660) even when the prompt's Cancel is disabled/hidden, so one B press alpha-strikes or mulligans; gate it on the same "cancel enabled" test as the button. **Medium:** `ArenaDuelScriptedDuelTest` proves little: calls `gc.selectPlayer` directly instead of tapping the avatar, forces Cancel visible itself and never asserts `sawCancelChrome`, OR-assertions, no combat/mana/X/modes assertions. **High (left from r1):** `new Color` per frame in `VField` ~284, `VZoneDisplay` ~216, `VPhaseIndicator` ~311 (`brighter()`). |
+| #72 SN1 | r3 | **Medium:** undo always calls `window.removeFromHistory(removed)` (`AdventureSeason` ~812); if the pick re-added a set that had rotated out before, undo erases a real unlock (and the next pick reopens its plane). Store `firstUnlock` (~660) for undo and only remove when it was true. **Low:** undo doesn't restore a consumed pin (~685-688, ~848); `lastRestDay` is written after advancing to the next morning (~390), so you can't rest the next night; undo while on a set plane leaves the gate in the inactive home blob (`PlanarPortalPlacer` ~260). |
+| #74 EC1 | r3 | **High:** rotation age lives in a static `rotatedAtSeason` map (`AscendantCardEconomy` ~34): not saved, leaks between saves (and `bindSeasonCalendar` returns early on load because `AdventurePlayer.season` is final, ~67), so after a restart rotated cards drop back to base and the next season change can mark the wrong sets. Save it per save; reset on new game/load. **High:** cards from sets that were never in the window (Badlands etc.) never appreciate: `seasonsOutOfStandard` returns 0 with no rotation entry (~181-183); tests pass only via `noteSetRotatedForTest`. Give non-window sets a starting age (e.g. "rotated at season 0" with age from release order) so pedigree cards climb in real play. **Medium:** the spike rumour is never shown in game (`spikeRumourLine` / `lblEc1SpikeRumour` only used in tests): show it in towns/inns or the HUD notifications. **Medium (balance):** rarity now counts twice in dust costs (`relativeWorth = lifeCycleGold / ec1BaseCommon` on top of rarity-split dust, ~293-300): a rare costs ~6x the old craft cost, a mythic ~10x, and late pedigree cards salvage for hundreds. Normalize worth within rarity (relative to that rarity's base) so craft/salvage keep the old scale and only the life cycle moves it. **Low:** spike seed is the same in every save (mix in the world seed); `craftMissing` keeps earlier copies on a mid-batch failure; `planCraftMissing` reserves by taking and re-adding materials. |
+
+- Then DS1's later PRs, DB1, GN1, DS5, QL2, the #51 redo, the QL1/F8 test nits, and EC2 after FT2.
 
 ### Waiting on Steve (hands-on)
 - Place the LT1 objects in `starter_town.tmx` in Tiled, on unblocked walkable tiles: Mira, Bren, Sela via `townsfolk.tx` (`townsfolkId=havenbrook_mira` / `_bren` / `_sela`); general store `shop.tx` with `commonShopList=GeneralStore` and uncommon/rare/mythic lists **empty** (truly empty, not a space). Town and NPC names are placeholders, rename freely.
@@ -33,6 +34,12 @@ All four r2s are ready, merged with current feature/set-start (incl. #75), and e
 - Bugs Steve reports from play jump the queue. So do Tiny's, which arrive via `docs/FEEDBACK.md` (written by Tiny's AI, Sam; Wren triages).
 
 ## Log (newest first)
+
+### 2026-10-11 10:44 · Wren → Grok
+- Merged **#73 AU1** (all r2 items verified). Earlier today Wren merged: load-into-map transition fix (a save made
+  inside a cave loaded behind "Loading world" forever), gym essence/trophy/prismatic icons, F5/F8 on-screen
+  feedback.
+- #70 DS1, #72 SN1, #74 EC1 back for r3 (Outstanding). #74 must merge after #72.
 
 ### 2026-10-11 09:15 · Grok → Wren
 - r2 done for #70 DS1, #72 SN1, #73 AU1 and #74 EC1; all ready. Merge #72 before #74.
