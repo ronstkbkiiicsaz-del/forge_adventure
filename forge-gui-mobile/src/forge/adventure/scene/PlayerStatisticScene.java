@@ -345,16 +345,17 @@ public class PlayerStatisticScene extends UIScene {
         return true;
     }
 
-    private TypingLabel seasonStatusLabel;
+    private com.github.tommyettinger.textra.TextraLabel seasonStatusLabel;
 
     private void addAscendantSeasonLabel() {
         if (ui.findActor("seasonStatus") != null) {
             seasonStatusLabel = ui.findActor("seasonStatus");
             return;
         }
-        seasonStatusLabel = Controls.newTypingLabel("");
+        seasonStatusLabel = Controls.newTextraLabel("");
         seasonStatusLabel.setName("seasonStatus");
-        seasonStatusLabel.setColor(com.badlogic.gdx.graphics.Color.BLACK);
+        // Both orientations sit on the dark chrome (footer / Awards band) — light text.
+        seasonStatusLabel.setColor(com.badlogic.gdx.graphics.Color.LIGHT_GRAY);
         float[] b = seasonStatusStageBounds(Forge.isLandscapeMode(), ui.getHeight());
         seasonStatusLabel.setBounds(b[0], b[1], b[2], b[3]);
         seasonStatusLabel.setVisible(false);
@@ -375,8 +376,8 @@ public class PlayerStatisticScene extends UIScene {
                 seasonStatusLabel.setVisible(false);
                 return;
             }
-            seasonStatusLabel.setText("[%80][DARK_GRAY]" + line);
-            seasonStatusLabel.skipToTheEnd();
+            seasonStatusLabel.setText("[%55][LIGHT_GRAY]" + line);
+            seasonStatusLabel.layout();
             seasonStatusLabel.setVisible(true);
         } catch (Throwable ignored) {
             seasonStatusLabel.setVisible(false);
@@ -385,15 +386,17 @@ public class PlayerStatisticScene extends UIScene {
 
     /**
      * Stage-space (y-up) season status line for the statistic layouts.
-     * Landscape: footer strip under the nav row. Portrait: right of Awards band.
+     * Landscape: footer strip under the nav row (below scrollWindow stageY≈17).
+     * Portrait: right of Awards band.
      */
     public static float[] seasonStatusStageBounds(boolean landscape, float layoutH) {
         if (landscape) {
-            // Below nav (y=224,h=30) — json (8, 255, 300, 14).
-            float jx = 8f, jy = 255f, jw = 300f, jh = 14f;
+            // json (8, 255, 275, 14) → stageY = 1; clear of scrollWindow / nav chrome.
+            float jx = 8f, jy = 255f, jw = 275f, jh = 14f;
             return new float[] { jx, layoutH - jy - jh, jw, jh };
         }
-        // Right of Awards (8,408,70,28) — json (82, 408, 180, 28).
+        // Right of Awards — match Awards height so the band stays clear of scrollWindow.
+        // json (82, 408, 180, 28).
         float jx = 82f, jy = 408f, jw = 180f, jh = 28f;
         return new float[] { jx, layoutH - jy - jh, jw, jh };
     }

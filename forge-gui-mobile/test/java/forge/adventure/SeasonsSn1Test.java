@@ -396,7 +396,7 @@ public class SeasonsSn1Test {
         float x = 5f;
         float y = landscape ? 78f : layoutH - 145f;
         float w = Math.min(220f, layoutW * 0.45f);
-        float h = 20f;
+        float h = 18f;
         return new float[] { x, y, w, h };
     }
 
@@ -471,7 +471,7 @@ public class SeasonsSn1Test {
         UIData data = new Json().fromJson(UIData.class, new FileHandle(layoutFile.toFile()));
         float layoutH = data.height;
         float layoutW = data.width;
-        List<float[]> others = layoutRects(data, !landscape);
+        List<float[]> others = layoutRects(data, !landscape, java.util.Set.of("lastScreen"));
         float[] season = PlayerStatisticScene.seasonStatusStageBounds(landscape, layoutH);
         Assert.assertTrue(inside(season, layoutW, layoutH),
                 "seasonStatus must sit inside " + layoutFile.getFileName());
@@ -499,15 +499,21 @@ public class SeasonsSn1Test {
     }
 
     private static List<float[]> layoutRects(UIData data) {
-        return layoutRects(data, false);
+        return layoutRects(data, false, java.util.Set.of());
     }
 
     /**
      * @param trimPortraitAwardsBand when true, shrink portrait {@code scrollWindow}/{@code enemies}
      *        from the bottom by {@link PlayerStatisticScene#PORTRAIT_AWARDS_BAND} the same way
      *        production does before placing Awards / seasonStatus.
+     * @param skipNames actor names to ignore (e.g. paper {@code stats} the season line sits on)
      */
     private static List<float[]> layoutRects(UIData data, boolean trimPortraitAwardsBand) {
+        return layoutRects(data, trimPortraitAwardsBand, java.util.Set.of());
+    }
+
+    private static List<float[]> layoutRects(UIData data, boolean trimPortraitAwardsBand,
+            java.util.Set<String> skipNames) {
         List<float[]> others = new ArrayList<>();
         float layoutH = data.height;
         for (OrderedMap<String, String> el : data.elements) {
@@ -530,6 +536,8 @@ public class SeasonsSn1Test {
                     h = parseFloat(val);
             }
             if (name == null || name.isEmpty() || "lastScreen".equals(name))
+                continue;
+            if (skipNames != null && skipNames.contains(name))
                 continue;
             if (x == null || y == null || w == null || h == null || w <= 0 || h <= 0)
                 continue;

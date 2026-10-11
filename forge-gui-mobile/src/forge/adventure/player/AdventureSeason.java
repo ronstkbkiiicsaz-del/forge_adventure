@@ -152,10 +152,11 @@ public final class AdventureSeason {
     public String hudLine(StandardWindow window) {
         if (!isConfigured() || !initialized || window == null || !window.isActive())
             return "";
+        // ASCII hyphen — adventure HUD fonts often lack middot glyphs.
         if (choicePending)
-            return "Day " + calendarDayNumber() + " · pick next set";
+            return "Day " + calendarDayNumber() + " - pick next set";
         int left = (int) Math.ceil(daysRemainingInSeason());
-        return "Day " + calendarDayNumber() + " · " + seasonDisplayName(window)
+        return "Day " + calendarDayNumber() + " - " + seasonDisplayName(window)
                 + " (" + left + "d left)";
     }
 
@@ -164,14 +165,15 @@ public final class AdventureSeason {
             return "";
         StringBuilder sb = new StringBuilder();
         sb.append(seasonDisplayName(window));
-        sb.append(" — Day ").append(calendarDayNumber());
+        // ASCII separators — adventure UI fonts often lack em-dash glyphs.
+        sb.append(" - Day ").append(calendarDayNumber());
         if (choicePending) {
-            sb.append(" — choose the next set");
+            sb.append(" - choose the next set");
         } else {
-            sb.append(" — ").append((int) Math.ceil(daysRemainingInSeason())).append(" days left");
+            sb.append(" - ").append((int) Math.ceil(daysRemainingInSeason())).append(" days left");
         }
         if (planarKeys > 0)
-            sb.append(" — Planar Keys: ").append(planarKeys);
+            sb.append(" - Planar Keys: ").append(planarKeys);
         return sb.toString();
     }
 
