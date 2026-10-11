@@ -9,6 +9,7 @@ import forge.game.player.PlayerView;
 import forge.gui.FThreads;
 import forge.localinstance.properties.ForgePreferences;
 import forge.model.FModel;
+import forge.screens.match.ArenaBattlefieldArrange;
 import forge.screens.match.MatchController;
 import forge.screens.match.MatchScreen;
 import forge.screens.match.views.VCardDisplayArea.CardAreaPanel;
@@ -20,6 +21,8 @@ import forge.util.collect.FCollectionView;
 public class VField extends FContainer {
     private final PlayerView player;
     private final FieldRow row1, row2;
+    /** DS1 Arena: OTHER permanents sit in a side strip. */
+    private final FieldRow rowSide;
     private boolean flipped;
     private float commandZoneWidth;
     private float fieldModifier;
@@ -32,8 +35,15 @@ public class VField extends FContainer {
         player = player0;
         row1 = add(new FieldRow());
         row2 = add(new FieldRow());
+        rowSide = add(new FieldRow());
+        rowSide.setVisible(false);
 
         stackNonTokenCreatures = FModel.getPreferences().getPrefBoolean(ForgePreferences.FPref.UI_STACK_CREATURES);
+    }
+
+    private static boolean arenaLayoutActive() {
+        final MatchScreen view = MatchController.getView();
+        return view != null && view.isArenaDuelScreen();
     }
 
     public boolean isFlipped() {
@@ -50,6 +60,9 @@ public class VField extends FContainer {
             cardPanels.add(cardPanel);
         }
         for (CardAreaPanel cardPanel : row2.getCardPanels()) {
+            cardPanels.add(cardPanel);
+        }
+        for (CardAreaPanel cardPanel : rowSide.getCardPanels()) {
             cardPanels.add(cardPanel);
         }
         return cardPanels;
@@ -116,10 +129,20 @@ public class VField extends FContainer {
                 otherPermanents.addAll(contraptions);
             }
 
-            if (creatures.isEmpty()) {
+            if (arenaLayoutActive()) {
+                // DS1: lands back, creatures front, others to the side.
+                row1.refreshCardPanels(creatures);
+                row2.refreshCardPanels(lands);
+                rowSide.setVisible(true);
+                rowSide.refreshCardPanels(otherPermanents);
+            } else if (creatures.isEmpty()) {
+                rowSide.setVisible(false);
+                rowSide.refreshCardPanels(Collections.emptyList());
                 row1.refreshCardPanels(otherPermanents);
                 row2.refreshCardPanels(lands);
             } else {
+                rowSide.setVisible(false);
+                rowSide.refreshCardPanels(Collections.emptyList());
                 row1.refreshCardPanels(creatures);
                 lands.addAll(otherPermanents);
                 row2.refreshCardPanels(lands);
@@ -239,10 +262,16 @@ public class VField extends FContainer {
     public void clear() {
         row1.clear(); //clear rows instead of removing the rows
         row2.clear();
+        rowSide.clear();
     }
 
     @Override
     protected void doLayout(float width, float height) {
+        if (arenaLayoutActive()) {
+            doArenaLayout(width, height);
+            return;
+        }
+        rowSide.setVisible(false);
         float cardSize = height / 2;
         float y1, y2;
         if (flipped) {
@@ -259,6 +288,26 @@ public class VField extends FContainer {
             row1.setBounds(0, y1, width - fieldModifier, cardSize);
             row2.setBounds(0, y2, (width - commandZoneWidth) - fieldModifier, cardSize);
         }
+    }
+
+    /** DS1: creatures front row, lands back row, others in a side strip. */
+    private void doArenaLayout(float width, float height) {
+        final float sideF = ArenaBattlefieldArrange.sideStripFraction(0.22f);
+        final float sideW = width * sideF;
+        final float mainW = width - sideW - fieldModifier;
+        final float cardSize = height / 2;
+        float yFront, yBack;
+        if (flipped) {
+            yFront = cardSize;
+            yBack = 0;
+        } else {
+            yFront = 0;
+            yBack = cardSize;
+        }
+        row1.setBounds(0, yFront, mainW - commandZoneWidth, cardSize); // creatures
+        row2.setBounds(0, yBack, mainW - commandZoneWidth, cardSize); // lands
+        rowSide.setVisible(true);
+        rowSide.setBounds(mainW, 0, sideW, height);
     }
 
     public class FieldRow extends VCardDisplayArea {

@@ -344,6 +344,14 @@ public class MatchScreen extends FScreen {
 
     @Override
     protected void doLayout(float startY, float width, float height) {
+        layoutMatchChrome(startY, width, height);
+    }
+
+    /**
+     * Classic match chrome (menu / scroller / prompts). {@link ArenaDuelScreen}
+     * overrides for the DS1 Arena skeleton.
+     */
+    protected void layoutMatchChrome(float startY, float width, float height) {
         float scrollerWidth = width;
         if (topPlayerPrompt != null) {
             topPlayerPrompt.setBounds(0, 0, width, VPrompt.HEIGHT);
@@ -355,6 +363,64 @@ public class MatchScreen extends FScreen {
         }
         scroller.setBounds(0, startY, scrollerWidth, height - VPrompt.HEIGHT - startY);
         bottomPlayerPrompt.setBounds(0, height - VPrompt.HEIGHT, width, VPrompt.HEIGHT);
+    }
+
+    /** Field scroller hosting player panels — subclasses reposition it for Arena layout. */
+    protected FScrollPane getFieldScroller() {
+        return scroller;
+    }
+
+    protected VPrompt getBottomPlayerPrompt() {
+        return bottomPlayerPrompt;
+    }
+
+    protected VPrompt getTopPlayerPrompt() {
+        return topPlayerPrompt;
+    }
+
+    /**
+     * Place player panels inside the field scroller. Classic: equal halves in
+     * landscape 2p. Arena overrides for opp-top / player-bottom / centre gap.
+     */
+    protected void layoutPlayerPanelsInScroller(final float visibleWidth, final float totalHeight) {
+        float avatarHeight = VAvatar.HEIGHT;
+        if (is4Player() || is3Player()) {
+            avatarHeight *= 0.5f;
+        }
+        float playerCount = getPlayerPanels().keySet().size();
+
+        if (Forge.isLandscapeMode() && playerCount == 2) {
+            float topPlayerPanelHeight = totalHeight / 2;
+            float bottomPlayerPanelHeight = topPlayerPanelHeight;
+            topPlayerPanel.setBounds(0, 0, visibleWidth, topPlayerPanelHeight);
+            bottomPlayerPanel.setBounds(0, totalHeight - bottomPlayerPanelHeight, visibleWidth, bottomPlayerPanelHeight);
+        } else {
+            float cardRowsHeight = totalHeight - playerCount * avatarHeight;
+            float totalCardRows = 0;
+            for (VPlayerPanel playerPanel : playerPanelsList) {
+                if (playerPanel.getSelectedTab() != null) {
+                    totalCardRows += 1;
+                }
+                totalCardRows += 2;
+            }
+            float y = 0;
+            for (VPlayerPanel playerPanel : playerPanelsList) {
+                float panelHeight;
+                if (playerPanel.getSelectedTab() != null) {
+                    panelHeight = cardRowsHeight * 3f / totalCardRows;
+                } else {
+                    panelHeight = cardRowsHeight * 2f / totalCardRows;
+                }
+                panelHeight += avatarHeight;
+                playerPanel.setBounds(0, y, visibleWidth, panelHeight);
+                y += panelHeight;
+            }
+        }
+    }
+
+    /** DS1: true when this instance is the Arena skeleton screen. */
+    public boolean isArenaDuelScreen() {
+        return false;
     }
 
     @Override
@@ -1238,42 +1304,7 @@ public class MatchScreen extends FScreen {
 
         protected ScrollBounds layoutAndGetScrollBounds(float visibleWidth, float visibleHeight) {
             float totalHeight = visibleHeight + extraHeight;
-            float avatarHeight = VAvatar.HEIGHT;
-            if (is4Player() || is3Player()) {
-                avatarHeight *= 0.5f;
-            }
-            float playerCount = getPlayerPanels().keySet().size();
-
-            if (Forge.isLandscapeMode() && playerCount == 2) {
-                // Ensure that players have equal player panel heights in two player Forge in Landscape mode
-                float topPlayerPanelHeight = totalHeight / 2;
-                float bottomPlayerPanelHeight = topPlayerPanelHeight;
-                topPlayerPanel.setBounds(0, 0, visibleWidth, topPlayerPanelHeight);
-                bottomPlayerPanel.setBounds(0, totalHeight - bottomPlayerPanelHeight, visibleWidth, bottomPlayerPanelHeight);
-            } else {
-                // Determine player panel heights based on visibility of zone displays
-                float cardRowsHeight = totalHeight - playerCount * avatarHeight;
-                float totalCardRows = 0;
-                for (VPlayerPanel playerPanel : playerPanelsList) {
-                    if (playerPanel.getSelectedTab() != null) {
-                        totalCardRows += 1;
-                    }
-                    totalCardRows += 2;
-                }
-                float y = 0;
-                for (VPlayerPanel playerPanel : playerPanelsList) {
-                    float panelHeight;
-                    if (playerPanel.getSelectedTab() != null) {
-                        panelHeight = cardRowsHeight * 3f / totalCardRows;
-                    } else {
-                        panelHeight = cardRowsHeight * 2f / totalCardRows;
-                    }
-                    panelHeight += avatarHeight;
-                    playerPanel.setBounds(0, y, visibleWidth, panelHeight);
-                    y += panelHeight;
-                }
-            }
-
+            layoutPlayerPanelsInScroller(visibleWidth, totalHeight);
             return new ScrollBounds(visibleWidth, totalHeight);
         }
 

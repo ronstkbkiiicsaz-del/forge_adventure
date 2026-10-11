@@ -598,4 +598,34 @@ public class ConfigData {
      */
     public boolean duelTakeBackEnabled = true;
 
+    // ---- Ascendant Arena duel screen (Package DS1 PR1): layout skeleton tunables. ----
+
+    /**
+     * When true (Ascendant default), Adventure duels use the Arena-style screen skeleton
+     * under preference Auto. The Settings preference Still gates Always/Never. Stock modes
+     * and {@code Never} keep the classic MatchScreen. Old saves omit this key and keep the default.
+     */
+    public boolean ds1ArenaDuelScreen = true;
+
+    /** Share of viewport width (landscape) / height factor (portrait) reserved for the phase rail. */
+    public float ds1PhaseRailFraction = 0.07f;
+
+    /** Share of the player area height used by the fanned hand. */
+    public float ds1HandFraction = 0.28f;
+
+    /** Share of the centre lane width used by the stack column. */
+    public float ds1StackFraction = 0.48f;
+
+    /** Share of battlefield width for OTHER permanents (side strip). */
+    public float ds1OtherSideFraction = 0.22f;
+
+    /** Dim factor for summoning-sick creatures on the Arena field (1 = full brightness). */
+    public float ds1SummoningSickDim = 0.72f;
+
+    /** Drag slop in pixels before a hand/battlefield press becomes a drag (~Neo Forge 9px). */
+    public float ds1DragSlopPx = 9f;
+
+    /** Hand fan overlap 0..1 (higher = tighter fan). */
+    public float ds1HandFanOverlap = 0.55f;
+
 }
