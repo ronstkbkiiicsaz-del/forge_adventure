@@ -25,6 +25,7 @@ import forge.adventure.util.FightRewards;
 import forge.adventure.util.GymUtil;
 import forge.adventure.util.Reward;
 import forge.adventure.world.PlaneFormat;
+import forge.adventure.world.PlaneMeta;
 import forge.adventure.world.WorldSave;
 import forge.card.CardRarity;
 import forge.deck.Deck;
@@ -576,9 +577,20 @@ public class FightRewardsRw1Test {
     @Test
     public void pauperPlaneSetPoolIsCommonsOnly() {
         assumeCardDb();
-        String previousFormat = AdventurePlayer.current().getLegacyRunFormat();
+        AdventurePlayer player = AdventurePlayer.current();
+        String previousLegacy = player.getLegacyRunFormat();
+        PlaneMeta meta = null;
+        String previousPlaneFormat = null;
         try {
-            AdventurePlayer.current().setLegacyRunFormat(GymUtil.FORMAT_PAUPER);
+            if (WorldSave.getCurrentSave() != null
+                    && WorldSave.getCurrentSave().getMultiverse() != null) {
+                meta = WorldSave.getCurrentSave().getMultiverse().getCurrentMeta();
+                if (meta != null) {
+                    previousPlaneFormat = meta.getFormat();
+                    PlaneFormat.setPlaneFormat(meta, GymUtil.FORMAT_PAUPER);
+                }
+            }
+            player.setLegacyRunFormat(GymUtil.FORMAT_PAUPER);
             RewardData.invalidateCardPool();
             Assert.assertEquals(PlaneFormat.resolveCurrent(), GymUtil.FORMAT_PAUPER);
             Assert.assertTrue(PlaneFormat.favorsPauperPool());
@@ -592,9 +604,17 @@ public class FightRewardsRw1Test {
                 Assert.assertTrue(FightRewards.isEdition(pc, "ZEN"), pc.getEdition());
             }
         } finally {
-            AdventurePlayer.current().setLegacyRunFormat(
-                    previousFormat != null && !previousFormat.isEmpty()
-                            ? previousFormat : GymUtil.FORMAT_STANDARD);
+            if (meta != null) {
+                // Restore prior plane meta (empty → clear so legacy/default resolve again).
+                if (previousPlaneFormat == null || previousPlaneFormat.isEmpty()) {
+                    meta.setFormat("");
+                } else {
+                    PlaneFormat.setPlaneFormat(meta, previousPlaneFormat);
+                }
+            }
+            player.setLegacyRunFormat(
+                    previousLegacy != null && !previousLegacy.isEmpty()
+                            ? previousLegacy : GymUtil.FORMAT_STANDARD);
             RewardData.invalidateCardPool();
         }
     }

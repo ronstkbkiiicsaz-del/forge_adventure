@@ -77,6 +77,12 @@ public class SourcePrintingsCs0Test {
     private static String[] pristineRestrictedEditions;
     private static String[] pristineRestrictedCards;
     private static final List<String> CS0_ROTATION = List.of("ZEN", "WWK", "ROE");
+    /** Suite-foreign plane state captured once, restored in {@link AfterClass}. */
+    private static boolean capturedForeignPlaneState;
+    private static String foreignLegacyRunFormat;
+    private static String foreignPlaneMetaFormat;
+    private static AdventureModes foreignAdventureMode;
+    private static List<String> foreignWindowSets;
 
     @BeforeClass
     public void bootstrapConfigAndCardDb() {
@@ -211,6 +217,7 @@ public class SourcePrintingsCs0Test {
             if (Config.instance() != null && Config.instance().getSettingData() != null) {
                 Config.instance().getSettingData().useAllCardVariants = savedUseAllCardVariants;
             }
+            restoreForeignPlaneState();
             SourcePrintings.clearCaches();
             RewardData.invalidateCardPool();
             RewardData.invalidateRewardFilterCache();
@@ -978,6 +985,7 @@ public class SourcePrintingsCs0Test {
         } catch (Throwable ignored) {
         }
         Assert.assertNotNull(player, "WorldSave player required");
+        captureForeignPlaneState(player);
         try {
             Field mode = AdventurePlayer.class.getDeclaredField("adventureMode");
             mode.setAccessible(true);
@@ -1002,6 +1010,88 @@ public class SourcePrintingsCs0Test {
         SourcePrintings.clearCaches();
         RewardData.invalidateCardPool();
         RewardData.invalidateRewardFilterCache();
+    }
+
+    private static void captureForeignPlaneState(AdventurePlayer player) {
+        if (capturedForeignPlaneState || player == null) {
+            return;
+        }
+        foreignLegacyRunFormat = player.getLegacyRunFormat();
+        try {
+            Field mode = AdventurePlayer.class.getDeclaredField("adventureMode");
+            mode.setAccessible(true);
+            foreignAdventureMode = (AdventureModes) mode.get(player);
+        } catch (ReflectiveOperationException e) {
+            foreignAdventureMode = AdventureModes.Standard;
+        }
+        try {
+            StandardWindow window = player.getStandardWindow();
+            if (window != null && window.isActive()) {
+                foreignWindowSets = new ArrayList<>(window.getSets());
+            }
+        } catch (Throwable ignored) {
+        }
+        try {
+            if (WorldSave.getCurrentSave() != null
+                    && WorldSave.getCurrentSave().getMultiverse() != null) {
+                PlaneMeta meta = WorldSave.getCurrentSave().getMultiverse().getCurrentMeta();
+                if (meta != null) {
+                    foreignPlaneMetaFormat = meta.getFormat();
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        capturedForeignPlaneState = true;
+    }
+
+    private static void restoreForeignPlaneState() {
+        if (!capturedForeignPlaneState) {
+            return;
+        }
+        try {
+            CoopSession.get().testClearGuestPlaneFollow();
+        } catch (Throwable ignored) {
+        }
+        AdventurePlayer player = null;
+        try {
+            player = WorldSave.getCurrentSave() != null
+                    ? WorldSave.getCurrentSave().getPlayer() : null;
+            if (player == null) {
+                player = Current.player();
+            }
+        } catch (Throwable ignored) {
+        }
+        if (player == null) {
+            return;
+        }
+        try {
+            Field mode = AdventurePlayer.class.getDeclaredField("adventureMode");
+            mode.setAccessible(true);
+            mode.set(player, foreignAdventureMode != null ? foreignAdventureMode : AdventureModes.Standard);
+        } catch (ReflectiveOperationException ignored) {
+        }
+        player.setLegacyRunFormat(foreignLegacyRunFormat != null ? foreignLegacyRunFormat : "");
+        try {
+            if (WorldSave.getCurrentSave() != null
+                    && WorldSave.getCurrentSave().getMultiverse() != null) {
+                PlaneMeta meta = WorldSave.getCurrentSave().getMultiverse().getCurrentMeta();
+                if (meta != null) {
+                    if (foreignPlaneMetaFormat == null || foreignPlaneMetaFormat.isEmpty()) {
+                        meta.setFormat("");
+                    } else {
+                        PlaneFormat.setPlaneFormat(meta, foreignPlaneMetaFormat);
+                    }
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        if (foreignWindowSets != null && !foreignWindowSets.isEmpty()) {
+            try {
+                player.getStandardWindow().init(foreignWindowSets);
+            } catch (Throwable ignored) {
+            }
+        }
+        RewardData.invalidateCardPool();
     }
 
     private static void ensurePlayerWithRotation(List<String> sets) {
