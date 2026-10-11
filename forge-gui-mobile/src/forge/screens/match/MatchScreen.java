@@ -1285,9 +1285,12 @@ public class MatchScreen extends FScreen {
                 final FSkinTexture arenaBG = FSkinTexture.ADV_BG_MATCH.getWidth() > 0
                         ? FSkinTexture.ADV_BG_MATCH : FSkinTexture.BG_MATCH;
                 g.resetAlphaComposite();
+                // Bias upward so the player half gets forest/meadow, not the plate's
+                // dark water band. Safe here: this is a scroller-local overlay blit, not
+                // a flipped child panel that could paint into the other half.
                 g.fillRect(new Color(0.10f, 0.16f, 0.12f, 1f), 0, 0, aw, ah);
                 if (arenaBG.getWidth() > 0) {
-                    g.drawImage(arenaBG, 0, 0, aw, ah);
+                    g.drawImage(arenaBG, 0, -ah * 0.28f, aw, ah * 1.55f);
                 }
                 final forge.screens.match.views.VZoneDisplay hand =
                         bottomPlayerPanel.getZoneDisplay(ZoneType.Hand);
