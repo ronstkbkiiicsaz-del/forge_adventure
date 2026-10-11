@@ -280,6 +280,7 @@ public class AdventurePlayer implements Serializable, SaveFileContent {
         camps.clear();
         adventurePlaySeconds = 0d;
         season.clear();
+        AscendantCardEconomy.resetLifecycleState();
         maxDeckCount = 20;
         clearDecks();
         inventoryItems.clear();
@@ -1673,8 +1674,13 @@ public class AdventurePlayer implements Serializable, SaveFileContent {
                 data.containsKey("standardChoicePending") && data.readBool("standardChoicePending"),
                 data.containsKey("unlockedHistory") ? (String[]) data.readObject("unlockedHistory") : null);
         // SN1: load season calendar, or derive a default from the current rotation for old saves.
+        // EC1: reset static life-cycle state then restore from this save and rebind the listener
+        // (season is final — bind must always re-register, not early-return on same instance).
+        AscendantCardEconomy.resetLifecycleState();
         if (Config.ascendant()) {
             season.load(data, standardWindow);
+            AscendantCardEconomy.load(data);
+            AscendantCardEconomy.bindSeasonCalendar(season);
             // Season clock replaces one-unlock-per-world; clear the legacy lock so mastery can
             // end seasons again on migrated saves.
             if (season.isEnabled() && standardWindow.isSetUnlockedThisWorld()
@@ -2183,8 +2189,10 @@ public class AdventurePlayer implements Serializable, SaveFileContent {
         data.store("standardSetUnlocked", standardWindow.isSetUnlockedThisWorld());
         data.store("standardChoicePending", standardWindow.isChoicePending());
         data.storeObject("unlockedHistory", standardWindow.saveHistory());
-        if (Config.ascendant())
+        if (Config.ascendant()) {
             season.save(data);
+            AscendantCardEconomy.save(data);
+        }
 
         // Save quest flags.
         ArrayList<String> questFlagsKey = new ArrayList<>();

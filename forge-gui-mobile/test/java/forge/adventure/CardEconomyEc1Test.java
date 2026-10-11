@@ -36,6 +36,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
@@ -584,9 +585,12 @@ public class CardEconomyEc1Test {
         if (ashHave > 0)
             player.takeMaterial(ash.id, ashHave);
         player.addMaterial(ash.id, 1);
+        int ashBeforePlan = player.getMaterial(ash.id);
         CraftingApi.CraftMissingPlan shortPlan = CraftingApi.planCraftMissing(List.of(
                 new CraftingApi.MissingRequest("Lightning Bolt", 3, 0, bolt)));
         Assert.assertFalse(shortPlan.craftEnabled, shortPlan.disabledReason);
+        Assert.assertEquals(player.getMaterial(ash.id), ashBeforePlan,
+                "planCraftMissing must reserve without taking materials");
         Assert.assertTrue(shortPlan.disabledReason != null
                         && shortPlan.disabledReason.toLowerCase().contains("reagent")
                         || shortPlan.disabledReason.toLowerCase().contains("need"),
@@ -608,8 +612,191 @@ public class CardEconomyEc1Test {
         Assert.assertEquals(player.getCards().count(bolt), 3);
     }
 
+    @Test
+    public void rotationAgeSurvivesSaveLoadAndDoesNotLeakBetweenSaves() {
+        AdventurePlayer player = Current.player();
+        ensurePlayerSaveable(player);
+        player.getStandardWindow().init(List.of("M10", "M11", "ZEN"));
+        player.getSeason().initNewGame(player.getStandardWindow());
+        AscendantCardEconomy.bindSeasonCalendar(player.getSeason());
+        AscendantCardEconomy.noteSetRotated("ZEN", 2);
+        AscendantCardEconomy.noteSetRotated("M10", 3);
+        Assert.assertEquals(AscendantCardEconomy.rotatedAtSeasonSnapshotForTest().get("ZEN"), Integer.valueOf(2));
+
+        SaveFileData saveA = player.save();
+        Assert.assertTrue(saveA.containsKey("ec1RotatedAtSeasonKeys"), "rotation age must be persisted");
+
+        // Simulate save B with different rotation data.
+        AscendantCardEconomy.resetLifecycleState();
+        AscendantCardEconomy.noteSetRotated("M11", 9);
+        SaveFileData saveB = player.save();
+
+        // Load A after B — must not carry B's M11=9.
+        AscendantCardEconomy.resetLifecycleState();
+        player.load(saveA);
+        AscendantCardEconomy.bindSeasonCalendar(player.getSeason());
+        Map<String, Integer> afterA = AscendantCardEconomy.rotatedAtSeasonSnapshotForTest();
+        Assert.assertEquals(afterA.get("ZEN"), Integer.valueOf(2));
+        Assert.assertEquals(afterA.get("M10"), Integer.valueOf(3));
+        Assert.assertNull(afterA.get("M11"), "load A must not keep B's rotation entries");
+
+        // Load B — only B's data.
+        player.load(saveB);
+        AscendantCardEconomy.bindSeasonCalendar(player.getSeason());
+        Map<String, Integer> afterB = AscendantCardEconomy.rotatedAtSeasonSnapshotForTest();
+        Assert.assertEquals(afterB.get("M11"), Integer.valueOf(9));
+        Assert.assertNull(afterB.get("ZEN"), "load B must not keep A's rotation entries");
+
+        // Next season change marks the right sets from the rebound window snapshot.
+        player.getStandardWindow().init(List.of("M10", "M11", "ZEN"));
+        AscendantCardEconomy.bindSeasonCalendar(player.getSeason());
+        player.getSeason().endByMastery(player.getStandardWindow(), new forge.deck.CardPool());
+        String pick = player.getSeason().getShortlist().isEmpty()
+                ? null : player.getSeason().getShortlist().get(0);
+        if (pick != null) {
+            String rotated = player.getSeason().applyPick(player.getStandardWindow(), pick, false);
+            if (rotated != null) {
+                Assert.assertEquals(
+                        AscendantCardEconomy.rotatedAtSeasonSnapshotForTest().get(rotated.toUpperCase()),
+                        Integer.valueOf(player.getSeason().getSeasonIndex()),
+                        "season change must record the rotated set at the new season index");
+            }
+        }
+    }
+
+    @Test
+    public void badlandsAppreciatesAfterRealSeasonChangesWithoutTestHook() {
+        AdventurePlayer player = Current.player();
+        player.getStandardWindow().init(List.of("M10", "M11", "ZEN"));
+        player.getSeason().initNewGame(player.getStandardWindow());
+        AscendantCardEconomy.bindSeasonCalendar(player.getSeason());
+        // No noteSetRotatedForTest — never-window sets must climb from real season changes.
+        PaperCard badlands = card("Badlands", "LEB");
+        if (badlands == null)
+            badlands = card("Badlands", null);
+        Assert.assertNotNull(badlands);
+        Assert.assertFalse(AscendantCardEconomy.isStandardLegal(badlands));
+        int early = AscendantCardEconomy.cardValue(badlands, null);
+        Assert.assertTrue(early > 0 && early < 1000, "Badlands starts near rarity base, got " + early);
+
+        int seasons = 0;
+        for (int i = 0; i < 12; i++) {
+            if (!advanceOneSeason(player))
+                break;
+            seasons++;
+        }
+        Assert.assertTrue(seasons >= 6, "need several real season changes, got " + seasons);
+        int late = AscendantCardEconomy.cardValue(badlands, null);
+        Assert.assertTrue(late > early,
+                "Badlands must rise after real seasons without noteSetRotatedForTest: "
+                        + early + " -> " + late + " (seasons=" + seasons + ")");
+    }
+
+    @Test
+    public void spikeRumourLineUsesLocalizerKey() {
+        PaperCard common = pickZenByRarity(CardRarity.Common, true);
+        Assert.assertNotNull(common);
+        AscendantCardEconomy.setSeasonSpikesForTest(List.of(common.getName()));
+        String rumour = AscendantCardEconomy.spikeRumourLine();
+        Assert.assertFalse(rumour.isBlank());
+        Assert.assertTrue(rumour.contains(common.getName()), rumour);
+        String expected = Localizer.getInstance().getMessage("lblEc1SpikeRumour", common.getName());
+        Assert.assertEquals(rumour, expected);
+        // Season-change path also surfaces the rumour (HUD may be unavailable in unit tests).
+        AscendantCardEconomy.showSpikeRumourNotification();
+    }
+
+    @Test
+    public void inStandardCraftCostKeepsOldRarityScale() {
+        AdventurePlayer player = Current.player();
+        player.getStandardWindow().init(List.of("M10", "M11", "ZEN"));
+        // Spellsmithing level 1 → craftCost base 50, no discount.
+        PaperCard common = pickZenByRarity(CardRarity.Common, true);
+        PaperCard uncommon = pickZenByRarity(CardRarity.Uncommon, true);
+        PaperCard rare = card("Day of Judgment", "ZEN");
+        if (rare == null)
+            rare = pickZenByRarity(CardRarity.Rare, true);
+        PaperCard mythic = null;
+        for (String name : List.of("Omnath, Locus of Mana", "Lotus Cobra", "Goblin Guide")) {
+            // Prefer a ZEN mythic when present.
+            mythic = card(name, "ZEN");
+            if (mythic != null && mythic.getRarity() == CardRarity.MythicRare)
+                break;
+            mythic = null;
+        }
+        if (mythic == null) {
+            for (PaperCard pc : FModel.getMagicDb().getCommonCards().getAllCards()) {
+                if (pc != null && "ZEN".equals(pc.getEdition()) && pc.getRarity() == CardRarity.MythicRare
+                        && !AscendantCardEconomy.isPricelessBasic(pc)) {
+                    mythic = pc;
+                    break;
+                }
+            }
+        }
+        Assert.assertNotNull(common);
+        Assert.assertNotNull(uncommon);
+        Assert.assertNotNull(rare);
+        Assert.assertTrue(AscendantCardEconomy.isStandardLegal(common));
+        Assert.assertTrue(AscendantCardEconomy.isStandardLegal(rare));
+        int cCost = player.craftCost(common);
+        int uCost = player.craftCost(uncommon);
+        int rCost = player.craftCost(rare);
+        // Within-rarity worth ≈ rank mult (~0.4–3.5): craft ≈ 50 × rank, not 50 × (rarityBase/50).
+        Assert.assertTrue(cCost >= 20 && cCost <= 200, "Standard common craft near old scale, got " + cCost);
+        Assert.assertTrue(uCost >= 20 && uCost <= 200, "Standard uncommon craft near old scale, got " + uCost);
+        Assert.assertTrue(rCost >= 20 && rCost <= 200, "Standard rare craft near old scale, got " + rCost);
+        if (mythic != null && AscendantCardEconomy.isStandardLegal(mythic)) {
+            int mCost = player.craftCost(mythic);
+            Assert.assertTrue(mCost >= 20 && mCost <= 200, "Standard mythic craft near old scale, got " + mCost);
+        }
+        // Late pedigree salvage is bounded (not hundreds of dust from double rarity).
+        PaperCard badlands = card("Badlands", "LEB");
+        if (badlands == null)
+            badlands = card("Badlands", null);
+        Assert.assertNotNull(badlands);
+        player.getSeason().setCalendarForTest(400, 24);
+        int salvage = player.salvageYield(badlands);
+        Assert.assertTrue(salvage > 0 && salvage <= 80,
+                "late pedigree salvage must stay sensible, got " + salvage);
+    }
+
+    @Test
+    public void planCraftMissingDoesNotMutateMaterials() {
+        AdventurePlayer player = Current.player();
+        player.getStandardWindow().init(List.of("M10", "M11", "ZEN"));
+        PaperCard bolt = card("Lightning Bolt", "M10");
+        Assert.assertNotNull(bolt);
+        int unit = Math.max(1, player.craftCost(bolt));
+        player.addDust(AdventurePlayer.DUST_COMMON, unit * 2 + 10);
+        forge.adventure.data.MaterialData ash = forge.adventure.data.MaterialListData.primaryReagent("R", 1);
+        Assert.assertNotNull(ash);
+        int before = player.getMaterial(ash.id);
+        player.addMaterial(ash.id, 4);
+        int afterAdd = player.getMaterial(ash.id);
+        CraftingApi.CraftMissingPlan plan = CraftingApi.planCraftMissing(List.of(
+                new CraftingApi.MissingRequest("Lightning Bolt", 2, 0, bolt)));
+        Assert.assertTrue(plan.craftEnabled, plan.disabledReason);
+        Assert.assertEquals(player.getMaterial(ash.id), afterAdd,
+                "planning must not take or re-add materials");
+        Assert.assertTrue(player.getMaterial(ash.id) >= before + 4);
+    }
+
 
     // ---- helpers -------------------------------------------------------------------------------
+
+    /** Drive one real SN1 season end + shortlist pick. Returns false when no pick is possible. */
+    private static boolean advanceOneSeason(AdventurePlayer player) {
+        var season = player.getSeason();
+        var window = player.getStandardWindow();
+        if (!season.endByMastery(window, new forge.deck.CardPool()))
+            return false;
+        if (!season.isChoicePending() || season.getShortlist().isEmpty())
+            return false;
+        String pick = season.getShortlist().get(0);
+        season.applyPick(window, pick, false);
+        return true;
+    }
+
 
     private static void ensurePlayerSaveable(AdventurePlayer player) {
         try {

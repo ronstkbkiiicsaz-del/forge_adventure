@@ -177,8 +177,8 @@ public final class CraftingApi {
                                 + e.getValue() + ", have " + have + ").");
             }
         }
-        // Full-count reagent check: temporarily reserve materials for every copy.
-        List<Map.Entry<String, Integer>> reserved = new ArrayList<>();
+        // Full-count reagent check: reserve in a virtual map (no take / re-add).
+        Map<String, Integer> reserved = new LinkedHashMap<>();
         String reagentBlock = null;
         outer:
         for (MissingRequest r : normalized) {
@@ -190,30 +190,21 @@ public final class CraftingApi {
                 var cost = p.craftReagentCost(print);
                 if (cost.isEmpty())
                     continue;
-                if (!cost.canAfford(p)) {
+                if (!cost.canAfford(p, reserved)) {
                     List<String> missingMats = cost.missing(p);
                     reagentBlock = missingMats.isEmpty()
                             ? "Missing reagents for " + r.name + " (" + need + " copies)."
                             : missingMats.get(0);
                     break outer;
                 }
-                Map<String, Integer> pay = cost.resolvePayment(p);
-                if (pay == null || pay.isEmpty()) {
+                Map<String, Integer> delta = cost.resolvePayment(p, reserved);
+                if (!cost.isEmpty() && (delta == null || delta.isEmpty())) {
                     reagentBlock = "Missing reagents for " + r.name + ".";
                     break outer;
                 }
-                for (Map.Entry<String, Integer> e : pay.entrySet()) {
-                    if (!p.takeMaterial(e.getKey(), e.getValue())) {
-                        reagentBlock = "Missing reagents for " + r.name + ".";
-                        break outer;
-                    }
-                    reserved.add(Map.entry(e.getKey(), e.getValue()));
-                }
+                for (Map.Entry<String, Integer> e : delta.entrySet())
+                    reserved.merge(e.getKey(), e.getValue(), Integer::sum);
             }
-        }
-        for (int i = reserved.size() - 1; i >= 0; i--) {
-            Map.Entry<String, Integer> e = reserved.get(i);
-            p.addMaterial(e.getKey(), e.getValue());
         }
         if (reagentBlock != null) {
             return new CraftMissingPlan(normalized, needByRarity, totalCopies, false, reagentBlock);
@@ -223,7 +214,7 @@ public final class CraftingApi {
 
     /**
      * All-or-nothing craft of every missing copy (source printings). If the plan is not
-     * affordable, nothing is crafted. Uses each request's preferred printing when unlocked.
+     * affordable, nothing is crafted. Mid-batch failure rolls back every earlier copy.
      */
     public static List<CraftResult> craftMissing(List<MissingRequest> requests) {
         List<CraftResult> out = new ArrayList<>();
@@ -246,40 +237,70 @@ public final class CraftingApi {
             }
             return out;
         }
-        // Plan already verified full dust + reagents for every copy — craft all or nothing.
+        // Track successful crafts so a mid-batch failure can roll everything back.
+        List<PaperCard> crafted = new ArrayList<>();
+        List<Integer> dustIdx = new ArrayList<>();
+        List<Integer> dustSpent = new ArrayList<>();
+        List<Map<String, Integer>> matSpent = new ArrayList<>();
         for (MissingRequest r : plan.requests) {
             int need = r.gap();
             PaperCard print = r.preferred != null
                     ? p.craftPrintingPreferring(r.preferred)
                     : p.craftPrinting(r.name);
             if (print == null) {
-                out.add(CraftResult.failed(r.name, need, "Not in craftable pool."));
-                return failRemaining(out, plan.requests, r);
+                rollbackCrafts(p, crafted, dustIdx, dustSpent, matSpent);
+                return allFailed(plan.requests, "Not in craftable pool.");
             }
+            int unitCost = p.craftCost(print);
+            int idx = AdventurePlayer.dustIndex(print.getRarity());
             for (int i = 0; i < need; i++) {
+                // Snapshot the same payment craftCard will take (before inventory changes).
+                var cost = p.craftReagentCost(print);
+                Map<String, Integer> pay = cost.isEmpty()
+                        ? Map.of()
+                        : Map.copyOf(cost.resolvePayment(p));
                 if (!p.craftCard(print)) {
-                    out.add(CraftResult.failed(r.name, need, "Craft failed mid-batch."));
-                    return failRemaining(out, plan.requests, r);
+                    rollbackCrafts(p, crafted, dustIdx, dustSpent, matSpent);
+                    return allFailed(plan.requests, "Craft failed mid-batch.");
                 }
+                crafted.add(print);
+                dustIdx.add(idx);
+                dustSpent.add(unitCost);
+                matSpent.add(pay);
             }
             out.add(new CraftResult(r.name, need, need, null));
         }
         return out;
     }
 
-    private static List<CraftResult> failRemaining(List<CraftResult> out,
-            List<MissingRequest> requests, MissingRequest failed) {
-        boolean past = false;
+    private static List<CraftResult> allFailed(List<MissingRequest> requests, String reason) {
+        List<CraftResult> out = new ArrayList<>();
         for (MissingRequest r : requests) {
-            if (r == failed) {
-                past = true;
-                continue;
-            }
-            if (!past)
-                continue;
-            out.add(CraftResult.failed(r.name, r.gap(), "Craft missing aborted (all-or-nothing)."));
+            if (r != null)
+                out.add(CraftResult.failed(r.name, r.gap(), reason));
         }
         return out;
+    }
+
+    /** Undo every successful craft in this batch (cards, dust, reagents). */
+    private static void rollbackCrafts(AdventurePlayer p, List<PaperCard> crafted,
+            List<Integer> dustIdx, List<Integer> dustSpent, List<Map<String, Integer>> matSpent) {
+        for (int i = crafted.size() - 1; i >= 0; i--) {
+            PaperCard print = crafted.get(i);
+            if (print != null && p.getCards().count(print) > 0)
+                p.getCards().remove(print, 1);
+            int idx = dustIdx.get(i);
+            int cost = dustSpent.get(i);
+            if (idx >= 0 && cost > 0)
+                p.addDust(idx, cost);
+            Map<String, Integer> mats = matSpent.get(i);
+            if (mats != null) {
+                for (Map.Entry<String, Integer> e : mats.entrySet()) {
+                    if (e.getKey() != null && e.getValue() != null && e.getValue() > 0)
+                        p.addMaterial(e.getKey(), e.getValue());
+                }
+            }
+        }
     }
 
     public static final class MissingRequest {

@@ -304,6 +304,11 @@ public class WorldSave {
         currentSave.player.setWorldPosY((int) (currentSave.world.getData().playerStartPosY * currentSave.world.getData().height * currentSave.world.getTileSize()));
         currentSave.player.setWorldPosX((int) (currentSave.world.getData().playerStartPosX * currentSave.world.getData().width * currentSave.world.getTileSize()));
         if (Config.ascendant()) {
+            // Sealed already inits the season in createSealedStart; other modes start here.
+            if (mode != AdventureModes.Sealed) {
+                currentSave.player.getSeason().initNewGame(currentSave.player.getStandardWindow());
+            }
+            AscendantCardEconomy.bindSeasonCalendar(currentSave.player.getSeason());
             currentSave.multiverse.initHomeFromLive(
                     currentSave.world.getSeed(),
                     currentSave.player.getWorldPosX(),
@@ -352,8 +357,10 @@ public class WorldSave {
         starterDeck.setName(FModel.getMagicDb().getEditions().get(setCode).getName() + " Sealed");
         currentSave.player.create(name, starterDeck, male, race, avatarIndex, false, false, diff, AdventureModes.Sealed);
         currentSave.player.getStandardWindow().init(coreCode == null ? List.of(setCode) : List.of(coreCode, setCode));
-        if (Config.ascendant())
+        if (Config.ascendant()) {
             currentSave.player.getSeason().initNewGame(currentSave.player.getStandardWindow());
+            AscendantCardEconomy.bindSeasonCalendar(currentSave.player.getSeason());
+        }
         RewardData.invalidateCardPool();
         // MV2: Planar Gates on the home plane for the starting Standard window.
         try {

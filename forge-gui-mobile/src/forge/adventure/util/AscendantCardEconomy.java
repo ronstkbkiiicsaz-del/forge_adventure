@@ -4,10 +4,14 @@ import forge.adventure.data.ConfigData;
 import forge.adventure.player.AdventurePlayer;
 import forge.adventure.player.AdventureSeason;
 import forge.adventure.pointofintrest.PointOfInterestChanges;
+import forge.adventure.stage.GameHUD;
+import forge.adventure.world.WorldSave;
+import forge.card.CardEdition;
 import forge.card.CardRarity;
 import forge.card.MagicColor;
 import forge.gamemodes.limited.DraftRankCache;
 import forge.item.PaperCard;
+import forge.model.FModel;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -27,6 +31,9 @@ import java.util.Set;
  * <p><b>Co-op:</b> no wire change. Market state lives on host
  * {@link PointOfInterestChanges}; guests see host shop prices when shopping in the
  * host world. Solo-only build still owns this path.
+ *
+ * <p>Rotation age / spikes are <b>per save</b>: persisted on the player blob, cleared
+ * on new game and load, and rebound on every load (the season instance is final).
  */
 public final class AscendantCardEconomy {
 
@@ -60,14 +67,15 @@ public final class AscendantCardEconomy {
     }
 
     /**
-     * Bind to the live SN1 calendar (idempotent). Seasonal appreciation and spikes
-     * are driven by {@link AdventureSeason#addSeasonChangeListener}, not by polling.
+     * Bind to the live SN1 calendar. Always (re)registers the season-change listener —
+     * {@link AdventurePlayer}'s season field is final, so the early same-instance return
+     * would skip rebind after load.
      */
     public static void bindSeasonCalendar(AdventureSeason season) {
-        if (boundSeason == season)
-            return;
-        if (boundSeason != null)
+        if (boundSeason != null && boundSeason != season)
             boundSeason.removeSeasonChangeListener(SEASON_LISTENER);
+        if (season != null)
+            season.removeSeasonChangeListener(SEASON_LISTENER);
         boundSeason = season;
         if (season != null) {
             season.addSeasonChangeListener(SEASON_LISTENER);
@@ -120,17 +128,82 @@ public final class AscendantCardEconomy {
         rotatedAtSeason.put(setCode.toUpperCase(Locale.ROOT), Math.max(0, seasonIndex));
     }
 
-    /** Test hook: clear rotation age / spikes. */
-    public static void resetLifecycleStateForTest() {
+    /** Clear per-save life-cycle state (new game / before load). */
+    public static void resetLifecycleState() {
         rotatedAtSeason.clear();
         lastWindowSets.clear();
         seasonSpikes.clear();
         spikesForSeason = -1;
+        if (boundSeason != null) {
+            boundSeason.removeSeasonChangeListener(SEASON_LISTENER);
+            boundSeason = null;
+        }
+    }
+
+    /** Test hook: clear rotation age / spikes. */
+    public static void resetLifecycleStateForTest() {
+        resetLifecycleState();
     }
 
     /** Test hook: mark a set rotated at a season boundary. */
     public static void noteSetRotatedForTest(String setCode, int seasonIndex) {
         noteSetRotated(setCode, seasonIndex);
+    }
+
+    /** Persist rotation age + spike rumour into the player save blob. */
+    public static void save(SaveFileData data) {
+        if (data == null)
+            return;
+        String[] keys = rotatedAtSeason.keySet().toArray(new String[0]);
+        Integer[] vals = new Integer[keys.length];
+        for (int i = 0; i < keys.length; i++)
+            vals[i] = rotatedAtSeason.get(keys[i]);
+        data.storeObject("ec1RotatedAtSeasonKeys", keys);
+        data.storeObject("ec1RotatedAtSeasonVals", vals);
+        data.storeObject("ec1LastWindowSets", lastWindowSets.toArray(new String[0]));
+        data.storeObject("ec1SeasonSpikes", seasonSpikes.toArray(new String[0]));
+        data.store("ec1SpikesForSeason", spikesForSeason);
+    }
+
+    /** Restore rotation age + spike rumour from the player save blob (after {@link #resetLifecycleState}). */
+    public static void load(SaveFileData data) {
+        if (data == null)
+            return;
+        rotatedAtSeason.clear();
+        lastWindowSets.clear();
+        seasonSpikes.clear();
+        spikesForSeason = -1;
+        if (data.containsKey("ec1RotatedAtSeasonKeys") && data.containsKey("ec1RotatedAtSeasonVals")) {
+            String[] keys = (String[]) data.readObject("ec1RotatedAtSeasonKeys");
+            Integer[] vals = (Integer[]) data.readObject("ec1RotatedAtSeasonVals");
+            if (keys != null && vals != null) {
+                int n = Math.min(keys.length, vals.length);
+                for (int i = 0; i < n; i++) {
+                    if (keys[i] != null && vals[i] != null)
+                        rotatedAtSeason.put(keys[i].toUpperCase(Locale.ROOT), Math.max(0, vals[i]));
+                }
+            }
+        }
+        if (data.containsKey("ec1LastWindowSets")) {
+            String[] win = (String[]) data.readObject("ec1LastWindowSets");
+            if (win != null) {
+                for (String s : win) {
+                    if (s != null && !s.isBlank())
+                        lastWindowSets.add(s);
+                }
+            }
+        }
+        if (data.containsKey("ec1SeasonSpikes")) {
+            String[] spikes = (String[]) data.readObject("ec1SeasonSpikes");
+            if (spikes != null) {
+                for (String s : spikes) {
+                    if (s != null && !s.isBlank())
+                        seasonSpikes.add(s);
+                }
+            }
+        }
+        if (data.containsKey("ec1SpikesForSeason"))
+            spikesForSeason = data.readInt("ec1SpikesForSeason");
     }
 
     /** SN1 {@link AdventureSeason.SeasonChangeListener}: appreciate rotations + roll spikes. */
@@ -140,15 +213,21 @@ public final class AscendantCardEconomy {
         int seasonIndex = season.getSeasonIndex();
         noteRotationsFromWindowDiff(seasonIndex);
         rollSeasonSpikes(seasonIndex);
+        showSpikeRumourNotification();
     }
 
     private static void snapshotWindowSets() {
-        lastWindowSets.clear();
+        // Prefer live window; keep prior snapshot only when the player/window is unavailable.
+        LinkedHashSet<String> now = new LinkedHashSet<>();
         try {
             AdventurePlayer p = Current.player();
             if (p != null && p.getStandardWindow() != null)
-                lastWindowSets.addAll(p.getStandardWindow().getSets());
+                now.addAll(p.getStandardWindow().getSets());
         } catch (Exception ignored) {
+        }
+        if (!now.isEmpty() || lastWindowSets.isEmpty()) {
+            lastWindowSets.clear();
+            lastWindowSets.addAll(now);
         }
     }
 
@@ -171,7 +250,12 @@ public final class AscendantCardEconomy {
         lastWindowSets.addAll(now);
     }
 
-    /** Seasons since this card's edition left Standard (0 while still legal). */
+    /**
+     * Seasons since this card's edition left Standard (0 while still legal).
+     * Sets that were never in the window (Badlands / LEB, etc.) get a starting age of
+     * "rotated at season 0" plus release-order distance past the current window's oldest
+     * set, so pedigree cards climb in real play without a test hook.
+     */
     public static int seasonsOutOfStandard(PaperCard card) {
         if (card == null || isStandardLegal(card))
             return 0;
@@ -179,9 +263,44 @@ public final class AscendantCardEconomy {
         if (ed == null)
             return 0;
         Integer at = rotatedAtSeason.get(ed.toUpperCase(Locale.ROOT));
-        if (at == null)
+        if (at != null)
+            return Math.max(0, currentSeasonIndex() - at);
+        // Never recorded: treat as pre-campaign / never-window, age from season 0 + release order.
+        return Math.max(0, currentSeasonIndex() + releaseOrderAgeBonus(ed));
+    }
+
+    /**
+     * Extra starting age for editions older than the current window's oldest set
+     * (release order). Caps so NG Badlands stays near rarity base.
+     */
+    private static int releaseOrderAgeBonus(String edition) {
+        try {
+            CardEdition ed = FModel.getMagicDb().getEditions().get(edition);
+            if (ed == null || ed.getDate() == null)
+                return 0;
+            AdventurePlayer p = Current.player();
+            if (p == null || p.getStandardWindow() == null)
+                return 0;
+            List<String> sets = p.getStandardWindow().getSets();
+            if (sets == null || sets.isEmpty())
+                return 0;
+            java.util.Date oldest = null;
+            for (String code : sets) {
+                CardEdition w = FModel.getMagicDb().getEditions().get(code);
+                if (w == null || w.getDate() == null)
+                    continue;
+                if (oldest == null || w.getDate().before(oldest))
+                    oldest = w.getDate();
+            }
+            if (oldest == null || !ed.getDate().before(oldest))
+                return 0;
+            // Rough: ~one "season" of pre-age per ~90 days of release gap, capped low so
+            // Badlands starts near rarity base and climbs with real season changes.
+            long days = (oldest.getTime() - ed.getDate().getTime()) / (1000L * 60L * 60L * 24L);
+            return (int) Math.min(4, Math.max(0, days / 365L));
+        } catch (Exception e) {
             return 0;
-        return Math.max(0, currentSeasonIndex() - at);
+        }
     }
 
     public static boolean isStandardLegal(PaperCard card) {
@@ -289,14 +408,18 @@ public final class AscendantCardEconomy {
         }
     }
 
-    /** Unitless relative worth vs an average unranked Standard card (for craft/salvage). */
+    /**
+     * Unitless relative worth for craft/salvage, normalized <b>within rarity</b>
+     * (life-cycle gold ÷ that rarity's base). An unranked in-Standard card ≈ 1.0 so
+     * dust costs keep the old rarity-split scale; only life-cycle moves them.
+     */
     public static float relativeWorth(PaperCard card) {
         ConfigData c = cfg();
         if (c == null || card == null || !enabled())
             return 1f;
         float gold = lifeCycleGold(card, c);
-        float avg = Math.max(1, c.ec1BaseCommon);
-        return Math.max(0.05f, gold / avg);
+        float rarityBase = Math.max(1, rarityBaseGold(card, c));
+        return Math.max(0.05f, gold / rarityBase);
     }
 
     public static float rankMultiplier(PaperCard card, float min, float max) {
@@ -415,7 +538,16 @@ public final class AscendantCardEconomy {
         List<PaperCard> pool = spikeCandidates();
         if (pool.isEmpty())
             return;
-        Random rng = new Random(0xEC15A1CEL ^ (((long) seasonIndex) * 0x9E3779B97F4A7C15L));
+        long worldSeed = 0L;
+        try {
+            WorldSave save = WorldSave.getCurrentSave();
+            if (save != null && save.getWorld() != null)
+                worldSeed = save.getWorld().getSeed();
+        } catch (Exception ignored) {
+        }
+        Random rng = new Random(0xEC15A1CEL
+                ^ (((long) seasonIndex) * 0x9E3779B97F4A7C15L)
+                ^ worldSeed);
         Collections.shuffle(pool, rng);
         for (int i = 0; i < pool.size() && seasonSpikes.size() < count; i++) {
             seasonSpikes.add(pool.get(i).getName());
@@ -438,10 +570,10 @@ public final class AscendantCardEconomy {
                 return out;
             Set<String> codes = new LinkedHashSet<>(p.getStandardWindow().expandedCodes());
             for (String code : codes) {
-                forge.card.CardEdition ed = forge.model.FModel.getMagicDb().getEditions().get(code);
+                CardEdition ed = FModel.getMagicDb().getEditions().get(code);
                 if (ed == null)
                     continue;
-                for (PaperCard pc : forge.model.FModel.getMagicDb().getCommonCards().getAllCards(ed)) {
+                for (PaperCard pc : FModel.getMagicDb().getCommonCards().getAllCards(ed)) {
                     if (pc == null)
                         continue;
                     CardRarity r = pc.getRarity();
@@ -469,7 +601,7 @@ public final class AscendantCardEconomy {
         return List.copyOf(seasonSpikes);
     }
 
-    /** Town rumour line, or empty when nothing is spiked. */
+    /** Town / inn / HUD rumour line, or empty when nothing is spiked. */
     public static String spikeRumourLine() {
         List<String> names = currentSpikeNames();
         if (names.isEmpty())
@@ -479,6 +611,17 @@ public final class AscendantCardEconomy {
                     String.join(", ", names));
         } catch (Exception e) {
             return names.get(0) + " is in demand.";
+        }
+    }
+
+    /** Push the current spike rumour to the HUD (season change / inn enter). */
+    public static void showSpikeRumourNotification() {
+        String line = spikeRumourLine();
+        if (line == null || line.isBlank())
+            return;
+        try {
+            GameHUD.getInstance().addNotification(line);
+        } catch (Exception ignored) {
         }
     }
 
@@ -498,7 +641,7 @@ public final class AscendantCardEconomy {
                 case "G" -> (identity & MagicColor.GREEN) != 0;
                 default -> false;
             };
-            return match ? leanMult : 1f;
+            return match ? Math.max(1f, leanMult) : 1f;
         } catch (Exception e) {
             return 1f;
         }
@@ -525,5 +668,10 @@ public final class AscendantCardEconomy {
         if (s.contains("green") || s.equals("forest"))
             return "G";
         return null;
+    }
+
+    /** Test / debug: copy of the rotation map. */
+    public static Map<String, Integer> rotatedAtSeasonSnapshotForTest() {
+        return Map.copyOf(rotatedAtSeason);
     }
 }

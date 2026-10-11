@@ -118,11 +118,59 @@ public class CardEconomyEc1GlTest {
             try {
                 captureOrientation(true);
                 captureOrientation(false);
+                captureSpikeRumourHud();
                 captureMissingListCraftMissing();
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
         });
+    }
+
+    /**
+     * Real xvfb render of the EC1 spike rumour on the GameHUD notification banner
+     * ({@code lblEc1SpikeRumour}).
+     */
+    private static void captureSpikeRumourHud() throws Exception {
+        applyOrientation(true);
+        int w = 480;
+        int h = 270;
+        AdventurePlayer player = Current.player();
+        Assert.assertNotNull(player);
+        player.getStandardWindow().init(List.of("M10", "M11", "ZEN"));
+        PaperCard common = null;
+        for (PaperCard pc : forge.model.FModel.getMagicDb().getCommonCards().getAllCards("Plated Geopede")) {
+            if ("ZEN".equalsIgnoreCase(pc.getEdition())) {
+                common = pc;
+                break;
+            }
+        }
+        Assert.assertNotNull(common, "need a spiked common for rumour render");
+        AscendantCardEconomy.setSeasonSpikesForTest(List.of(common.getName()));
+        String rumour = AscendantCardEconomy.spikeRumourLine();
+        Assert.assertFalse(rumour.isBlank());
+        Assert.assertTrue(rumour.contains(common.getName()), rumour);
+
+        GameScene game = GameScene.instance();
+        syncSceneViewports(game, w, h);
+        game.enter();
+        game.act(0.05f);
+        GameHUD hud = GameHUD.getInstance();
+        hud.clearNotifications();
+        AscendantCardEconomy.showSpikeRumourNotification();
+        // Drive notification Actions so the banner is on-screen for the capture.
+        for (int i = 0; i < 120; i++) {
+            hud.act(0.05f);
+            game.act(0.05f);
+        }
+        Assert.assertTrue(hud.getNotificationText().contains(common.getName())
+                        || hud.getNotificationText().toLowerCase(Locale.ROOT).contains("demand"),
+                "HUD notification must show rumour, got: " + hud.getNotificationText());
+        renderForScreenshot(game);
+        saveScreenshot("ec1_spike_rumour_hud_landscape.png");
+        try {
+            game.leave();
+        } catch (Throwable ignored) {
+        }
     }
 
     /**

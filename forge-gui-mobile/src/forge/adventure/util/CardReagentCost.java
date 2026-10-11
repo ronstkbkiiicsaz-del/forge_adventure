@@ -294,6 +294,14 @@ public final class CardReagentCost {
     }
 
     /**
+     * Like {@link #canAfford(AdventurePlayer)} but treating {@code alreadyReserved} material
+     * counts as already spoken for (planning multiple crafts without take/re-add).
+     */
+    public boolean canAfford(AdventurePlayer player, Map<String, Integer> alreadyReserved) {
+        return tryAllocate(player, alreadyReserved) != null;
+    }
+
+    /**
      * Human-readable missing pieces for UI (empty if affordable).
      * Uses the same sequential allocation as {@link #resolvePayment}.
      */
@@ -396,13 +404,48 @@ public final class CardReagentCost {
     }
 
     /**
+     * Resolve payment for this cost on top of {@code alreadyReserved} (not mutated).
+     * Returns only this cost's delta, or empty when not affordable / no lines.
+     */
+    public Map<String, Integer> resolvePayment(AdventurePlayer player, Map<String, Integer> alreadyReserved) {
+        Map<String, Integer> full = tryAllocate(player, alreadyReserved);
+        if (full == null)
+            return new LinkedHashMap<>();
+        if (alreadyReserved == null || alreadyReserved.isEmpty())
+            return full;
+        Map<String, Integer> delta = new LinkedHashMap<>();
+        for (Map.Entry<String, Integer> e : full.entrySet()) {
+            int prev = alreadyReserved.getOrDefault(e.getKey(), 0);
+            int extra = e.getValue() - prev;
+            if (extra > 0)
+                delta.put(e.getKey(), extra);
+        }
+        return delta;
+    }
+
+    /**
      * Attempt sequential allocation for every line. Returns the payment map on success
      * (empty map when there are no reagent lines), or {@code null} if any line fails.
      */
     public Map<String, Integer> tryAllocate(AdventurePlayer player) {
+        return tryAllocate(player, null);
+    }
+
+    /**
+     * Like {@link #tryAllocate(AdventurePlayer)} but seeds the working map with
+     * {@code alreadyReserved} so those units are not double-spent. The returned map
+     * includes the reserved seed plus this cost's new allocation.
+     */
+    public Map<String, Integer> tryAllocate(AdventurePlayer player, Map<String, Integer> alreadyReserved) {
         if (player == null)
             return null;
         Map<String, Integer> pay = new LinkedHashMap<>();
+        if (alreadyReserved != null) {
+            for (Map.Entry<String, Integer> e : alreadyReserved.entrySet()) {
+                if (e.getKey() != null && e.getValue() != null && e.getValue() > 0)
+                    pay.put(e.getKey(), e.getValue());
+            }
+        }
         if (lines.isEmpty())
             return pay;
         for (Line line : lines) {
