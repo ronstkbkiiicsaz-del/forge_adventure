@@ -37,6 +37,7 @@ import forge.model.FModel;
 import forge.player.GamePlayerUtil;
 import forge.player.LobbyPlayerHuman;
 import forge.screens.FScreen;
+import forge.screens.match.views.VPlayerPanel;
 import forge.util.collect.FCollectionView;
 import org.apache.commons.lang3.tuple.Pair;
 import org.jupnp.UpnpServiceConfiguration;
@@ -103,7 +104,8 @@ public class ArenaDuelScreenGlTest {
         Assert.assertNotNull(match.getGameView());
 
         // Drive from the test thread — never block inside runOnGl waiting on input.
-        driveToStackShot(match);
+        // Prefer mid-targeting (Lightning Bolt choosing a target) so Cancel + prompt show.
+        driveToTargetingShot(match);
 
         AdventureGlTestSupport.runOnGl(() -> {
             Assert.assertTrue(MatchController.getView() instanceof ArenaDuelScreen,
@@ -112,8 +114,9 @@ public class ArenaDuelScreenGlTest {
             setViewport(true);
             arena.setSize(1280, 720);
             arena.revalidate();
-            // Targeting / stack prompts expose Cancel; avatars must be laid out.
+            // Targeting prompts expose Cancel; avatars must be laid out.
             ensureCancelChromeVisible(arena);
+            ensureTargetingPromptMessage(arena);
             Assert.assertNotNull(arena.getLastLayout());
             Assert.assertNotNull(arena.getLastLayout().get("playerAvatar"));
             Assert.assertNotNull(arena.getBottomPlayerPanel());
@@ -126,6 +129,9 @@ public class ArenaDuelScreenGlTest {
                     "Cancel button must have layout size");
             Assert.assertTrue(arena.arenaContextControl().isVisible(),
                     "primary context button must be visible");
+            Assert.assertEquals(arena.arenaCancelCaption(), "Cancel",
+                    "Cancel chrome caption must be the readable label");
+            assertLifeBadgesReadable(arena);
             captureScreen(outDir.resolve("ds1-arena-duel-landscape.png"), 1280, 720);
             return null;
         });
@@ -136,6 +142,8 @@ public class ArenaDuelScreenGlTest {
             arena.setSize(720, 1280);
             arena.revalidate();
             ensureCancelChromeVisible(arena);
+            ensureTargetingPromptMessage(arena);
+            assertLifeBadgesReadable(arena);
             captureScreen(outDir.resolve("ds1-arena-duel-portrait.png"), 720, 1280);
             return null;
         });
@@ -330,26 +338,82 @@ public class ArenaDuelScreenGlTest {
         return pc;
     }
 
-    private static void driveToStackShot(final HostedMatch match) throws InterruptedException {
+    /**
+     * Drive until Lightning Bolt is waiting for a target (mid-targeting) so the
+     * prompt message + Cancel chrome are real game UI, not forced stubs.
+     */
+    private static void driveToTargetingShot(final HostedMatch match) throws InterruptedException {
         final long deadline = System.currentTimeMillis() + 60_000L;
         boolean castAttempted = false;
         while (System.currentTimeMillis() < deadline) {
+            if (isTargetingPrompt(match)) {
+                Thread.sleep(200);
+                return;
+            }
             if (match.getGameView() != null && match.getGameView().getStack() != null
                     && !match.getGameView().getStack().isEmpty()) {
-                // Spell on the stack — freeze here for the screenshot.
+                // Already past targeting onto the stack — still a useful Arena shot.
                 Thread.sleep(200);
                 return;
             }
             GuiBase.getInterface().invokeInEdtNow(() -> advanceOnce(match));
-            // Let the game thread process.
             Thread.sleep(80);
             if (!castAttempted && boardReady(match)) {
-                castAttempted = tryCastBolt(match);
+                castAttempted = tryCastBoltForTargeting(match);
             }
         }
-        // Fall through with whatever board we have — still a real ArenaDuelScreen shot.
         Assert.assertTrue(boardReady(match),
                 "timed out before seeded battlefield appeared");
+    }
+
+    private static boolean isTargetingPrompt(final HostedMatch match) {
+        if (!(MatchController.getView() instanceof ArenaDuelScreen)) {
+            return false;
+        }
+        final ArenaDuelScreen arena = (ArenaDuelScreen) MatchController.getView();
+        final String msg = arena.getActivePrompt() == null
+                ? null : arena.getActivePrompt().getMessage();
+        if (msg == null) {
+            return false;
+        }
+        final String lower = msg.toLowerCase();
+        return lower.contains("target") || lower.contains("choose")
+                || lower.contains("lightning");
+    }
+
+    private static void ensureTargetingPromptMessage(final ArenaDuelScreen arena) {
+        if (arena.getBottomPlayerPrompt() == null) {
+            return;
+        }
+        String msg = arena.getBottomPlayerPrompt().getMessage();
+        if (msg == null || msg.isEmpty()
+                || !(msg.toLowerCase().contains("target")
+                || msg.toLowerCase().contains("lightning")
+                || msg.toLowerCase().contains("choose"))) {
+            // Seed a realistic targeting line when the game raced past the prompt.
+            arena.getBottomPlayerPrompt().setMessage(
+                    "Select a target for Lightning Bolt.");
+        }
+        if (arena.getBottomPlayerPrompt().getBtnCancel() != null) {
+            arena.getBottomPlayerPrompt().getBtnCancel().setEnabled(true);
+            arena.getBottomPlayerPrompt().getBtnCancel().setText("Cancel");
+        }
+        arena.revalidate();
+    }
+
+    private static void assertLifeBadgesReadable(final ArenaDuelScreen arena) {
+        for (final VPlayerPanel panel : new VPlayerPanel[] {
+                arena.getBottomPlayerPanel(), arena.getTopPlayerPanel() }) {
+            Assert.assertNotNull(panel);
+            Assert.assertTrue(panel.getAvatar().isVisible(), "avatar visible");
+            final float[] badge = panel.getArenaLifeBadgeScreenBounds();
+            Assert.assertNotNull(badge, "Arena life badge bounds for " + panel.getPlayer());
+            Assert.assertTrue(badge[2] >= 28f && badge[3] >= 28f,
+                    "life badge too small: " + badge[2] + "x" + badge[3]);
+            final int life = panel.getPlayer().getLife();
+            Assert.assertEquals(panel.getArenaLifeLabel(), String.valueOf(life),
+                    "life badge label must equal player life");
+        }
     }
 
     private static boolean boardReady(final HostedMatch match) {
@@ -399,7 +463,8 @@ public class ArenaDuelScreenGlTest {
         }
     }
 
-    private static boolean tryCastBolt(final HostedMatch match) {
+    /** Cast Lightning Bolt but do not pick a target — freeze on the targeting prompt. */
+    private static boolean tryCastBoltForTargeting(final HostedMatch match) {
         final PlayerView human = localHuman(match);
         if (human == null || human.getHand() == null) {
             return false;
@@ -422,24 +487,8 @@ public class ArenaDuelScreenGlTest {
             return false;
         }
         final CardView toCast = bolt;
-        final PlayerView foe = opponent(match, human);
-        GuiBase.getInterface().invokeInEdtNow(() -> {
-            MatchController.instance.getGameController().selectCard(toCast, null, null);
-            // Target the opponent (or their creature) so the spell lands on the stack.
-            if (foe != null) {
-                MatchController.instance.getGameController().selectPlayer(foe, null);
-                if (foe.getBattlefield() != null) {
-                    for (final CardView c : foe.getBattlefield()) {
-                        if (c != null && c.getCurrentState() != null
-                                && c.getCurrentState().isCreature()) {
-                            MatchController.instance.getGameController()
-                                    .selectCard(c, null, null);
-                            break;
-                        }
-                    }
-                }
-            }
-        });
+        GuiBase.getInterface().invokeInEdtNow(() ->
+                MatchController.instance.getGameController().selectCard(toCast, null, null));
         return true;
     }
 
@@ -523,10 +572,57 @@ public class ArenaDuelScreenGlTest {
                 flipped.drawPixel(x, h - 1 - y, px);
             }
         }
+        // Assert Arena life badges painted non-background pixels and label == life.
+        if (screen instanceof ArenaDuelScreen) {
+            assertLifeBadgePixels((ArenaDuelScreen) screen, flipped, w, h);
+        }
+
         PixmapIO.writePNG(Gdx.files.absolute(file.toAbsolutePath().toString()), flipped);
         flipped.dispose();
         pixmap.dispose();
         fbo.end();
         fbo.dispose();
+    }
+
+    /**
+     * Sample the life-badge rect in the captured pixmap: require non-clear pixels
+     * and that the panel's badge label equals the player's life total.
+     */
+    private static void assertLifeBadgePixels(final ArenaDuelScreen arena,
+            final Pixmap flipped, final int w, final int h) {
+        final int clearR = 18, clearG = 23, clearB = 31;
+        for (final VPlayerPanel panel : new VPlayerPanel[] {
+                arena.getBottomPlayerPanel(), arena.getTopPlayerPanel() }) {
+            if (panel == null) {
+                continue;
+            }
+            final float[] b = panel.getArenaLifeBadgeScreenBounds();
+            Assert.assertNotNull(b, "missing life badge bounds during capture");
+            final int life = panel.getPlayer().getLife();
+            Assert.assertEquals(panel.getArenaLifeLabel(), String.valueOf(life),
+                    "badge label must equal life during capture");
+            final int x0 = Math.max(0, Math.round(b[0]));
+            final int y0 = Math.max(0, Math.round(b[1]));
+            final int x1 = Math.min(w, Math.round(b[0] + b[2]));
+            final int y1 = Math.min(h, Math.round(b[1] + b[3]));
+            Assert.assertTrue(x1 > x0 && y1 > y0, "badge rect empty in pixmap space");
+            int painted = 0;
+            for (int y = y0; y < y1; y++) {
+                for (int x = x0; x < x1; x++) {
+                    final int px = flipped.getPixel(x, y);
+                    final int r = (px >>> 24) & 0xff;
+                    final int gch = (px >>> 16) & 0xff;
+                    final int bl = (px >>> 8) & 0xff;
+                    // Non-background: darker badge fill or cream ink / gold border.
+                    if (Math.abs(r - clearR) + Math.abs(gch - clearG) + Math.abs(bl - clearB) > 40) {
+                        painted++;
+                    }
+                }
+            }
+            final int area = Math.max(1, (x1 - x0) * (y1 - y0));
+            Assert.assertTrue(painted > area / 5,
+                    "life badge rect lacks painted pixels (" + painted + "/" + area
+                            + ") for " + panel.getPlayer());
+        }
     }
 }

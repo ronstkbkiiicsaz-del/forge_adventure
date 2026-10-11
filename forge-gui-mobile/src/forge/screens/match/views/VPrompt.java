@@ -247,7 +247,13 @@ public class VPrompt extends FContainer {
                 float y = PADDING;
                 float w = getWidth() - 2 * PADDING;
                 float h = getHeight() - 2 * PADDING;
-                renderer.drawText(g, message, FONT, getForeColor(), x, y, w, h, y, h, true, Align.center, true);
+                // Arena prompt bed is near-black — force light ink so targeting copy reads.
+                if (forge.screens.match.ArenaDuelUi.isActive()) {
+                    g.drawText(message, FSkinFont.get(15), Color.WHITE,
+                            x, y, w, h, true, Align.center, true);
+                } else {
+                    renderer.drawText(g, message, FONT, getForeColor(), x, y, w, h, y, h, true, Align.center, true);
+                }
             }
         }
     }

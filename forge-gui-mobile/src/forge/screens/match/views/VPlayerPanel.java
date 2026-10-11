@@ -67,6 +67,11 @@ public class VPlayerPanel extends FContainer {
     private static final float INFO_TAB_PADDING_Y = Utils.scale(2);
     private static final Color ARENA_PANEL_PLATE = new Color(0.10f, 0.16f, 0.12f, 1f);
     private static final Color ARENA_HAND_SCRIM = new Color(0.16f, 0.18f, 0.22f, 1f);
+    private static final Color ARENA_LIFE_BADGE_FILL = new Color(0.08f, 0.09f, 0.12f, 1f);
+    private static final Color ARENA_LIFE_BADGE_BORDER = new Color(0.92f, 0.78f, 0.32f, 1f);
+    private static final Color ARENA_LIFE_BADGE_INK = new Color(1f, 0.96f, 0.82f, 1f);
+    private static final FSkinFont ARENA_LIFE_FONT = FSkinFont.get(28);
+    private static final FSkinFont ARENA_LIFE_COUNTER_FONT = FSkinFont.get(14);
 
     /**
      * Zones to include in the extra zones dropdown.
@@ -421,6 +426,8 @@ public class VPlayerPanel extends FContainer {
     private forge.screens.match.ArenaDuelLayout.Rect arenaPilesSlot;
     private forge.screens.match.ArenaDuelLayout.Rect arenaFieldSlot;
     private forge.screens.match.ArenaDuelLayout.Rect arenaHandSlot;
+    /** Full FieldScroller height — used for continuous backdrop UV mapping. */
+    private float arenaScrollerHeight;
 
     /**
      * Apply panel-local avatar / piles / field / hand rects from ArenaDuelLayout.
@@ -430,10 +437,19 @@ public class VPlayerPanel extends FContainer {
             final forge.screens.match.ArenaDuelLayout.Rect pilesSlot,
             final forge.screens.match.ArenaDuelLayout.Rect fieldSlot,
             final forge.screens.match.ArenaDuelLayout.Rect handSlot) {
+        applyArenaSlots(avatarSlot, pilesSlot, fieldSlot, handSlot, 0f);
+    }
+
+    public void applyArenaSlots(final forge.screens.match.ArenaDuelLayout.Rect avatarSlot,
+            final forge.screens.match.ArenaDuelLayout.Rect pilesSlot,
+            final forge.screens.match.ArenaDuelLayout.Rect fieldSlot,
+            final forge.screens.match.ArenaDuelLayout.Rect handSlot,
+            final float scrollerHeight) {
         arenaAvatarSlot = avatarSlot;
         arenaPilesSlot = pilesSlot;
         arenaFieldSlot = fieldSlot;
         arenaHandSlot = handSlot;
+        arenaScrollerHeight = scrollerHeight;
         if (getWidth() > 0 && getHeight() > 0) {
             doArenaLayout(getWidth(), getHeight());
         }
@@ -456,15 +472,23 @@ public class VPlayerPanel extends FContainer {
         final forge.screens.match.ArenaDuelLayout.Rect fieldR = arenaFieldSlot;
         final forge.screens.match.ArenaDuelLayout.Rect handR = arenaHandSlot;
 
-        // Avatar + life (selectPlayer targets). Life overlays the bottom of the
-        // avatar with a dark scrim — placing it under the avatar would sit inside
-        // the hand band (playerHand is full-width below the field).
+        // Avatar + Arena life badge beside it (MTG Arena-style high-contrast total).
         if (av != null && av.w > 1f && av.h > 1f) {
             avatar.setVisible(true);
             avatar.setBounds(av.x, av.y, av.w, av.h);
-            final float lifeH = Math.min(Math.max(Utils.scale(16), av.h * 0.32f), Utils.scale(24));
+            final float badgeH = Math.min(Math.max(Utils.scale(36), av.h * 0.55f), av.h * 0.85f);
+            final float badgeW = Math.min(Math.max(Utils.scale(44), av.w * 0.72f), Utils.scale(64));
+            // Prefer to the right of the avatar inside the field; clamp into panel.
+            float badgeX = av.x + av.w - Utils.scale(8);
+            float badgeY = av.y + (av.h - badgeH) * 0.55f;
+            if (badgeX + badgeW > width - Utils.scale(2)) {
+                badgeX = Math.max(0f, av.x + av.w - badgeW);
+            }
+            if (badgeY + badgeH > height) {
+                badgeY = Math.max(0f, height - badgeH);
+            }
             lblLife.setVisible(true);
-            lblLife.setBounds(av.x, av.y + av.h - lifeH, av.w, lifeH);
+            lblLife.setBounds(badgeX, badgeY, badgeW, badgeH);
             updateLife();
         } else {
             avatar.setVisible(false);
@@ -581,8 +605,9 @@ public class VPlayerPanel extends FContainer {
     }
 
     /**
-     * Stretch the match plate across this panel. Avoids screen-aligned UVs that
-     * map the lower player band onto dark water and read as a flat void.
+     * Paint this panel's slice of the continuous Arena scroller backdrop.
+     * Uses scroller-relative Y so opponent and local halves share one forest-
+     * biased ADV_BG_MATCH mapping (no per-panel full-image stretch).
      */
     private void paintArenaPanelBackdrop(final Graphics g) {
         forge.assets.FSkinTexture plate = forge.assets.FSkinTexture.ADV_BG_MATCH;
@@ -591,14 +616,18 @@ public class VPlayerPanel extends FContainer {
         }
         final float w = getWidth();
         final float h = getHeight();
-        // Opaque in-bounds plate only. Negative-Y "forest bias" blits escaped the
-        // flipped opponent panel and punched FBO alpha holes into the other half.
+        // Scroller-relative top: opponent panel at 0, local below centre gap.
+        final float scrollerY = getTop();
+        final float fullH = arenaScrollerHeight > 1f
+                ? arenaScrollerHeight : Math.max(h, scrollerY + h);
         g.resetAlphaComposite();
         g.startClip(0, 0, w, h);
         try {
             g.fillRect(ARENA_PANEL_PLATE, 0, 0, w, h);
             if (plate.getWidth() > 0) {
-                g.drawImage(plate, 0, 0, w, h);
+                // Map upper half of ADV_BG_MATCH (sky/trees) across the whole scroller.
+                final float imgH = fullH / 0.50f;
+                g.drawImage(plate, 0, -scrollerY, w, imgH);
             }
         } finally {
             g.endClip();
@@ -964,12 +993,10 @@ public class VPlayerPanel extends FContainer {
                     }
                     adjustHeight = (mod > 2) && (avatar.getHeight() < halfHeight * mod) ? mod : 1;
                 }
+            } else if (isArenaDuelLayout()) {
+                paintArenaLifeBadge(g);
             } else {
                 if (poisonCounters == 0 && energyCounters == 0 && manaShards == 0) {
-                    // Arena: dark scrim so the total stays readable over avatar art.
-                    if (isArenaDuelLayout()) {
-                        g.fillRect(Color.DARK_GRAY, 0, 0, getWidth(), getHeight());
-                    }
                     g.drawText(lifeStr, Forge.altZoneTabs ? LIFE_FONT_ALT : LIFE_FONT, getInfoForeColor(), 0, 0, getWidth(), getHeight(), false, Align.center, true);
                 } else {
                     float halfHeight = getHeight() / 2;
@@ -990,6 +1017,58 @@ public class VPlayerPanel extends FContainer {
                 }
             }
         }
+
+        /** Arena-style opaque life badge: large cream total + poison/energy when non-zero. */
+        private void paintArenaLifeBadge(final Graphics g) {
+            final float w = getWidth();
+            final float h = getHeight();
+            g.resetAlphaComposite();
+            g.fillRect(ARENA_LIFE_BADGE_FILL, 0, 0, w, h);
+            g.drawRect(Math.max(2f, Utils.scale(2)), ARENA_LIFE_BADGE_BORDER, 0, 0, w, h);
+            final boolean showCounters = poisonCounters > 0 || energyCounters > 0;
+            final float lifeH = showCounters ? h * 0.62f : h;
+            g.drawText(lifeStr, ARENA_LIFE_FONT, ARENA_LIFE_BADGE_INK,
+                    1f, 0, w - 2f, lifeH, false, Align.center, true);
+            if (showCounters) {
+                final float cy = lifeH;
+                final float ch = h - lifeH;
+                final float icon = Math.min(ch - 2f, Utils.scale(14));
+                float x = Utils.scale(3);
+                if (poisonCounters > 0) {
+                    g.drawImage(FSkinImage.POISON, x, cy + (ch - icon) / 2f, icon, icon);
+                    g.drawText(String.valueOf(poisonCounters), ARENA_LIFE_COUNTER_FONT, ARENA_LIFE_BADGE_INK,
+                            x + icon + 1f, cy, w - x - icon - 2f, ch, false, Align.left, true);
+                    x += icon + ARENA_LIFE_COUNTER_FONT.getBounds(String.valueOf(poisonCounters)).width + Utils.scale(6);
+                }
+                if (energyCounters > 0) {
+                    g.drawImage(FSkinImage.ENERGY, x, cy + (ch - icon) / 2f, icon, icon);
+                    g.drawText(String.valueOf(energyCounters), ARENA_LIFE_COUNTER_FONT, ARENA_LIFE_BADGE_INK,
+                            x + icon + 1f, cy, w - x - icon - 2f, ch, false, Align.left, true);
+                }
+            }
+        }
+
+        /** Life total shown on the Arena badge (for GL pixel/text asserts). */
+        String getArenaLifeLabel() {
+            return lifeStr;
+        }
+    }
+
+    /** Screen-space bounds of the Arena life badge, or null when hidden. */
+    public float[] getArenaLifeBadgeScreenBounds() {
+        if (!isArenaDuelLayout() || lblLife == null || !lblLife.isVisible()
+                || lblLife.getWidth() < 2f || lblLife.getHeight() < 2f) {
+            return null;
+        }
+        return new float[] {
+                lblLife.screenPos.x, lblLife.screenPos.y,
+                lblLife.getWidth(), lblLife.getHeight()
+        };
+    }
+
+    /** Label text currently painted on the Arena life badge. */
+    public String getArenaLifeLabel() {
+        return lblLife == null ? null : lblLife.getArenaLifeLabel();
     }
 
     /**

@@ -54,11 +54,18 @@ import forge.util.Utils;
 public class ArenaDuelScreen extends MatchScreen {
     private static final Color CENTRE_STROKE = new Color(0.75f, 0.70f, 0.40f, 1f);
     private static final Color BACKDROP_PLATE = new Color(0.10f, 0.16f, 0.12f, 1f);
+    private static final Color PROMPT_BTN_FACE = new Color(0.28f, 0.34f, 0.44f, 1f);
+    private static final Color PROMPT_BTN_BORDER = new Color(0.85f, 0.88f, 0.94f, 1f);
+    private static final Color PROMPT_BTN_INK = new Color(1f, 1f, 1f, 1f);
+    /** Absolute (unscaled) sizes so xvfb AVG_FINGER cannot blow captions into "…". */
+    private static final FSkinFont PROMPT_BTN_FONT = FSkinFont._get(18);
+    private static final FSkinFont PROMPT_MSG_FONT = FSkinFont._get(16);
 
     private final VArenaStackColumn stackColumn;
     private final FLabel btnContext;
     private final FLabel btnCancel;
     private final FLabel btnPassUntilEot;
+    private final FDisplayObject promptChromePainter;
     private ArenaDuelLayout.Result lastLayout;
     private int lastStackSize = -1;
 
@@ -68,9 +75,11 @@ public class ArenaDuelScreen extends MatchScreen {
         final FSkinColor btnFace = FSkinColor.getStandardColor(new Color(0.22f, 0.28f, 0.36f, 1f));
         final FSkinColor btnFaceDim = FSkinColor.getStandardColor(new Color(0.18f, 0.22f, 0.28f, 1f));
         final FSkinColor btnInk = FSkinColor.getStandardColor(240, 240, 245);
+        // Hit targets only — captions are painted by promptChromePainter above overlays
+        // so FLabel theme / scale cannot collapse them to ellipsis.
         btnContext = add(new FLabel.Builder()
-                .text("OK")
-                .font(FSkinFont.get(16))
+                .text("")
+                .font(PROMPT_BTN_FONT)
                 .align(Align.center)
                 .opaque(true)
                 .pressedColor(btnFace)
@@ -78,8 +87,8 @@ public class ArenaDuelScreen extends MatchScreen {
                 .command(this::onContext)
                 .build());
         btnCancel = add(new FLabel.Builder()
-                .text("Cancel")
-                .font(FSkinFont.get(16))
+                .text("")
+                .font(PROMPT_BTN_FONT)
                 .align(Align.center)
                 .opaque(true)
                 .pressedColor(btnFace)
@@ -87,14 +96,26 @@ public class ArenaDuelScreen extends MatchScreen {
                 .command(this::onCancel)
                 .build());
         btnPassUntilEot = add(new FLabel.Builder()
-                .text(ArenaContextActions.passUntilEotLabel())
-                .font(FSkinFont.get(13))
+                .text("")
+                .font(PROMPT_BTN_FONT)
                 .align(Align.center)
                 .opaque(true)
                 .pressedColor(btnFaceDim)
                 .textColor(btnInk)
                 .command(this::onPassUntilEot)
                 .build());
+        promptChromePainter = add(new FDisplayObject() {
+            @Override
+            protected boolean drawAboveOverlay() {
+                return true;
+            }
+
+            @Override
+            public void draw(final Graphics g) {
+                paintPromptChrome(g);
+            }
+        });
+        promptChromePainter.setBounds(0, 0, 1, 1);
         // Controller: Left Trigger still fires VPrompt OK (same selectButtonOk seam);
         // these labels are touch/mouse/primary targets and stay in the pad tab order
         // via FScreen child traversal once focused.
@@ -246,10 +267,18 @@ public class ArenaDuelScreen extends MatchScreen {
             remove(btnPassUntilEot);
             add(btnPassUntilEot);
         }
+        // Painter last + drawAboveOverlay so captions win over any earlier overlay flush.
+        if (promptChromePainter != null) {
+            remove(promptChromePainter);
+            add(promptChromePainter);
+            promptChromePainter.setBounds(0, 0, getWidth(), getHeight());
+        }
     }
 
     /**
-     * Host both players' phase indicators in the Arena phaseRail band (screen space).
+     * Host the local player's phase indicator across the full Arena phaseRail band.
+     * One full-height rail keeps UP/DR/M1… captions readable; the opponent's classic
+     * strip stays suppressed via {@link VPhaseIndicator#setArenaRailHosted}.
      */
     private void layoutPhaseRail() {
         if (lastLayout == null) {
@@ -261,17 +290,29 @@ public class ArenaDuelScreen extends MatchScreen {
         if (rail == null || top == null || bottom == null) {
             return;
         }
-        hostPhaseInRail(top.getPhaseIndicator(), rail, true);
-        hostPhaseInRail(bottom.getPhaseIndicator(), rail, false);
+        // One full rail for the local (bottom) player — readable UP/DR/M1… labels.
+        suppressPhaseRail(top.getPhaseIndicator());
+        hostPhaseInRail(bottom.getPhaseIndicator(), rail);
     }
 
-    private void hostPhaseInRail(final VPhaseIndicator phase, final ArenaDuelLayout.Rect rail,
-            final boolean opponentHalf) {
+    private void suppressPhaseRail(final VPhaseIndicator phase) {
+        if (phase == null) {
+            return;
+        }
+        phase.setVisible(false);
+        phase.setBounds(0, 0, 0, 0);
+        // Keep hosted=false so arenaPhaseChromeSuppressed hides any leftover strip.
+        if (phase.isArenaRailHosted()) {
+            remove(phase);
+            phase.setArenaRailHosted(false);
+        }
+    }
+
+    private void hostPhaseInRail(final VPhaseIndicator phase, final ArenaDuelLayout.Rect rail) {
         if (phase == null) {
             return;
         }
         if (!phase.isArenaRailHosted()) {
-            // FDisplayObject has no parent pointer — pull from both panels then adopt once.
             final VPlayerPanel top = getTopPlayerPanel();
             final VPlayerPanel bottom = getBottomPlayerPanel();
             if (top != null) {
@@ -286,16 +327,8 @@ public class ArenaDuelScreen extends MatchScreen {
             phase.setArenaRailHosted(true);
         }
         phase.setVisible(true);
-        final boolean landscape = Forge.isLandscapeMode();
-        if (landscape) {
-            final float half = rail.h / 2f;
-            final float y = opponentHalf ? rail.y : rail.y + half;
-            phase.setBounds(rail.x, y, rail.w, half);
-        } else {
-            final float half = rail.w / 2f;
-            final float x = opponentHalf ? rail.x : rail.x + half;
-            phase.setBounds(x, rail.y, half, rail.h);
-        }
+        phase.resetFont();
+        phase.setBounds(rail.x, rail.y, rail.w, rail.h);
     }
 
     @Override
@@ -328,17 +361,19 @@ public class ArenaDuelScreen extends MatchScreen {
         }
 
         // Panel-local slots: convert screen-space Arena rects into panel space.
+        final float scrollerH = opp.h + centre.h + player.h;
         applyPanelSlots(top, opp,
                 lastLayout.get("opponentAvatar"), lastLayout.get("opponentPiles"),
-                lastLayout.get("opponentField"), null);
+                lastLayout.get("opponentField"), null, scrollerH);
         applyPanelSlots(bottom, player,
                 lastLayout.get("playerAvatar"), lastLayout.get("playerPiles"),
-                lastLayout.get("playerField"), lastLayout.get("playerHand"));
+                lastLayout.get("playerField"), lastLayout.get("playerHand"), scrollerH);
     }
 
     private static void applyPanelSlots(final VPlayerPanel panel, final ArenaDuelLayout.Rect area,
             final ArenaDuelLayout.Rect avatar, final ArenaDuelLayout.Rect piles,
-            final ArenaDuelLayout.Rect field, final ArenaDuelLayout.Rect hand) {
+            final ArenaDuelLayout.Rect field, final ArenaDuelLayout.Rect hand,
+            final float scrollerH) {
         if (panel == null || area == null) {
             return;
         }
@@ -346,7 +381,8 @@ public class ArenaDuelScreen extends MatchScreen {
                 toLocal(avatar, area),
                 toLocal(piles, area),
                 toLocal(field, area),
-                hand == null ? null : toLocal(hand, area));
+                hand == null ? null : toLocal(hand, area),
+                scrollerH);
     }
 
     private static ArenaDuelLayout.Rect toLocal(final ArenaDuelLayout.Rect screen,
@@ -407,18 +443,18 @@ public class ArenaDuelScreen extends MatchScreen {
         }
         refreshContextLabels();
         refreshStackIfChanged(false);
-        // Paint opaque faces for Arena prompt chrome. FLabel theme gradients can
-        // collapse to the near-black prompt bed under FBO capture; this keeps the
-        // Cancel / OK / Pass-EOT targets readable for mouse, pad, and screenshots.
-        paintPromptChromeFace(g, btnContext);
-        paintPromptChromeFace(g, btnCancel);
-        paintPromptChromeFace(g, btnPassUntilEot);
     }
 
-    private static final Color PROMPT_BTN_FACE = new Color(0.28f, 0.34f, 0.44f, 1f);
-    private static final Color PROMPT_BTN_BORDER = new Color(0.75f, 0.78f, 0.85f, 1f);
+    /** Opaque faces + captions for Arena prompt chrome (also used by promptChromePainter). */
+    private void paintPromptChrome(final Graphics g) {
+        refreshContextLabels();
+        paintPromptChromeFace(g, btnContext, contextCaption);
+        paintPromptChromeFace(g, btnCancel, cancelCaption);
+        paintPromptChromeFace(g, btnPassUntilEot, ArenaContextActions.passUntilEotLabel());
+        paintPromptMessage(g);
+    }
 
-    private void paintPromptChromeFace(final Graphics g, final FLabel btn) {
+    private void paintPromptChromeFace(final Graphics g, final FLabel btn, final String caption) {
         if (btn == null || !btn.isVisible() || btn.getWidth() < 2f || btn.getHeight() < 2f) {
             return;
         }
@@ -426,19 +462,37 @@ public class ArenaDuelScreen extends MatchScreen {
         final float y = btn.getTop();
         final float w = btn.getWidth();
         final float h = btn.getHeight();
+        g.resetAlphaComposite();
         g.fillRect(PROMPT_BTN_FACE, x, y, w, h);
-        g.drawRect(Utils.scale(1), PROMPT_BTN_BORDER, x, y, w, h);
-        // Prefer the label's logical caption; FLabel may ellipsize getText() to "…".
-        String text = btn == btnCancel ? cancelCaption
-                : btn == btnPassUntilEot ? ArenaContextActions.passUntilEotLabel()
-                : contextCaption;
+        g.drawRect(2f, PROMPT_BTN_BORDER, x, y, w, h);
+        String text = caption;
         if (text == null || text.isEmpty() || "…".equals(text) || "...".equals(text)) {
-            text = btn.getText();
+            text = btn == btnCancel ? "Cancel"
+                    : btn == btnPassUntilEot ? ArenaContextActions.passUntilEotLabel()
+                    : "OK";
         }
-        if (text != null && !text.isEmpty() && !"…".equals(text) && !"...".equals(text)) {
-            g.drawText(text, FSkinFont.get(14), Color.WHITE,
-                    x + 2f, y, w - 4f, h, false, Align.center, true);
+        g.drawText(text, PROMPT_BTN_FONT, PROMPT_BTN_INK,
+                x + 4f, y, w - 8f, h, false, Align.center, true);
+    }
+
+    private void paintPromptMessage(final Graphics g) {
+        if (lastLayout == null) {
+            return;
         }
+        final ArenaDuelLayout.Rect prompt = lastLayout.get("promptBar");
+        if (prompt == null || prompt.w < 8f || prompt.h < 8f) {
+            return;
+        }
+        final VPrompt vp = getActivePrompt();
+        String msg = vp == null ? null : vp.getMessage();
+        if (msg == null || msg.isEmpty()) {
+            return;
+        }
+        // Strip mana braces for the chrome line so fitText stays readable.
+        msg = msg.replace("{", "").replace("}", "");
+        g.resetAlphaComposite();
+        g.drawText(msg, PROMPT_MSG_FONT, PROMPT_BTN_INK,
+                prompt.x + 4f, prompt.y, prompt.w - 8f, prompt.h, true, Align.center, true);
     }
 
     private String contextCaption = "OK";
@@ -468,8 +522,8 @@ public class ArenaDuelScreen extends MatchScreen {
         final String ok = prompt == null || prompt.getBtnOk() == null ? null : prompt.getBtnOk().getText();
         final String cancel = prompt == null || prompt.getBtnCancel() == null
                 ? null : prompt.getBtnCancel().getText();
-        // Use the prompt's own localized labels — do not force Resolve/Pass.
-        btnContext.setText(ok == null || ok.isEmpty() ? "OK" : ok);
+        // Captions live on fields; FLabel text stays empty so theme draw cannot ellipsize.
+        contextCaption = sanitizeCaption(ok, "OK");
         final boolean okEnabled = prompt != null && prompt.getBtnOk() != null && prompt.getBtnOk().isEnabled();
         btnContext.setEnabled(okEnabled);
 
@@ -480,9 +534,27 @@ public class ArenaDuelScreen extends MatchScreen {
                 && cancel != null && !cancel.isEmpty();
         btnCancel.setVisible(cancelWanted);
         if (cancelWanted) {
-            btnCancel.setText(cancel);
+            cancelCaption = sanitizeCaption(cancel, "Cancel");
             btnCancel.setEnabled(true);
         }
+    }
+
+    private static String sanitizeCaption(final String raw, final String fallback) {
+        if (raw == null || raw.isEmpty() || "…".equals(raw) || "...".equals(raw)
+                || "··".equals(raw) || "• • •".equals(raw)) {
+            return fallback;
+        }
+        return raw;
+    }
+
+    /** Caption currently painted on the Cancel chrome (for GL / screenshot asserts). */
+    public String arenaCancelCaption() {
+        return cancelCaption;
+    }
+
+    /** Caption currently painted on the primary context chrome. */
+    public String arenaContextCaption() {
+        return contextCaption;
     }
 
     private void onContext(final FEvent e) {

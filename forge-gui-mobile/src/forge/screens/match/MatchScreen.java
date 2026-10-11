@@ -1188,13 +1188,17 @@ public class MatchScreen extends FScreen {
                 }
                 final float aw = getWidth();
                 final float ah = getHeight();
-                // Fill the whole scroller with an opaque stretched plate. Aspect-fit
-                // centering mapped the lower band onto dark water; negative-Y bias
-                // escaped clips and punched alpha holes into the other half.
+                // Map the upper half of ADV_BG_MATCH (sky/trees) across the whole
+                // scroller so opponent and local fields share one forest atmosphere.
                 g.resetAlphaComposite();
                 g.fillRect(ARENA_SEAL_PLATE, 0, 0, aw, ah);
                 if (arenaBG.getWidth() > 0) {
-                    g.drawImage(arenaBG, 0, 0, aw, ah);
+                    g.startClip(0, 0, aw, ah);
+                    try {
+                        g.drawImage(arenaBG, 0, 0, aw, ah / 0.50f);
+                    } finally {
+                        g.endClip();
+                    }
                 }
                 g.resetAlphaComposite();
                 return;
@@ -1282,12 +1286,14 @@ public class MatchScreen extends FScreen {
                 if (gapH > 1f) {
                     final FSkinTexture arenaBG = FSkinTexture.ADV_BG_MATCH.getWidth() > 0
                             ? FSkinTexture.ADV_BG_MATCH : FSkinTexture.BG_MATCH;
+                    // Same continuous forest mapping as drawBackground — seal only the
+                    // empty centre band (no card reseal over field/hand).
+                    final float ah = getHeight();
                     g.resetAlphaComposite();
                     g.startClip(0, gapY, aw, gapH);
                     try {
                         g.fillRect(ARENA_SEAL_PLATE, 0, gapY, aw, gapH);
                         if (arenaBG.getWidth() > 0) {
-                            final float ah = getHeight();
                             g.drawImage(arenaBG, 0, 0, aw, ah / 0.50f);
                         }
                     } finally {

@@ -269,24 +269,8 @@ public class VField extends FContainer {
         if (!arenaLayoutActive()) {
             return;
         }
-        // In-bounds match plate (no negative-Y bias — that escaped flipped panels).
-        g.resetAlphaComposite();
-        forge.assets.FSkinTexture plate = forge.assets.FSkinTexture.ADV_BG_MATCH;
-        if (plate.getWidth() <= 0) {
-            plate = forge.assets.FSkinTexture.BG_MATCH;
-        }
-        final float w = getWidth();
-        final float h = getHeight();
-        g.startClip(0, 0, w, h);
-        try {
-            g.fillRect(new com.badlogic.gdx.graphics.Color(0.10f, 0.16f, 0.12f, 1f), 0, 0, w, h);
-            if (plate.getWidth() > 0) {
-                g.drawImage(plate, 0, 0, w, h);
-            }
-        } finally {
-            g.endClip();
-        }
-        g.resetAlphaComposite();
+        // Transparent in Arena: VPlayerPanel paints the continuous scroller-relative
+        // forest plate behind the field so both halves share one backdrop.
     }
 
     @Override

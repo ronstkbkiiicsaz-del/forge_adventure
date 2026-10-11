@@ -193,11 +193,12 @@ public final class ArenaDuelLayout {
                 contentX, playerY + fieldH, contentW, handH));
 
         // Prompt strip: OK context, Cancel/secondary, take-back, message, pass-until-EOT.
+        // Keep Cancel/OK wide enough for absolute 18px captions (no ellipsis).
         final float promptY = height - promptH;
-        final float ctxW = Math.min(contentW * 0.18f, promptH * 2.2f);
-        final float cancelW = Math.min(contentW * 0.18f, promptH * 2.2f);
-        final float takeW = Math.min(contentW * 0.12f, promptH * 1.5f);
-        final float eotW = Math.min(contentW * 0.18f, promptH * 2.0f);
+        final float ctxW = Math.max(96f, Math.min(contentW * 0.16f, promptH * 2.6f));
+        final float cancelW = Math.max(110f, Math.min(contentW * 0.16f, promptH * 2.6f));
+        final float takeW = Math.min(contentW * 0.10f, promptH * 1.4f);
+        final float eotW = Math.max(96f, Math.min(contentW * 0.16f, promptH * 2.2f));
         m.put("contextButton", new Rect("contextButton", 0, promptY, ctxW, promptH));
         m.put("cancelButton", new Rect("cancelButton", ctxW, promptY, cancelW, promptH));
         m.put("takeBackSlot", new Rect("takeBackSlot", ctxW + cancelW, promptY, takeW, promptH));
@@ -255,10 +256,10 @@ public final class ArenaDuelLayout {
                 contentX, playerY + fieldH, contentW, handH));
 
         final float promptY = height - promptH;
-        final float ctxW = Math.min(width * 0.22f, promptH * 2.0f);
-        final float cancelW = Math.min(width * 0.22f, promptH * 2.0f);
-        final float takeW = Math.min(width * 0.14f, promptH * 1.4f);
-        final float eotW = Math.min(width * 0.20f, promptH * 1.8f);
+        final float ctxW = Math.max(96f, Math.min(width * 0.20f, promptH * 2.4f));
+        final float cancelW = Math.max(110f, Math.min(width * 0.20f, promptH * 2.4f));
+        final float takeW = Math.min(width * 0.12f, promptH * 1.3f);
+        final float eotW = Math.max(96f, Math.min(width * 0.18f, promptH * 2.0f));
         m.put("contextButton", new Rect("contextButton", 0, promptY, ctxW, promptH));
         m.put("cancelButton", new Rect("cancelButton", ctxW, promptY, cancelW, promptH));
         m.put("takeBackSlot", new Rect("takeBackSlot", ctxW + cancelW, promptY, takeW, promptH));
