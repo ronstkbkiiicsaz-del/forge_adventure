@@ -11,6 +11,7 @@ import forge.game.event.GameEventCardDamaged;
 import forge.game.event.GameEventCardDamaged.DamageType;
 import forge.game.event.GameEventMulligan;
 import forge.game.event.GameEventShuffle;
+import forge.game.player.PlayerView;
 import forge.localinstance.properties.ForgePreferences.FPref;
 import forge.model.FModel;
 import forge.sound.ISoundPlaybackHooks;
@@ -206,10 +207,11 @@ public class Au1SoundEffectsTest {
     public void enrichmentMapsDuelEventsToCatalogIds() {
         Au1Sounds.drainRecordedPlays();
 
-        Assert.assertTrue(Au1SoundEnrichment.INSTANCE.handleGameEvent(new GameEventShuffle(null)));
+        PlayerView nobody = null;
+        Assert.assertTrue(Au1SoundEnrichment.INSTANCE.handleGameEvent(new GameEventShuffle(nobody)));
         Assert.assertTrue(Au1Sounds.drainRecordedPlays().contains("au1_shuffle"));
 
-        Assert.assertTrue(Au1SoundEnrichment.INSTANCE.handleGameEvent(new GameEventMulligan(null)));
+        Assert.assertTrue(Au1SoundEnrichment.INSTANCE.handleGameEvent(new GameEventMulligan(nobody)));
         Assert.assertTrue(Au1Sounds.drainRecordedPlays().contains("au1_mulligan"));
 
         Assert.assertTrue(Au1SoundEnrichment.INSTANCE.handleGameEvent(
