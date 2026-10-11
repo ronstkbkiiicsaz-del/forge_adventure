@@ -366,10 +366,39 @@ public class SeasonsSn1Test {
         Assert.assertTrue(season.isUndoAvailable());
         season.undoPick(window);
         Assert.assertFalse(window.getUnlockedHistory().contains(pick),
-                "undo must remove the set from unlockedHistory");
+                "undo must remove the set from unlockedHistory when it was a first unlock");
         Assert.assertEquals(season.getShortlist(), shortlistBefore,
                 "undo must restore the same shortlist (no nanoTime reseed)");
         Assert.assertTrue(season.isChoicePending());
+    }
+
+    @Test
+    public void undoKeepsHistoryWhenReAddingPreviouslyRotatedSet() {
+        StandardWindow window = new StandardWindow();
+        // Full window; history includes M11 which will rotate out then come back.
+        window.init(List.of("M11", "M12", "ZEN", "ROE"));
+        Assert.assertTrue(window.getUnlockedHistory().contains("M11"));
+        AdventureSeason season = new AdventureSeason();
+        season.initNewGame(window);
+        // Rotate M11 out by picking a new set.
+        season.endByMastery(window, new CardPool());
+        String firstPick = season.getShortlist().get(0);
+        season.applyPick(window, firstPick, false);
+        season.lockUndo();
+        Assert.assertFalse(window.getSets().contains("M11"), "M11 rotated out");
+        Assert.assertTrue(window.getUnlockedHistory().contains("M11"), "history keeps M11");
+
+        // Season end again; force-pick M11 back via chooseAny (Planar Key).
+        season.endByMastery(window, new CardPool());
+        season.addPlanarKeys(1);
+        Assert.assertFalse(window.getSets().contains("M11"));
+        season.applyPick(window, "M11", true);
+        Assert.assertTrue(window.getSets().contains("M11"));
+        Assert.assertTrue(window.getUnlockedHistory().contains("M11"));
+        season.undoPick(window);
+        Assert.assertTrue(window.getUnlockedHistory().contains("M11"),
+                "undo must not erase a real prior unlock when re-adding a rotated-out set");
+        Assert.assertFalse(window.getSets().contains("M11"));
     }
 
     @Test
@@ -486,7 +515,7 @@ public class SeasonsSn1Test {
     }
 
     @Test
-    public void innRestOncePerInGameDay() {
+    public void innRestRecordsDayRestedSoNextNightIsAllowed() {
         ConfigData freeRest = new Json().fromJson(ConfigData.class,
                 new FileHandle(resolveForgeGuiDir()
                         .resolve("res/adventure/Shandalar Ascendant/config.json").toFile()));
@@ -498,14 +527,87 @@ public class SeasonsSn1Test {
         AdventureSeason season = new AdventureSeason();
         season.initNewGame(window);
         Assert.assertEquals(season.restGoldCost(), 0);
+        int dayBefore = season.calendarDayNumber();
         Assert.assertTrue(season.canRestToday());
         Assert.assertTrue(season.restUntilMorning(window, new CardPool()));
-        Assert.assertFalse(season.canRestToday(), "second rest same calendar day must be blocked");
-        Assert.assertFalse(season.restUntilMorning(window, new CardPool()));
-        // One explore-day later, Rest is available again.
-        season.tickExploring(15f * 60f + 1f, window, new CardPool());
-        Assert.assertTrue(season.canRestToday(), "new calendar day unlocks Rest again");
+        Assert.assertTrue(season.calendarDayNumber() > dayBefore, "Rest advances to next morning");
+        // lastRestDay must be the night rested (dayBefore), not the morning after —
+        // otherwise the whole next calendar day blocks Rest.
+        Assert.assertTrue(season.canRestToday(),
+                "next morning must allow Rest again (rest the next night)");
         Assert.assertTrue(season.restUntilMorning(window, new CardPool()));
+    }
+
+    @Test
+    public void undoRestoresConsumedPin() {
+        StandardWindow window = new StandardWindow();
+        window.init(List.of("M11", "M12", "ZEN", "ROE"));
+        AdventureSeason season = new AdventureSeason();
+        season.initNewGame(window);
+        Assert.assertTrue(season.pinSet("M11", window));
+        Assert.assertEquals(season.getPinnedSet(), "M11");
+        season.endByMastery(window, new CardPool());
+        String pick = season.getShortlist().get(0);
+        season.applyPick(window, pick, false);
+        Assert.assertNull(season.getPinnedSet(), "pin consumed by skip path");
+        season.undoPick(window);
+        Assert.assertEquals(season.getPinnedSet(), "M11", "undo must restore the consumed pin");
+    }
+
+    @Test
+    public void undoRemovesGateFromInactiveHomeBlob() throws Exception {
+        forge.adventure.data.PointOfInterestData.clearRuntimeCacheForTests();
+        forge.adventure.world.SetPlaneGenerator.ensurePlanarGateRegistered();
+        forge.adventure.data.PointOfInterestData gateDef =
+                forge.adventure.data.PointOfInterestData.getPointOfInterest("PlanarGate");
+        Assert.assertNotNull(gateDef, "PlanarGate template required");
+
+        forge.adventure.world.World home = new forge.adventure.world.World();
+        forge.adventure.data.WorldData data = new forge.adventure.data.WorldData();
+        data.width = 64;
+        data.height = 64;
+        data.tileSize = 16;
+        data.playerStartPosX = 0.5f;
+        data.playerStartPosY = 0.5f;
+        home.installTestWorldGrid(data, 11L);
+        String planeId = forge.adventure.world.SetPlaneGenerator.planeIdForSet("ZEN");
+        forge.adventure.pointofintrest.PointOfInterest gate =
+                new forge.adventure.pointofintrest.PointOfInterest(
+                        gateDef, new com.badlogic.gdx.math.Vector2(48f, 48f), new java.util.Random(1L));
+        gate.setTargetPlane(planeId);
+        home.addPointOfInterest(gate);
+        Assert.assertTrue(forge.adventure.world.PlanarPortalPlacer.existingPortalTargets(home)
+                .contains(planeId));
+
+        forge.adventure.world.MultiverseState multi = new forge.adventure.world.MultiverseState();
+        multi.initHomeFromLive(11L, 0f, 0f);
+        forge.adventure.world.PlaneMeta homeMeta = multi.getMeta(forge.adventure.world.PlaneMeta.HOME_ID);
+        // Hashable test save carries mapPoiIds without requiring a full pixmap world.
+        forge.adventure.util.SaveFileData worldSave = home.saveHashableStateForTest();
+        forge.adventure.util.SaveFileData blob = forge.adventure.world.PlaneBlob.pack(
+                worldSave, new forge.adventure.util.SaveFileData(),
+                new forge.adventure.util.SaveFileData(), homeMeta);
+        multi.writeInactiveBlob(forge.adventure.world.PlaneMeta.HOME_ID, blob);
+        forge.Forge.safeDispose(home);
+
+        Assert.assertTrue(forge.adventure.world.PlanarPortalPlacer
+                .removeGateFromInactiveHomeBlob(multi, planeId));
+
+        forge.adventure.util.SaveFileData updated = multi.readInactiveBlob(forge.adventure.world.PlaneMeta.HOME_ID);
+        Assert.assertNotNull(updated);
+        forge.adventure.util.SaveFileData worldData = forge.adventure.world.PlaneBlob.world(updated);
+        Assert.assertNotNull(worldData);
+        forge.adventure.pointofintrest.PointOfInterestMap map =
+                new forge.adventure.pointofintrest.PointOfInterestMap(16, 16, 4, 4);
+        map.load(worldData.readSubData("mapPoiIds"));
+        boolean stillPresent = false;
+        for (forge.adventure.pointofintrest.PointOfInterest poi : map.getAllPointOfInterest()) {
+            if (poi != null && planeId.equals(poi.getTargetPlane())) {
+                stillPresent = true;
+                break;
+            }
+        }
+        Assert.assertFalse(stillPresent, "gate must be gone from the inactive home blob after undo");
     }
 
     @Test
