@@ -632,4 +632,53 @@ public class ConfigData {
      */
     public String ql1NoKnownLocationMessage = "no known location";
 
+    // ---- Ascendant card economy (Package EC1): game prices, not real-world markets. ----
+
+    /**
+     * When true (Ascendant default), card gold prices, sell share, craft/salvage dust scales,
+     * and living town markets use {@link forge.adventure.util.AscendantCardEconomy} instead of
+     * {@code cardprices.txt} / rarity stubs. Stock worlds leave this unused.
+     */
+    public boolean ec1GamePrices = true;
+    /** Base gold value by rarity (before rank / rotation / market). Basics default to 0. */
+    public int ec1BaseCommon = 50;
+    public int ec1BaseUncommon = 150;
+    public int ec1BaseRare = 300;
+    public int ec1BaseMythic = 500;
+    public int ec1BaseSpecial = 400;
+    public int ec1BaseBasicLand = 0;
+    /**
+     * Draft-rank multiplier band. Top-ranked cards in a set approach {@link #ec1RankMultMax};
+     * bottom-ranked approach {@link #ec1RankMultMin}. Unranked cards use 1.0.
+     */
+    public float ec1RankMultMin = 0.5f;
+    public float ec1RankMultMax = 3.0f;
+    /** Multiplier while the card is legal in the current Standard window. */
+    public float ec1StandardMult = 1.25f;
+    /** Multiplier for Historic-only (rotated) cards. */
+    public float ec1HistoricMult = 0.75f;
+    /**
+     * Sell payout as a fixed share of the current local price (buy gold value). About 30%.
+     * Replaces difficulty {@code sellFactor} for Ascendant when EC1 is on.
+     */
+    public float ec1SaleShare = 0.30f;
+    /** Local market price band around the base (never leave this range). */
+    public float ec1MarketBandMin = 0.5f;
+    public float ec1MarketBandMax = 2.0f;
+    /** Supply pressure added per copy sold in a town. */
+    public float ec1MarketSellDelta = 0.15f;
+    /** Supply pressure removed per copy bought in a town. */
+    public float ec1MarketBuyDelta = 0.15f;
+    /** How strongly supply pressure bends price: price ≈ 1/(1+supply×scale). */
+    public float ec1MarketPressureScale = 1.0f;
+    /** Fraction of remaining market pressure removed per in-game day (drift toward base). */
+    public float ec1MarketDriftPerDay = 0.10f;
+    /** Towns of a color pay/charge this much more for matching-color cards. */
+    public float ec1ColorLeanMult = 1.15f;
+    /**
+     * Extra scale on salvage dust from the shared worth function (rank×rotation).
+     * Craft uses worth directly against {@link #craftCost}.
+     */
+    public float ec1SalvageWorthFactor = 1.0f;
+
 }

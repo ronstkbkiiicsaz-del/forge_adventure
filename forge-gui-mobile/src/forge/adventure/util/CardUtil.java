@@ -9,6 +9,8 @@ import forge.adventure.data.GeneratedDeckData;
 import forge.adventure.data.GeneratedDeckTemplateData;
 import forge.adventure.data.MaterialData;
 import forge.adventure.data.RewardData;
+import forge.adventure.player.AdventurePlayer;
+import forge.adventure.pointofintrest.PointOfInterestChanges;
 import forge.card.*;
 import forge.card.DeckHints.Type;
 import forge.card.mana.ManaCost;
@@ -387,6 +389,19 @@ public class CardUtil {
     public static int getCardPrice(PaperCard card) {
         if (card == null)
             return 0;
+        // EC1: Ascendant game prices (rarity + draft rank + rotation + local market).
+        // Stock worlds and Ascendant with ec1GamePrices=false keep price-list / rarity stubs.
+        if (AscendantCardEconomy.enabled()) {
+            PointOfInterestChanges market = null;
+            try {
+                AdventurePlayer player = Current.player();
+                if (player != null)
+                    market = player.getCurrentLocationChanges();
+            } catch (Exception ignored) {
+                // Headless / no player.
+            }
+            return AscendantCardEconomy.cardValue(card, market);
+        }
         CardRarity effectiveRarity = card.getRarity();
 
         if (card.getRarity() == CardRarity.BasicLand

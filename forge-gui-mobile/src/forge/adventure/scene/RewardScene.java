@@ -721,6 +721,10 @@ public class RewardScene extends UIScene {
                         Current.player().takeGold(price);
                         Current.player().getSkills().onShopPurchase(price);
                         Current.player().addReward(rewardActor.getReward());
+                        // EC1: buying a card raises its local price in this town.
+                        if (Reward.Type.Card.equals(reward.getType()) && reward.getCard() != null) {
+                            forge.adventure.util.AscendantCardEconomy.noteBought(changes, reward.getCard(), 1);
+                        }
 
                         HapticEngine.vibrate(FPref.UI_VIBRATE_ON_SHOP_ACTION, 5);
                         SoundSystem.instance.play(SoundEffectType.FlipCoin, false);

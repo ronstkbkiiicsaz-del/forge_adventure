@@ -7,10 +7,12 @@ import forge.adventure.util.SaveFileData;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Random;
 
 /**
- * Class to save point of interest changes, like sold cards and dead enemies
+ * Class to save point of interest changes, like sold cards and dead enemies.
+ * EC1 also stores per-town card market supply (optional keys; old saves load empty).
  */
 public class PointOfInterestChanges implements SaveFileContent  {
     private final HashSet<Integer> deletedObjects=new HashSet<>();
@@ -19,6 +21,12 @@ public class PointOfInterestChanges implements SaveFileContent  {
     private final java.util.Map<Integer, Long> shopSeeds = new HashMap<>();
     //private final java.util.Map<Integer, Float> shopModifiers = new HashMap<>();
     private final java.util.Map<Integer, Integer> reputation = new HashMap<>();
+    /** EC1: card name → supply pressure (positive = cheaper here). */
+    private final java.util.Map<String, Float> marketSupply = new HashMap<>();
+    /** EC1: last game-day when market drift was applied. */
+    private double marketDriftDay;
+    /** EC1: town color lean (W/U/B/R/G or biome name); null = none. */
+    private String marketColorLean;
     private Boolean isBookmarked;
     private Boolean isVisited;
 
@@ -67,6 +75,24 @@ public class PointOfInterestChanges implements SaveFileContent  {
         if (data.containsKey("reputation")) {
             reputation.putAll((java.util.Map<Integer, Integer>) data.readObject("reputation"));
         }
+        marketSupply.clear();
+        marketDriftDay = 0;
+        marketColorLean = null;
+        if (data.containsKey("ec1MarketNames") && data.containsKey("ec1MarketSupply")) {
+            Object rawNames = data.readObject("ec1MarketNames");
+            Object rawSupply = data.readObject("ec1MarketSupply");
+            if (rawNames instanceof String[] names && rawSupply instanceof float[] supply) {
+                int n = Math.min(names.length, supply.length);
+                for (int i = 0; i < n; i++) {
+                    if (names[i] != null && !names[i].isEmpty())
+                        marketSupply.put(names[i], supply[i]);
+                }
+            }
+        }
+        if (data.containsKey("ec1MarketDriftDay"))
+            marketDriftDay = data.readFloat("ec1MarketDriftDay");
+        if (data.containsKey("ec1MarketColorLean"))
+            marketColorLean = data.readString("ec1MarketColorLean");
         isBookmarked = (Boolean) data.readObject("isBookmarked");
         isVisited = (Boolean) data.readObject("isVisited");
     }
@@ -79,6 +105,21 @@ public class PointOfInterestChanges implements SaveFileContent  {
         data.storeObject("mapFlags", mapFlags);
         data.storeObject("shopSeeds", shopSeeds);
         data.storeObject("reputation", reputation);
+        if (!marketSupply.isEmpty()) {
+            String[] names = new String[marketSupply.size()];
+            float[] supply = new float[marketSupply.size()];
+            int i = 0;
+            for (Map.Entry<String, Float> e : marketSupply.entrySet()) {
+                names[i] = e.getKey();
+                supply[i] = e.getValue() == null ? 0f : e.getValue();
+                i++;
+            }
+            data.storeObject("ec1MarketNames", names);
+            data.storeObject("ec1MarketSupply", supply);
+        }
+        data.store("ec1MarketDriftDay", (float) marketDriftDay);
+        if (marketColorLean != null)
+            data.store("ec1MarketColorLean", marketColorLean);
         data.storeObject("isBookmarked", isBookmarked);
         data.storeObject("isVisited", isVisited);
         return data;
@@ -201,5 +242,73 @@ public class PointOfInterestChanges implements SaveFileContent  {
                 // HUD not built in tests.
             }
         }
+    }
+
+    // ---- EC1 living local markets ---------------------------------------------------------------
+
+    public void setMarketColorLean(String lean) {
+        this.marketColorLean = lean;
+    }
+
+    public String getMarketColorLean() {
+        return marketColorLean;
+    }
+
+    public float getMarketSupply(String cardName) {
+        if (cardName == null)
+            return 0f;
+        return marketSupply.getOrDefault(cardName, 0f);
+    }
+
+    public void addMarketSupply(String cardName, float delta) {
+        if (cardName == null || delta == 0f)
+            return;
+        float next = marketSupply.getOrDefault(cardName, 0f) + delta;
+        if (Math.abs(next) < 0.0001f)
+            marketSupply.remove(cardName);
+        else
+            marketSupply.put(cardName, next);
+    }
+
+    public void clearMarketSupply() {
+        marketSupply.clear();
+        marketDriftDay = 0;
+    }
+
+    /**
+     * Price multiplier from local supply. Positive supply → cheaper; negative → pricier.
+     * Bounded to {@code [bandMin, bandMax]} around 1.0.
+     */
+    public float marketPriceMultiplier(String cardName, float bandMin, float bandMax, float pressureScale) {
+        float supply = getMarketSupply(cardName);
+        float raw = 1f / (1f + supply * Math.max(0.0001f, pressureScale));
+        float min = Math.min(bandMin, bandMax);
+        float max = Math.max(bandMin, bandMax);
+        return Math.max(min, Math.min(max, raw));
+    }
+
+    /**
+     * Drift each card's supply toward 0 over in-game days.
+     * {@code driftPerDay} is the fraction of remaining pressure removed per day (0–1).
+     */
+    public void driftMarketsTowardBase(double currentGameDays, float driftPerDay) {
+        if (marketSupply.isEmpty() || driftPerDay <= 0f)
+            return;
+        double days = currentGameDays - marketDriftDay;
+        if (days <= 0) {
+            marketDriftDay = currentGameDays;
+            return;
+        }
+        float keep = (float) Math.pow(1.0 - Math.min(0.99, driftPerDay), days);
+        java.util.Iterator<Map.Entry<String, Float>> it = marketSupply.entrySet().iterator();
+        while (it.hasNext()) {
+            Map.Entry<String, Float> e = it.next();
+            float next = e.getValue() * keep;
+            if (Math.abs(next) < 0.0001f)
+                it.remove();
+            else
+                e.setValue(next);
+        }
+        marketDriftDay = currentGameDays;
     }
 }

@@ -153,24 +153,28 @@ public class SpellSmithScene extends UIScene {
 
         // Ascendant-only: Craft / Refine from Spell Smith without changing stock UI JSON.
         // Created once; shown per visit in enter() since the scene outlives a world switch.
+        // Registered once on the controller selectable list (EC1 craft entry points).
         if (exitSmith != null) {
             openCraft = Controls.newTextButton("Craft", () -> Forge.switchScene(CraftingScene.instance()));
             float craftW = Math.max(55f, exitSmith.getWidth() * 0.9f);
             openCraft.setBounds(exitSmith.getX() - craftW - 8f, exitSmith.getY(), craftW, exitSmith.getHeight());
             openCraft.setVisible(false);
             ui.addActor(openCraft);
+            addToSelectable(openCraft);
 
             openRefine = Controls.newTextButton("Refine", () -> Forge.switchScene(RefineScene.instance()));
             float refineW = Math.max(55f, exitSmith.getWidth() * 0.9f);
             openRefine.setBounds(openCraft.getX() - refineW - 8f, exitSmith.getY(), refineW, exitSmith.getHeight());
             openRefine.setVisible(false);
             ui.addActor(openRefine);
+            addToSelectable(openRefine);
 
             openPrismatic = Controls.newTextButton("Prism", () -> Forge.switchScene(PrismaticScene.instance()));
             float prismW = Math.max(55f, exitSmith.getWidth() * 0.9f);
             openPrismatic.setBounds(openRefine.getX() - prismW - 8f, exitSmith.getY(), prismW, exitSmith.getHeight());
             openPrismatic.setVisible(false);
             ui.addActor(openPrismatic);
+            addToSelectable(openPrismatic);
         }
     }
 
