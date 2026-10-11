@@ -3684,7 +3684,7 @@
 		"count": 1,
 		"spriteAtlas": "../common/maps/tileset/buildings.atlas",
 		"sprite": "WasteTown",
-		"map": "../common/maps/map/ascendant/starter_town.tmx",
+		"map": "../common/maps/map/ascendant/havenbrook.tmx",
 		"radiusFactor": 0.01,
 		"offsetX": 0.06,
 		"offsetY": 0.0,
