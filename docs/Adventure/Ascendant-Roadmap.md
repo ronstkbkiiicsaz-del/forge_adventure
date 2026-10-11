@@ -881,6 +881,11 @@ Forge's rules engine, card scripts and AI untouched**; this is a new presentatio
   a light shake on big hits. All animation speeds behind one setting, including "instant".
 - Sound hooks on the existing sound events.
 
+**Pop-out hand window** (`forge-gui-mobile-dev/.../HandWindow.java`): today it can show the base printing instead of the
+card's actual one (Steve's full-art foil Bloodthirsty Conqueror shows plain), because its name-based cache fallback
+(`findImageFile`) takes the first file for the name; no foil either. Either retire the window once DS1's hand is in, or
+make it use the same image lookup and foil shader as the main screen.
+
 **Delivery (one PR each, each usable on its own)**
 1. Screen skeleton: layout, auto-arranged battlefield, fanned hand, stack column, piles, context button, fallback
    dialogs for every prompt. Setting to switch screens.
