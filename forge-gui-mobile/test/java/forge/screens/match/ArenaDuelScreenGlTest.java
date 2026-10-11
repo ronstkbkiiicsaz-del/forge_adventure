@@ -119,6 +119,13 @@ public class ArenaDuelScreenGlTest {
             Assert.assertNotNull(arena.getBottomPlayerPanel());
             Assert.assertTrue(arena.getBottomPlayerPanel().getAvatar().isVisible(),
                     "player avatar must be visible in Arena layout");
+            Assert.assertTrue(arena.arenaCancelControl().isVisible(),
+                    "Cancel context button must be visible for targeting proof");
+            Assert.assertTrue(arena.arenaCancelControl().getWidth() > 8f
+                    && arena.arenaCancelControl().getHeight() > 8f,
+                    "Cancel button must have layout size");
+            Assert.assertTrue(arena.arenaContextControl().isVisible(),
+                    "primary context button must be visible");
             captureScreen(outDir.resolve("ds1-arena-duel-landscape.png"), 1280, 720);
             return null;
         });

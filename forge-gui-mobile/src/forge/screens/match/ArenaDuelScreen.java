@@ -65,12 +65,16 @@ public class ArenaDuelScreen extends MatchScreen {
     public ArenaDuelScreen(final List<VPlayerPanel> playerPanels0) {
         super(playerPanels0);
         stackColumn = add(new VArenaStackColumn());
+        final FSkinColor btnFace = FSkinColor.getStandardColor(new Color(0.22f, 0.28f, 0.36f, 1f));
+        final FSkinColor btnFaceDim = FSkinColor.getStandardColor(new Color(0.18f, 0.22f, 0.28f, 1f));
+        final FSkinColor btnInk = FSkinColor.getStandardColor(240, 240, 245);
         btnContext = add(new FLabel.Builder()
                 .text("OK")
                 .font(FSkinFont.get(16))
                 .align(Align.center)
                 .opaque(true)
-                .textColor(FSkinColor.getStandardColor(230, 230, 235))
+                .pressedColor(btnFace)
+                .textColor(btnInk)
                 .command(this::onContext)
                 .build());
         btnCancel = add(new FLabel.Builder()
@@ -78,7 +82,8 @@ public class ArenaDuelScreen extends MatchScreen {
                 .font(FSkinFont.get(16))
                 .align(Align.center)
                 .opaque(true)
-                .textColor(FSkinColor.getStandardColor(230, 230, 235))
+                .pressedColor(btnFace)
+                .textColor(btnInk)
                 .command(this::onCancel)
                 .build());
         btnPassUntilEot = add(new FLabel.Builder()
@@ -86,7 +91,8 @@ public class ArenaDuelScreen extends MatchScreen {
                 .font(FSkinFont.get(13))
                 .align(Align.center)
                 .opaque(true)
-                .textColor(FSkinColor.getStandardColor(210, 210, 220))
+                .pressedColor(btnFaceDim)
+                .textColor(btnInk)
                 .command(this::onPassUntilEot)
                 .build());
         // Controller: Left Trigger still fires VPrompt OK (same selectButtonOk seam);
@@ -158,6 +164,8 @@ public class ArenaDuelScreen extends MatchScreen {
 
         layoutPromptButtons();
         layoutPhaseRail();
+        // Keep prompt chrome above scroller / hand / phase rail in draw order.
+        bringPromptChromeToFront();
 
         // Classic VPrompt hosts message + DS4 Take back. Context / Cancel / Pass-until-EOT
         // replace the stock OK/Cancel buttons so they don't render as a tiny clipped row.
@@ -222,6 +230,21 @@ public class ArenaDuelScreen extends MatchScreen {
         if (eot != null) {
             btnPassUntilEot.setBounds(eot.x, eot.y, eot.w, eot.h);
             btnPassUntilEot.setVisible(true);
+        }
+    }
+
+    private void bringPromptChromeToFront() {
+        if (btnContext != null) {
+            remove(btnContext);
+            add(btnContext);
+        }
+        if (btnCancel != null) {
+            remove(btnCancel);
+            add(btnCancel);
+        }
+        if (btnPassUntilEot != null) {
+            remove(btnPassUntilEot);
+            add(btnPassUntilEot);
         }
     }
 

@@ -456,15 +456,15 @@ public class VPlayerPanel extends FContainer {
         final forge.screens.match.ArenaDuelLayout.Rect fieldR = arenaFieldSlot;
         final forge.screens.match.ArenaDuelLayout.Rect handR = arenaHandSlot;
 
-        // Avatar + life (selectPlayer targets). Life sits under the avatar so the
-        // total stays readable on the match plate (not buried in avatar art).
+        // Avatar + life (selectPlayer targets). Life overlays the bottom of the
+        // avatar with a dark scrim — placing it under the avatar would sit inside
+        // the hand band (playerHand is full-width below the field).
         if (av != null && av.w > 1f && av.h > 1f) {
-            final float lifeH = Math.min(Math.max(Utils.scale(18), av.h * 0.28f), Utils.scale(26));
-            final float avatarH = Math.max(1f, av.h - lifeH);
             avatar.setVisible(true);
-            avatar.setBounds(av.x, av.y, av.w, avatarH);
+            avatar.setBounds(av.x, av.y, av.w, av.h);
+            final float lifeH = Math.min(Math.max(Utils.scale(16), av.h * 0.32f), Utils.scale(24));
             lblLife.setVisible(true);
-            lblLife.setBounds(av.x, av.y + avatarH, av.w, lifeH);
+            lblLife.setBounds(av.x, av.y + av.h - lifeH, av.w, lifeH);
             updateLife();
         } else {
             avatar.setVisible(false);
@@ -966,6 +966,10 @@ public class VPlayerPanel extends FContainer {
                 }
             } else {
                 if (poisonCounters == 0 && energyCounters == 0 && manaShards == 0) {
+                    // Arena: dark scrim so the total stays readable over avatar art.
+                    if (isArenaDuelLayout()) {
+                        g.fillRect(Color.DARK_GRAY, 0, 0, getWidth(), getHeight());
+                    }
                     g.drawText(lifeStr, Forge.altZoneTabs ? LIFE_FONT_ALT : LIFE_FONT, getInfoForeColor(), 0, 0, getWidth(), getHeight(), false, Align.center, true);
                 } else {
                     float halfHeight = getHeight() / 2;
