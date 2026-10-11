@@ -687,4 +687,51 @@ public class ConfigData {
      */
     public boolean mx1CollectionLimitedImport = true;
 
+    // ---- Ascendant seasons (Package SN1): 4-set Standard + in-game calendar. ----
+
+    /**
+     * When true (Ascendant default), enable the SN1 season calendar, shortlist picks, and
+     * 4-set Standard window. Stock worlds leave this unused.
+     */
+    public boolean sn1Seasons = true;
+    /**
+     * Max sets legal in Shandalar Standard at once (SN1 default 4). Tunable; minimum 2.
+     * Replaces the hard-coded {@code StandardWindow.WINDOW_SIZE} of 3.
+     */
+    public int sn1WindowSize = 4;
+    /**
+     * Real exploring minutes that advance one in-game day (menus/pauses/idle do not count).
+     * Default 15: 15 minutes exploring = 1 day.
+     */
+    public float sn1ExploreMinutesPerDay = 15f;
+    /** Flat in-game hours charged for every duel, win or lose (default 2). */
+    public float sn1DuelHours = 2f;
+    /** Length of a normal season in in-game days (default 14). */
+    public int sn1SeasonDays = 14;
+    /** Length of each opening season in in-game days (default 7). */
+    public int sn1OpeningSeasonDays = 7;
+    /**
+     * How many short opening seasons run after New Game before normal seasons.
+     * New games start with 2 sets; each opening season adds one until the window is full.
+     */
+    public int sn1OpeningSeasonCount = 2;
+    /** Sets offered on the season-end shortlist (default 3). */
+    public int sn1ShortlistSize = 3;
+    /**
+     * In-game days after a skipped / deferred season pick before the world auto-picks
+     * the release-order option (default 3). Never forced mid-duel.
+     */
+    public int sn1GracePeriodDays = 3;
+    /** Gold cost for "Choose any set" instead of a shortlist option. */
+    public int sn1ChooseAnyGoldCost = 500;
+    /**
+     * When true, the player may pin one favourite set so it skips one rotation,
+     * once every {@link #sn1PinCooldownSeasons} seasons.
+     */
+    public boolean sn1PinEnabled = true;
+    /** Seasons that must pass between pin uses (default 3). */
+    public int sn1PinCooldownSeasons = 3;
+    /** Planar Keys granted when finishing a season whose newest set was mastered. */
+    public int sn1SeasonMasteryPlanarKeys = 1;
+
 }

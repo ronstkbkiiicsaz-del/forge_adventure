@@ -42,7 +42,7 @@ public class InnScene extends UIScene {
     }
 
 
-    TextraButton tempHitPointCost, sell, leave, event, travel;
+    TextraButton tempHitPointCost, sell, leave, event, travel, rest;
     Image healIcon, sellIcon, leaveIcon;
     private TextraLabel playerGold,playerShards,eventDescription;
 
@@ -71,6 +71,47 @@ public class InnScene extends UIScene {
         if (travel != null) {
             ui.onButtonPress("travel", InnScene.this::openTravel);
         }
+        // SN1: Rest until morning (Ascendant-only, code-added so stock inn.json stays unchanged).
+        if (Config.ascendant()) {
+            addAscendantRestButton();
+        }
+    }
+
+    private void addAscendantRestButton() {
+        if (ui.findActor("rest") != null) {
+            rest = ui.findActor("rest");
+            ui.onButtonPress("rest", InnScene.this::restUntilMorning);
+            rest.setVisible(true);
+            return;
+        }
+        rest = Controls.newTextButton("Rest", InnScene.this::restUntilMorning);
+        rest.setName("rest");
+        float[] b = restStageBounds(Forge.isLandscapeMode(), ui.getHeight());
+        rest.setBounds(b[0], b[1], b[2], b[3]);
+        ui.addActor(rest);
+        addToSelectable(rest);
+    }
+
+    /**
+     * Stage-space (y-up) Rest button bounds for the inn layouts.
+     * Landscape: left of Leave. Portrait: above Leave.
+     */
+    public static float[] restStageBounds(boolean landscape, float layoutH) {
+        if (landscape) {
+            // Right of Back (done at x=5,w=48,y=235) — json (58, 235, 56, 30).
+            float jx = 58f, jy = 235f, jw = 56f, jh = 30f;
+            return new float[] { jx, layoutH - jy - jh, jw, jh };
+        }
+        // Above Back (done at x=165,y=385), right of leaveIcon — json (165, 350, 100, 30).
+        float jx = 165f, jy = 350f, jw = 100f, jh = 30f;
+        return new float[] { jx, layoutH - jy - jh, jw, jh };
+    }
+
+    private void restUntilMorning() {
+        if (!Config.ascendant())
+            return;
+        Current.player().restSeasonUntilMorning();
+        refreshStatus();
     }
 
 
