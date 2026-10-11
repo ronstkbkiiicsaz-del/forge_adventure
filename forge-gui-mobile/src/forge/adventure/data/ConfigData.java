@@ -728,8 +728,9 @@ public class ConfigData {
     /** Towns of a color pay/charge this much more for matching-color cards. */
     public float ec1ColorLeanMult = 1.15f;
     /**
-     * Extra scale on salvage dust from the shared worth function (rank×rotation).
-     * Craft uses worth directly against {@link #craftCost}.
+     * Extra scale on salvage dust from the shared life-cycle worth multiplier
+     * ({@code lifeCycleGold / standardBaseline}). Craft uses the same worth against
+     * {@link #craftCost}; in-Standard (no spike) worth is 1.0 so dust matches pre-EC1.
      */
     public float ec1SalvageWorthFactor = 1.0f;
     /**

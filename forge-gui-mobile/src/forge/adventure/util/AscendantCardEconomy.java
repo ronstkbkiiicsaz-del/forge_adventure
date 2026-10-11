@@ -320,10 +320,7 @@ public final class AscendantCardEconomy {
         // Steve: a live / never-window Badlands is an ordinary ~300 rare — not a draft-rank jackpot.
         // Power rank applies to cards that are (or were) in the Standard window; never-window
         // pedigree cards start at rarity base and climb via the life-cycle curve only.
-        float rank = rankMultiplier(card, c.ec1RankMultMin, c.ec1RankMultMax);
-        if (!isStandardLegal(card) && isNeverWindowEdition(card))
-            rank = 1f;
-        float base = rarityBaseGold(card, c) * rank;
+        float base = standardBaselineGold(card, c);
         if (isSpiked(card.getName()))
             base *= Math.max(1f, c.ec1SeasonSpikeMult);
 
@@ -388,17 +385,33 @@ public final class AscendantCardEconomy {
     }
 
     /**
-     * Unitless relative worth for craft/salvage, normalized <b>within rarity</b>
-     * (life-cycle gold ÷ that rarity's base). An unranked in-Standard card ≈ 1.0 so
-     * dust costs keep the old rarity-split scale; only life-cycle moves them.
+     * Craft/salvage worth multiplier: {@code lifeCycleGold / standardBaselineGold}.
+     * The baseline is that rarity's Standard gold (rarity base × power rank) <b>before</b>
+     * spikes / rotation / pedigree — so an in-Standard card (no spike) is exactly
+     * {@code 1.0} and dust costs match the original pre-EC1 {@code craftCost} /
+     * {@code salvageDust} of that rarity's dust. Only life-cycle (appreciation,
+     * pedigree, spikes) moves the multiplier; Historic ×factor stays on the craft path.
      */
     public static float relativeWorth(PaperCard card) {
         ConfigData c = cfg();
         if (c == null || card == null || !enabled())
             return 1f;
         float gold = lifeCycleGold(card, c);
-        float rarityBase = Math.max(1, rarityBaseGold(card, c));
-        return Math.max(0.05f, gold / rarityBase);
+        float baseline = standardBaselineGold(card, c);
+        return Math.max(0.05f, gold / baseline);
+    }
+
+    /**
+     * In-Standard gold before spikes / rotation / pedigree (rarity base × power).
+     * Never-window editions use rank 1 so Badlands starts as an ordinary rare.
+     */
+    public static float standardBaselineGold(PaperCard card, ConfigData c) {
+        if (card == null || c == null)
+            return 1f;
+        float rank = rankMultiplier(card, c.ec1RankMultMin, c.ec1RankMultMax);
+        if (!isStandardLegal(card) && isNeverWindowEdition(card))
+            rank = 1f;
+        return Math.max(1f, rarityBaseGold(card, c) * rank);
     }
 
     public static float rankMultiplier(PaperCard card, float min, float max) {

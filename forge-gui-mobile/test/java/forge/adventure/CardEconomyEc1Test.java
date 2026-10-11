@@ -313,15 +313,17 @@ public class CardEconomyEc1Test {
         PaperCard weak = pickZenByRarity(CardRarity.Common, false);
         Assert.assertNotNull(strong);
         Assert.assertNotNull(weak);
-        float strongWorth = AscendantCardEconomy.relativeWorth(strong);
-        float weakWorth = AscendantCardEconomy.relativeWorth(weak);
-        Assert.assertTrue(strongWorth > weakWorth, "strong common worth > weak common");
+        // Shop gold still follows rank; dust worth is 1.0 for in-Standard (life-cycle only).
+        Assert.assertTrue(AscendantCardEconomy.cardValue(strong, null)
+                        > AscendantCardEconomy.cardValue(weak, null),
+                "strong common shop gold > weak common");
+        Assert.assertEquals(AscendantCardEconomy.relativeWorth(strong), 1f, 0.001f);
+        Assert.assertEquals(AscendantCardEconomy.relativeWorth(weak), 1f, 0.001f);
 
         AdventurePlayer player = Current.player();
-        // Salvage yield uses the shared worth scale when EC1 is on.
-        int strongSalvage = player.salvageYield(strong);
-        int weakSalvage = player.salvageYield(weak);
-        Assert.assertTrue(strongSalvage >= weakSalvage);
+        Assert.assertEquals(player.salvageYield(strong), ascendantConfig.salvageDust);
+        Assert.assertEquals(player.salvageYield(weak), ascendantConfig.salvageDust);
+        Assert.assertEquals(player.craftCost(strong), ascendantConfig.craftCost);
 
         Assert.assertNotNull(CraftingApi.formatDustCost(strong));
         Assert.assertEquals(CraftingApi.dustCost("_____nonexistent_card_ec1_____"), 0);
@@ -707,58 +709,79 @@ public class CardEconomyEc1Test {
     }
 
     @Test
-    public void inStandardCraftCostKeepsOldRarityScale() {
+    public void inStandardDustCostsMatchPreEc1PerRarityAmounts() {
         AdventurePlayer player = Current.player();
         player.getStandardWindow().init(List.of("M10", "M11", "ZEN"));
-        // Spellsmithing level 1 → craftCost base 50, no discount.
+        AscendantCardEconomy.setSeasonSpikesForTest(List.of()); // no spike mult
+        // Pre-EC1 (feature/set-start): craftCost=50 and salvageDust=10 for every rarity;
+        // rarity-split dust chooses which bucket (C/U/R/M), not a different amount.
+        int origCraft = ascendantConfig.craftCost;
+        int origSalvage = ascendantConfig.salvageDust;
+        Assert.assertEquals(origCraft, 50);
+        Assert.assertEquals(origSalvage, 10);
+
         PaperCard common = pickZenByRarity(CardRarity.Common, true);
         PaperCard uncommon = pickZenByRarity(CardRarity.Uncommon, true);
         PaperCard rare = card("Day of Judgment", "ZEN");
         if (rare == null)
             rare = pickZenByRarity(CardRarity.Rare, true);
         PaperCard mythic = null;
-        for (String name : List.of("Omnath, Locus of Mana", "Lotus Cobra", "Goblin Guide")) {
-            // Prefer a ZEN mythic when present.
-            mythic = card(name, "ZEN");
-            if (mythic != null && mythic.getRarity() == CardRarity.MythicRare)
+        for (PaperCard pc : FModel.getMagicDb().getCommonCards().getAllCards()) {
+            if (pc != null && "ZEN".equals(pc.getEdition()) && pc.getRarity() == CardRarity.MythicRare
+                    && !AscendantCardEconomy.isPricelessBasic(pc)
+                    && AscendantCardEconomy.isStandardLegal(pc)) {
+                mythic = pc;
                 break;
-            mythic = null;
-        }
-        if (mythic == null) {
-            for (PaperCard pc : FModel.getMagicDb().getCommonCards().getAllCards()) {
-                if (pc != null && "ZEN".equals(pc.getEdition()) && pc.getRarity() == CardRarity.MythicRare
-                        && !AscendantCardEconomy.isPricelessBasic(pc)) {
-                    mythic = pc;
-                    break;
-                }
             }
         }
         Assert.assertNotNull(common);
         Assert.assertNotNull(uncommon);
         Assert.assertNotNull(rare);
-        Assert.assertTrue(AscendantCardEconomy.isStandardLegal(common));
-        Assert.assertTrue(AscendantCardEconomy.isStandardLegal(rare));
-        int cCost = player.craftCost(common);
-        int uCost = player.craftCost(uncommon);
-        int rCost = player.craftCost(rare);
-        // Within-rarity worth ≈ rank mult (~0.4–3.5): craft ≈ 50 × rank, not 50 × (rarityBase/50).
-        Assert.assertTrue(cCost >= 20 && cCost <= 200, "Standard common craft near old scale, got " + cCost);
-        Assert.assertTrue(uCost >= 20 && uCost <= 200, "Standard uncommon craft near old scale, got " + uCost);
-        Assert.assertTrue(rCost >= 20 && rCost <= 200, "Standard rare craft near old scale, got " + rCost);
-        if (mythic != null && AscendantCardEconomy.isStandardLegal(mythic)) {
-            int mCost = player.craftCost(mythic);
-            Assert.assertTrue(mCost >= 20 && mCost <= 200, "Standard mythic craft near old scale, got " + mCost);
+        for (PaperCard pc : List.of(common, uncommon, rare)) {
+            Assert.assertTrue(AscendantCardEconomy.isStandardLegal(pc), pc.getName());
+            Assert.assertEquals(AscendantCardEconomy.relativeWorth(pc), 1f, 0.001f,
+                    "in-Standard worth must be 1.0 (life cycle only), " + pc.getName());
+            Assert.assertEquals(player.craftCost(pc), origCraft,
+                    "in-Standard craft must equal pre-EC1 craftCost for " + pc.getRarity());
+            Assert.assertEquals(player.salvageYield(pc), origSalvage,
+                    "in-Standard salvage must equal pre-EC1 salvageDust for " + pc.getRarity());
         }
-        // Late pedigree salvage is bounded (not hundreds of dust from double rarity).
+        if (mythic != null) {
+            Assert.assertEquals(AscendantCardEconomy.relativeWorth(mythic), 1f, 0.001f);
+            Assert.assertEquals(player.craftCost(mythic), origCraft);
+            Assert.assertEquals(player.salvageYield(mythic), origSalvage);
+        }
+    }
+
+    @Test
+    public void lifeCycleMovesDustAbovePreEc1Baseline() {
+        AdventurePlayer player = Current.player();
+        player.getStandardWindow().init(List.of("M10", "M11", "ZEN"));
+        AscendantCardEconomy.setSeasonSpikesForTest(List.of());
+        // Rotated rare after 4 seasons: worth > 1, Historic ×factor on craft.
+        PaperCard geopede = card("Plated Geopede", "ZEN");
+        Assert.assertNotNull(geopede);
+        player.getStandardWindow().restoreSets(List.of("M10", "M11", "M12"));
+        AscendantCardEconomy.noteSetRotatedForTest("ZEN", 1);
+        player.getSeason().setCalendarForTest(40, 5); // 4 seasons out
+        Assert.assertFalse(player.isStandardLegal(geopede));
+        float worth = AscendantCardEconomy.relativeWorth(geopede);
+        Assert.assertTrue(worth > 1f, "post-rotation worth must rise, got " + worth);
+        int craft = player.craftCost(geopede);
+        int expectedCraft = Math.max(1, Math.round(ascendantConfig.craftCost * worth
+                * ascendantConfig.historicCraftFactor));
+        Assert.assertEquals(craft, expectedCraft, "Historic factor applies on top of life-cycle worth");
+
+        // Badlands after 24 seasons: salvage bounded, above baseline.
         PaperCard badlands = card("Badlands", "LEB");
         if (badlands == null)
             badlands = card("Badlands", null);
         Assert.assertNotNull(badlands);
         player.getSeason().setCalendarForTest(400, 24);
         int salvage = player.salvageYield(badlands);
-        // Within-rarity worth caps salvage near salvageDust×(list/rarityBase) (~10×), not hundreds.
-        Assert.assertTrue(salvage > 0 && salvage <= 120,
-                "late pedigree salvage must stay sensible, got " + salvage);
+        Assert.assertTrue(salvage > ascendantConfig.salvageDust,
+                "late pedigree salvage above baseline, got " + salvage);
+        Assert.assertTrue(salvage <= 120, "late pedigree salvage bounded, got " + salvage);
     }
 
     @Test
