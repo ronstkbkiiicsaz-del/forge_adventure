@@ -91,9 +91,16 @@ public class ArenaDuelScreen extends MatchScreen {
         final boolean landscape = Forge.isLandscapeMode();
         final ConfigData cfg = Config.instance() == null ? null : Config.instance().getConfigData();
         final float railF = cfg == null ? 0.07f : cfg.ds1PhaseRailFraction;
-        final float handF = cfg == null ? 0.28f : cfg.ds1HandFraction;
+        float handF = cfg == null ? 0.28f : cfg.ds1HandFraction;
+        // Landscape: keep a taller hand band so fanned cards stay card-aspect and fully on screen.
+        if (landscape) {
+            handF = Math.max(handF, 0.34f);
+        }
         final float stackF = cfg == null ? 0.48f : cfg.ds1StackFraction;
-        final float promptH = Math.max(VPrompt.HEIGHT, Utils.scale(landscape ? 52f : 60f));
+        // Do not use Utils.scale / VPrompt.HEIGHT here: both bake in the GL window's
+        // AVG_FINGER (often ~24px under xvfb), which collapses the Arena prompt into a
+        // clipped classic widget strip. Absolute dp keeps chrome readable in captures.
+        final float promptH = landscape ? 64f : 72f;
 
         lastLayout = ArenaDuelLayout.compute(width, height, landscape, railF, handF, stackF, promptH);
 
@@ -185,16 +192,14 @@ public class ArenaDuelScreen extends MatchScreen {
     @Override
     protected void drawBackground(final Graphics g) {
         // Full-bleed match backdrop in both orientations. Skip FScreen's BG_TEXTURE
-        // path (it would cover this) and FieldScroller's classic geometry (often
-        // leaves landscape empty). Day/night follows MatchController when set.
+        // path. Prefer the same source MatchScreen.getBG() uses so adventure / day /
+        // night stay consistent with portrait. Avoid a translucent fillRect for the
+        // darken pass — batched rects with a<1 leave broken framebuffer alpha that
+        // later opaque children wipe into a flat void in landscape captures.
         final float w = getWidth();
         final float h = getHeight();
         g.fillRect(new Color(0.07f, 0.09f, 0.12f, 1f), 0, 0, w, h);
-        FSkinTexture matchBG = FSkinTexture.BG_MATCH;
-        if (MatchController.instance != null && MatchController.instance.getDayTime() != null) {
-            matchBG = "Day".equals(MatchController.instance.getDayTime())
-                    ? FSkinTexture.BG_MATCH_DAY : FSkinTexture.BG_MATCH_NIGHT;
-        }
+        final FSkinTexture matchBG = resolveMatchBackground();
         final float imgAspect = matchBG.getWidth() / (float) Math.max(1, matchBG.getHeight());
         float bgW = w;
         float bgH = bgW / imgAspect;
@@ -203,7 +208,21 @@ public class ArenaDuelScreen extends MatchScreen {
             bgW = bgH * imgAspect;
         }
         g.drawImage(matchBG, (w - bgW) / 2f, (h - bgH) / 2f, bgW, bgH);
-        g.fillRect(new Color(0f, 0f, 0f, 0.28f), 0, 0, w, h);
+        g.setAlphaComposite(0.28f);
+        g.fillRect(Color.BLACK, 0, 0, w, h);
+        g.resetAlphaComposite();
+    }
+
+    /** Same backdrop selection as {@link MatchScreen#getBG()} / FieldScroller. */
+    private FSkinTexture resolveMatchBackground() {
+        if (Forge.isMobileAdventureMode) {
+            return getBG();
+        }
+        if (MatchController.instance != null && MatchController.instance.getDayTime() != null) {
+            return "Day".equals(MatchController.instance.getDayTime())
+                    ? FSkinTexture.BG_MATCH_DAY : FSkinTexture.BG_MATCH_NIGHT;
+        }
+        return FSkinTexture.BG_MATCH;
     }
 
     @Override

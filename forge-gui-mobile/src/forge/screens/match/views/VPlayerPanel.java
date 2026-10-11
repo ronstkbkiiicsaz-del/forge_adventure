@@ -347,7 +347,7 @@ public class VPlayerPanel extends FContainer {
         // avatar / zone-tab chrome into a clipped icon strip along the panel edge.
         final boolean arena = isArenaDuelLayout();
         final float chromeH = arena
-                ? Math.max(44f, Math.min(64f, height * 0.16f))
+                ? Math.max(56f, Math.min(72f, height * 0.18f))
                 : avatarHeight;
         float x = chromeH;
         float w = width - chromeH;
@@ -368,9 +368,12 @@ public class VPlayerPanel extends FContainer {
         float y = height - chromeH;
         float displayAreaHeight = displayAreaHeightFactor * y / 3;
         // Arena: hand band tracks ds1HandFraction of the player panel (both orientations).
+        // Landscape gets a higher floor so fanned cards read as card-aspect faces, not a
+        // thin name-plate strip against a short band.
         if (arena) {
             final float handFrac = arenaHandFraction();
-            displayAreaHeight = Math.max(72f, Math.min(y * 0.55f, height * handFrac));
+            final float minHand = Forge.isLandscapeMode() ? 120f : 88f;
+            displayAreaHeight = Math.max(minHand, Math.min(y * 0.60f, height * Math.max(handFrac, 0.30f)));
         }
         y -= displayAreaHeight;
         for (InfoTab tab : tabs) {
@@ -608,7 +611,12 @@ public class VPlayerPanel extends FContainer {
             float top = selectedDisplayArea == null ? 0 : selectedDisplayArea.getTop();
             float h = selectedDisplayArea == null ? 0 : selectedDisplayArea.getHeight();
             float bottom = selectedDisplayArea == null ? 0 : selectedDisplayArea.getBottom();
-            g.fillRect(Forge.isHorizontalTabLayout() ? getAltDisplayAreaBackColor() : getDisplayAreaBackColor(), x - pad, top, w + pad, h + pad);
+            // Arena: keep the hand/field band clear so the match backdrop and card
+            // bodies stay visible (classic inactive fill reads as a black void in
+            // landscape and makes fanned cards look like clipped header strips).
+            if (!isArenaDuelLayout()) {
+                g.fillRect(Forge.isHorizontalTabLayout() ? getAltDisplayAreaBackColor() : getDisplayAreaBackColor(), x - pad, top, w + pad, h + pad);
+            }
             if (Forge.isHorizontalTabLayout())
                 g.drawLine(1, MatchScreen.getBorderColor(), x, isFlipped() ? bottom : top, x + w, isFlipped() ? bottom : top);
 

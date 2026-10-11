@@ -116,6 +116,7 @@ public final class ArenaHandFan {
 
     public static List<CardPose> fan(final int count, final float bandW, final float bandH,
             final int hoverIndex, final boolean[] playable) {
-        return fan(count, bandW, bandH, hoverIndex, playable, 0.55f, 12f, bandH * 0.18f);
+        // Milder overlap so landscape/portrait fans read as card faces, not a name-plate strip.
+        return fan(count, bandW, bandH, hoverIndex, playable, 0.42f, 12f, bandH * 0.18f);
     }
 }

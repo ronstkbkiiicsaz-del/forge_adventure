@@ -1175,6 +1175,30 @@ public class MatchScreen extends FScreen {
                     if (!hasActivePlane())
                         return;
             }
+            // DS1 Arena: classic midField geometry leaves wide landscape lanes empty.
+            // Paint the match backdrop full-bleed inside the scroller so both
+            // orientations match the ArenaDuelScreen base layer.
+            if (MatchController.getView() != null && MatchController.getView().isArenaDuelScreen()) {
+                FSkinTexture arenaBG = currentBG;
+                if (!Forge.isMobileAdventureMode) {
+                    if (daytime == null) {
+                        arenaBG = FSkinTexture.BG_MATCH;
+                    } else {
+                        arenaBG = "Day".equals(daytime) ? FSkinTexture.BG_MATCH_DAY : FSkinTexture.BG_MATCH_NIGHT;
+                    }
+                }
+                final float aw = getWidth();
+                final float ah = getHeight();
+                final float aspect = arenaBG.getWidth() / (float) Math.max(1, arenaBG.getHeight());
+                float bgW = aw;
+                float bgH = bgW / aspect;
+                if (bgH < ah) {
+                    bgH = ah;
+                    bgW = bgH * aspect;
+                }
+                g.drawImage(arenaBG, (aw - bgW) / 2f, (ah - bgH) / 2f, bgW, bgH);
+                return;
+            }
             //boolean isGameFast = MatchController.instance.isGameFast(); //this used to control animation speed
             float midField = topPlayerPanel.getBottom();
             float promptHeight = !Forge.isLandscapeMode() || bottomPlayerPrompt == null ? 0f : bottomPlayerPrompt.getHeight() / 1.3f;
