@@ -20,7 +20,7 @@ import java.util.regex.Pattern;
 /** Every gathered material has its own 16x16 region in sprites/material_icons.atlas, inside the sheet. */
 public class MaterialIconsAtlasTest {
     private static final Set<String> GATHERED_FAMILIES = Set.of("logs", "ore", "ash", "sacred_stone", "waters",
-            "dead", "plants", "scrap", "gems", "crystal", "pearls", "feathers", "hide", "brine");
+            "dead", "plants", "scrap", "gems", "crystal", "pearls", "feathers", "hide", "brine", "gym", "prismatic");
 
     private static Path res() {
         for (String p : new String[]{"forge-gui/res/adventure", "../forge-gui/res/adventure"}) {
@@ -70,7 +70,7 @@ public class MaterialIconsAtlasTest {
                     drawn = (sheet.getRGB(x, y) >>> 24) != 0;
             Assert.assertTrue(drawn, m.group(1) + " icon is empty");
         }
-        Assert.assertTrue(checked >= 57, "expected the gathered families in materials.json, saw " + checked);
+        Assert.assertTrue(checked >= 70, "expected the gathered families in materials.json, saw " + checked);
         Assert.assertTrue(missing.isEmpty(), "materials without an icon: " + missing);
     }
 }
