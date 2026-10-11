@@ -632,6 +632,31 @@ public class ConfigData {
      */
     public String ql1NoKnownLocationMessage = "no known location";
 
+    // ---- Ascendant MX1: Moxfield round trip (export / collection-limited import). ----
+
+    /**
+     * When true (Ascendant default), {@code collection.csv} uses Scryfall set codes and real
+     * collector numbers; cards with no Scryfall match are omitted and listed in
+     * {@code exports/unmatched.txt}. Stock worlds keep the legacy Forge-code CSV.
+     */
+    public boolean mx1ScryfallExport = true;
+    /**
+     * When true (Ascendant default), Status / Skills show "Collection exported &lt;time&gt;"
+     * with a short Moxfield upload how-to (scene dialogs, not FOptionPane).
+     */
+    public boolean mx1ExportStatusUi = true;
+    /**
+     * When true (Ascendant default), the Adventure deck editor ⋮ menu offers
+     * "Copy deck for Moxfield" and "Open export folder".
+     */
+    public boolean mx1DeckEditorExportActions = true;
+    /**
+     * When true (Ascendant default), the mobile import dialog accepts a Moxfield deck URL
+     * and shows a Missing list (name, wanted, owned) with "Import what I own" / "Cancel"
+     * before confirming. Import stays limited to the player's collection.
+     */
+    public boolean mx1CollectionLimitedImport = true;
+
     // ---- Ascendant card economy (Package EC1): game prices, not real-world markets. ----
 
     /**
@@ -647,10 +672,6 @@ public class ConfigData {
     public int ec1BaseMythic = 500;
     public int ec1BaseSpecial = 400;
     public int ec1BaseBasicLand = 0;
-    /**
-     * Draft-rank multiplier band. Top-ranked cards in a set approach {@link #ec1RankMultMax};
-     * bottom-ranked approach {@link #ec1RankMultMin}. Unranked cards use 1.0.
-     */
     /** Bottom of the band (weakest ranked card in its set). */
     public float ec1RankMultMin = 0.4f;
     /**
