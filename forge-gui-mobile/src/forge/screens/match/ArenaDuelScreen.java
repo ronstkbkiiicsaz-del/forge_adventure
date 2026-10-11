@@ -628,17 +628,4 @@ public class ArenaDuelScreen extends MatchScreen {
     public FDisplayObject arenaPassUntilEotControl() {
         return btnPassUntilEot;
     }
-
-    /** Hide classic "• • •" player-menu tabs that read as a clipped ellipsis strip. */
-    private static void hideArenaMenuBulletTabs(final FMenuBar menuBar) {
-        for (final FDisplayObject child : menuBar.getChildren()) {
-            if (child instanceof forge.menu.FMenuTab) {
-                final forge.menu.FMenuTab tab = (forge.menu.FMenuTab) child;
-                final String t = tab.getText();
-                if (t != null && t.indexOf('\u2022') >= 0) {
-                    tab.setVisible(false);
-                }
-            }
-        }
-    }
 }
