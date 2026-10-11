@@ -42,9 +42,9 @@ public class SeasonsSn1GlTest {
                 throw new RuntimeException(e);
             }
 
-            // Clear any leftover co-op session from earlier GL tests so season display works.
             try {
-                forge.adventure.coop.CoopSession.get().disconnect();
+                forge.adventure.coop.CoopSession.get().testClearGuestPlaneFollow();
+                forge.adventure.coop.CoopSession.get().testClearHostingForHello();
             } catch (Throwable ignored) {
             }
             StandardWindow window = new StandardWindow();
@@ -64,8 +64,9 @@ public class SeasonsSn1GlTest {
     }
 
     private static void renderAndSave(boolean landscape, String hudLine, String statusLine, String fileName) {
-        float w = landscape ? 480f : 270f;
-        float h = landscape ? 270f : 480f;
+        int w = landscape ? 480 : 270;
+        int h = landscape ? 270 : 480;
+        Gdx.graphics.setWindowedMode(w, h);
         Stage stage = new Stage(new ScreenViewport());
         try {
             Gdx.gl.glClearColor(0.15f, 0.16f, 0.18f, 1f);
@@ -100,11 +101,13 @@ public class SeasonsSn1GlTest {
             caption.add(Controls.newTextraLabel(landscape ? "SN1 landscape" : "SN1 portrait")).row();
             stage.addActor(caption);
 
-            stage.getViewport().update((int) w, (int) h, true);
+            stage.getViewport().update(w, h, true);
             stage.act(0f);
             stage.draw();
 
-            Pixmap pm = ScreenUtils.getFrameBufferPixmap(0, 0, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
+            int gw = Gdx.graphics.getWidth();
+            int gh = Gdx.graphics.getHeight();
+            Pixmap pm = ScreenUtils.getFrameBufferPixmap(0, 0, gw, gh);
             try {
                 // Flip Y for a right-side-up PNG.
                 Pixmap flipped = new Pixmap(pm.getWidth(), pm.getHeight(), pm.getFormat());
@@ -113,11 +116,14 @@ public class SeasonsSn1GlTest {
                         flipped.drawPixel(x, pm.getHeight() - 1 - y, pm.getPixel(x, y));
                     }
                 }
+                // Unique names so artifacts are not overwritten by a prior tiny capture.
                 File out = ARTIFACTS.resolve(fileName).toFile();
                 PixmapIO.writePNG(new com.badlogic.gdx.files.FileHandle(out), flipped);
                 flipped.dispose();
-                Assert.assertTrue(out.isFile() && out.length() > 100,
-                        "screenshot must be written: " + out);
+                Assert.assertTrue(out.isFile() && out.length() > 500,
+                        "screenshot must be written: " + out + " (" + out.length() + " bytes)");
+                Assert.assertTrue(gw >= w && gh >= h,
+                        "framebuffer should match requested size, got " + gw + "x" + gh);
             } finally {
                 pm.dispose();
             }
