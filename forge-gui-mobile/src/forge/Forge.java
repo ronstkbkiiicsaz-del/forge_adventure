@@ -1375,10 +1375,14 @@ public class Forge implements ApplicationListener {
         @Override
         public boolean touchDown(int x, int y, int pointer, int button) {
             lastInputWasController = false;
-            //mouse button 4 (back side button) presses OK during a match
-            if (button == Input.Buttons.BACK && currentScreen instanceof MatchScreen matchScreen
-                    && matchScreen.getActivePrompt() != null) {
-                matchScreen.getActivePrompt().getBtnOk().trigger();
+            // Mouse side buttons during a match: forward (MB5) = primary/OK, back (MB4) = secondary/Cancel.
+            // trigger() only fires when that prompt button is enabled.
+            if ((button == Input.Buttons.FORWARD || button == Input.Buttons.BACK)
+                    && currentScreen instanceof MatchScreen matchScreen && matchScreen.getActivePrompt() != null) {
+                if (button == Input.Buttons.FORWARD)
+                    matchScreen.getActivePrompt().getBtnOk().trigger();
+                else
+                    matchScreen.getActivePrompt().getBtnCancel().trigger();
                 return true;
             }
             if (transitionScreen != null) {
