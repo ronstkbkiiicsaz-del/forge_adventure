@@ -398,7 +398,7 @@ public class SeasonsSn1Test {
         UIData data = new Json().fromJson(UIData.class, new FileHandle(layoutFile.toFile()));
         float layoutH = data.height;
         float layoutW = data.width;
-        List<float[]> others = layoutRects(data);
+        List<float[]> others = layoutRects(data, !landscape);
         float[] season = PlayerStatisticScene.seasonStatusStageBounds(landscape, layoutH);
         Assert.assertTrue(inside(season, layoutW, layoutH),
                 "seasonStatus must sit inside " + layoutFile.getFileName());
@@ -426,6 +426,15 @@ public class SeasonsSn1Test {
     }
 
     private static List<float[]> layoutRects(UIData data) {
+        return layoutRects(data, false);
+    }
+
+    /**
+     * @param trimPortraitAwardsBand when true, shrink portrait {@code scrollWindow}/{@code enemies}
+     *        from the bottom by {@link PlayerStatisticScene#PORTRAIT_AWARDS_BAND} the same way
+     *        production does before placing Awards / seasonStatus.
+     */
+    private static List<float[]> layoutRects(UIData data, boolean trimPortraitAwardsBand) {
         List<float[]> others = new ArrayList<>();
         float layoutH = data.height;
         for (OrderedMap<String, String> el : data.elements) {
@@ -449,13 +458,21 @@ public class SeasonsSn1Test {
             }
             if (name == null || name.isEmpty() || "lastScreen".equals(name))
                 continue;
-            // Full-bleed background images have no name or fill the screen — skip unnamed.
             if (x == null || y == null || w == null || h == null || w <= 0 || h <= 0)
                 continue;
-            // Skip full-bleed decorative images without interactive names on inn.
             if (w >= data.width - 1 && h >= data.height - 1)
                 continue;
-            others.add(new float[] { x, layoutH - y - h, w, h });
+            float stageY = layoutH - y - h;
+            float stageH = h;
+            if (trimPortraitAwardsBand
+                    && ("scrollWindow".equals(name) || "enemies".equals(name))) {
+                float band = PlayerStatisticScene.PORTRAIT_AWARDS_BAND;
+                stageY += band;
+                stageH -= band;
+            }
+            if (stageH <= 0)
+                continue;
+            others.add(new float[] { x, stageY, w, stageH });
         }
         return others;
     }

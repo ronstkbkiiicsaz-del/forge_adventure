@@ -33,10 +33,14 @@ public class SeasonsSn1GlTest {
     private static final Path ARTIFACTS = Path.of("/opt/cursor/artifacts/screenshots");
 
     @Test(groups = "gl", timeOut = 300_000)
-    public void seasonUiScreenshotsLandscapeAndPortrait() {
+    public void seasonUiScreenshotsLandscapeAndPortrait() throws Exception {
         AdventureGlTestSupport.runOnGl(() -> {
             Assert.assertTrue(Config.ascendant(), "GL support boots Ascendant");
-            Files.createDirectories(ARTIFACTS);
+            try {
+                Files.createDirectories(ARTIFACTS);
+            } catch (java.io.IOException e) {
+                throw new RuntimeException(e);
+            }
 
             StandardWindow window = new StandardWindow();
             window.init(java.util.List.of("M11", "ZEN"));
