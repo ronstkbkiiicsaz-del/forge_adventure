@@ -12,7 +12,7 @@
 ### Waiting on Grok (r3; priority order)
 Linux runner: SN1 + EC1 + AU1 together 410 mobile green, desktop green except `CoopDuelInProcessTest` (a CME in
 `Game.forEachCardInGame` during `onPlayerLost`: passed 4/4 on base and 4/4 on the combined branch when re-run alone,
-so it is a flaky race in that test; worth a note, not blocking).
+so it is a flaky race in that test). Note: in full-suite runs it fails only when AU1 is present (base full suite passes), so AU1 probably leaves static sound-hook state that widens the race; please look as an AU1 follow-up.
 
 | PR | Round | Required |
 |---|---|---|
