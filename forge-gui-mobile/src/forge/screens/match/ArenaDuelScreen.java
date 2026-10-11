@@ -221,7 +221,7 @@ public class ArenaDuelScreen extends MatchScreen {
 
         // Do NOT force Hand here — revalidate runs after every pile tab tap
         // (setSelectedTab → revalidate) and would immediately close GY/exile/library.
-        // Hand is restored on prompt change via refreshContextLabels → maybeRestoreHand.
+        // Hand is restored on prompt change only from the draw path (not revalidate).
 
         // Classic VStack dropdown is replaced by VArenaStackColumn — keep it hidden so a
         // spell on the stack cannot reopen the leftover green card strip at top-left.
@@ -229,7 +229,7 @@ public class ArenaDuelScreen extends MatchScreen {
             getStack().hide();
         }
 
-        refreshContextLabels();
+        refreshContextLabels(false);
     }
 
     private void layoutPromptButtons() {
@@ -515,6 +515,14 @@ public class ArenaDuelScreen extends MatchScreen {
     }
 
     private void refreshContextLabels() {
+        refreshContextLabels(true);
+    }
+
+    /**
+     * @param restoreHandOnPromptChange when false (layout/revalidate), only refresh
+     *        Cancel/OK chrome — never yank an open pile closed via setSelectedTab→revalidate.
+     */
+    private void refreshContextLabels(final boolean restoreHandOnPromptChange) {
         if (btnContext == null) {
             return;
         }
@@ -536,7 +544,9 @@ public class ArenaDuelScreen extends MatchScreen {
             btnCancel.setEnabled(true);
         }
 
-        maybeRestoreHandOnPromptChange(prompt);
+        if (restoreHandOnPromptChange) {
+            maybeRestoreHandOnPromptChange(prompt);
+        }
     }
 
     /**

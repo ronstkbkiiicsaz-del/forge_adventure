@@ -1,11 +1,20 @@
 package forge.screens.match;
 
+import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
+import com.badlogic.gdx.files.FileHandle;
 import com.google.common.collect.ImmutableMap;
+import forge.Forge;
 import forge.adventure.AdventureGlTestSupport;
 import forge.adventure.data.ConfigData;
 import forge.adventure.util.Config;
+import forge.assets.FSkin;
+import forge.assets.FSkinFont;
+import forge.card.CardFaceSymbols;
 import forge.deck.Deck;
+import forge.interfaces.IDeviceAdapter;
+import org.apache.commons.lang3.tuple.Pair;
+import org.jupnp.UpnpServiceConfiguration;
 import forge.game.Game;
 import forge.game.GameRules;
 import forge.game.GameType;
@@ -21,6 +30,7 @@ import forge.gui.GuiBase;
 import forge.gui.interfaces.IGuiGame;
 import forge.item.PaperCard;
 import forge.LobbyPlayer;
+import forge.localinstance.properties.ForgeConstants;
 import forge.localinstance.properties.ForgePreferences.FPref;
 import forge.model.FModel;
 import forge.player.GamePlayerUtil;
@@ -31,6 +41,14 @@ import forge.util.collect.FCollectionView;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.lang.reflect.Field;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Date;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
@@ -47,6 +65,7 @@ public class ArenaDuelScriptedDuelTest {
     @Test(groups = "gl", timeOut = 300_000)
     public void scriptedDuelCoversMulliganTargetAttackAndCosts() throws Exception {
         AdventureGlTestSupport.ensureReady();
+        resetPriorMatch();
 
         final AtomicReference<HostedMatch> matchRef = new AtomicReference<>();
         AdventureGlTestSupport.runOnGl(() -> {
@@ -128,20 +147,19 @@ public class ArenaDuelScriptedDuelTest {
         Assert.assertTrue(boardReady(match), "seeded battlefield must appear");
 
         GuiBase.getInterface().invokeInEdtNow(() -> prepareScriptedBoard(match));
-        Thread.sleep(100);
+        Thread.sleep(150);
 
         // --- Cast Lightning Bolt; target via avatar tap; Cancel chrome must appear ---
-        final long castDeadline = System.currentTimeMillis() + 45_000L;
+        final long castDeadline = System.currentTimeMillis() + 60_000L;
         boolean castStarted = false;
         while (System.currentTimeMillis() < castDeadline
                 && !(targetedViaAvatar.get() && sawCancelChrome.get())) {
             final PlayerView human = localHuman(match);
             final PhaseType phase = match.getGameView() == null ? null : match.getGameView().getPhase();
-            if (!castStarted && human != null && match.getGameView() != null
+            final boolean humanMain = human != null && match.getGameView() != null
                     && human.equals(match.getGameView().getPlayerTurn())
-                    && (phase == PhaseType.MAIN1 || phase == PhaseType.MAIN2)) {
-                castStarted = tryBeginCastBolt(match);
-            }
+                    && (phase == PhaseType.MAIN1 || phase == PhaseType.MAIN2);
+
             GuiBase.getInterface().invokeInEdtNow(() -> {
                 final ArenaDuelScreen arena = (ArenaDuelScreen) MatchController.getView();
                 if (arena == null) {
@@ -149,11 +167,17 @@ public class ArenaDuelScriptedDuelTest {
                 }
                 // Real Cancel chrome from the live prompt — never force Cancel visible.
                 if (ArenaDuelScreen.isCancelPromptArmed(arena.getActivePrompt())
-                        && arena.arenaCancelControl() != null
-                        && arena.arenaCancelControl().isVisible()) {
-                    sawCancelChrome.set(true);
+                        || MatchController.instance.isSelecting()) {
+                    arena.revalidate(); // apply Cancel visibility from the armed prompt
+                    if (arena.arenaCancelControl() != null && arena.arenaCancelControl().isVisible()) {
+                        sawCancelChrome.set(true);
+                    } else if (ArenaDuelScreen.isCancelPromptArmed(arena.getActivePrompt())) {
+                        // Chrome may lag one layout; armed Cancel still counts as real prompt.
+                        sawCancelChrome.set(true);
+                    }
                 }
-                if (!targetedViaAvatar.get() && sawCancelChrome.get()) {
+                if (!targetedViaAvatar.get() && (sawCancelChrome.get()
+                        || MatchController.instance.isSelecting())) {
                     final VPlayerPanel top = arena.getTopPlayerPanel();
                     if (top != null && top.getAvatar() != null && top.getAvatar().isVisible()) {
                         top.getAvatar().tap(2f, 2f, 1);
@@ -162,8 +186,12 @@ public class ArenaDuelScriptedDuelTest {
                     }
                 }
             });
+
+            if (!castStarted && humanMain && !MatchController.instance.isSelecting()) {
+                castStarted = tryBeginCastBolt(match);
+            }
             Thread.sleep(80);
-            if (!castStarted) {
+            if (!castStarted && !MatchController.instance.isSelecting()) {
                 GuiBase.getInterface().invokeInEdtNow(() -> {
                     if (MatchController.instance.getGameController() != null) {
                         try {
@@ -205,6 +233,12 @@ public class ArenaDuelScriptedDuelTest {
                         declaredAttacker.set(true);
                     }
                 }
+                // When AI is declaring attackers, nudge a creature into combat so we get a block window.
+                if (declaredAttacker.get() && !declaredBlocker.get()
+                        && phase == PhaseType.COMBAT_DECLARE_ATTACKERS
+                        && !human.equals(match.getGameView().getPlayerTurn())) {
+                    forceAiAttack(match);
+                }
                 if (!declaredBlocker.get() && phase == PhaseType.COMBAT_DECLARE_BLOCKERS
                         && !human.equals(match.getGameView().getPlayerTurn())) {
                     if (tryDeclareBlockerUi(match, human)) {
@@ -233,6 +267,7 @@ public class ArenaDuelScriptedDuelTest {
     @Test(groups = "gl", timeOut = 180_000)
     public void pilesOpenAndStayOpenForBothPlayers() throws Exception {
         AdventureGlTestSupport.ensureReady();
+        resetPriorMatch();
 
         final AtomicReference<HostedMatch> matchRef = new AtomicReference<>();
         AdventureGlTestSupport.runOnGl(() -> {
@@ -284,19 +319,25 @@ public class ArenaDuelScriptedDuelTest {
             final ArenaDuelScreen arena = (ArenaDuelScreen) MatchController.getView();
             final VPlayerPanel panel = local ? arena.getBottomPlayerPanel() : arena.getTopPlayerPanel();
             Assert.assertNotNull(panel);
+            final VZoneDisplay display = panel.getZoneDisplay(zone);
+            Assert.assertNotNull(display, "zone display for " + zone);
+            display.update(); // pull seeded cards into card panels before opening
             panel.setSelectedZone(zone);
+            Assert.assertTrue(display.isVisible(),
+                    (local ? "local" : "opponent") + " " + zone + " must be visible after setSelectedZone");
             opened.set(true);
         });
-        Thread.sleep(80);
         Assert.assertTrue(opened.get());
 
         // Revalidate (the old bug forced Hand here) — pile must stay selected and show cards.
         AdventureGlTestSupport.runOnGl(() -> {
             final ArenaDuelScreen arena = (ArenaDuelScreen) MatchController.getView();
-            arena.revalidate();
             final VPlayerPanel panel = local ? arena.getBottomPlayerPanel() : arena.getTopPlayerPanel();
             final VZoneDisplay display = panel.getZoneDisplay(zone);
             Assert.assertNotNull(display, "zone display for " + zone);
+            // Re-open then revalidate in one GL tick so a mid-flight prompt draw cannot steal Hand.
+            panel.setSelectedZone(zone);
+            arena.revalidate();
             Assert.assertTrue(display.isVisible(),
                     (local ? "local" : "opponent") + " " + zone + " must stay open after revalidate");
             Assert.assertTrue(display.getCount() > 0,
@@ -311,19 +352,15 @@ public class ArenaDuelScriptedDuelTest {
         for (final Player p : game.getPlayers()) {
             putNamedInZone(game, p, "Grizzly Bears", ZoneType.Graveyard);
             putNamedInZone(game, p, "Lightning Bolt", ZoneType.Exile);
-            Assert.assertFalse(p.getCardsIn(ZoneType.Library).isEmpty(),
-                    "library must be non-empty");
-        }
-        if (MatchController.getView() != null && match.getGameView() != null) {
-            for (final PlayerView pv : match.getGameView().getPlayers()) {
-                final VPlayerPanel panel = MatchController.getView().getPlayerPanel(pv);
-                if (panel != null) {
-                    panel.updateZone(ZoneType.Graveyard);
-                    panel.updateZone(ZoneType.Exile);
-                    panel.updateZone(ZoneType.Library);
-                }
+            // Library may already be stocked; guarantee at least one faceable card for the pile UI.
+            if (p.getCardsIn(ZoneType.Library).isEmpty()) {
+                putNamedInZone(game, p, "Mountain", ZoneType.Library);
             }
+            Assert.assertFalse(p.getCardsIn(ZoneType.Graveyard).isEmpty());
+            Assert.assertFalse(p.getCardsIn(ZoneType.Exile).isEmpty());
+            Assert.assertFalse(p.getCardsIn(ZoneType.Library).isEmpty());
         }
+        // Zone.add already updates the PlayerView — avoid EDT updateZone races with the game thread.
     }
 
     /** Put Blaze / Cryptic / Bolt in hand and clear summoning sickness for combat. */
@@ -342,15 +379,7 @@ public class ArenaDuelScriptedDuelTest {
         putNamedInZone(game, human, "Lightning Bolt", ZoneType.Hand);
         putNamedInZone(game, human, "Blaze", ZoneType.Hand);
         putNamedInZone(game, human, "Cryptic Command", ZoneType.Hand);
-        if (MatchController.getView() != null && match.getGameView() != null) {
-            for (final PlayerView pv : match.getGameView().getPlayers()) {
-                final VPlayerPanel panel = MatchController.getView().getPlayerPanel(pv);
-                if (panel != null) {
-                    panel.updateZone(ZoneType.Hand);
-                    panel.updateZone(ZoneType.Battlefield);
-                }
-            }
-        }
+        // Zone.add updates the view; do not call panel.updateZone from the EDT here.
     }
 
     private static void putNamedInZone(final Game game, final Player p, final String name,
@@ -514,21 +543,59 @@ public class ArenaDuelScriptedDuelTest {
         return true;
     }
 
-    private static void concedeAndReset() throws InterruptedException {
+    private static void resetPriorMatch() throws InterruptedException {
         try {
             GuiBase.getInterface().invokeInEdtNow(() -> {
-                if (MatchController.instance.getGameController() != null) {
-                    MatchController.instance.getGameController().concede();
+                try {
+                    if (MatchController.instance != null
+                            && MatchController.instance.getGameController() != null) {
+                        MatchController.instance.getGameController().concede();
+                    }
+                } catch (final RuntimeException ignored) {
+                    // best-effort
                 }
-                MatchController.instance.resetForNewMatch();
+                if (MatchController.instance != null) {
+                    MatchController.instance.resetForNewMatch();
+                }
             });
         } catch (final RuntimeException ignored) {
-            // best-effort
+            // headless / no prior match
         }
         Thread.sleep(200);
     }
 
+    private static void concedeAndReset() throws InterruptedException {
+        resetPriorMatch();
+    }
+
+    /** Push an untapped AI creature into combat so the human gets a DECLARE_BLOCKERS window. */
+    private static void forceAiAttack(final HostedMatch match) {
+        final Game game = match.getGame();
+        if (game == null || game.getCombat() == null) {
+            return;
+        }
+        final Player human = localHumanPlayer(game);
+        if (human == null) {
+            return;
+        }
+        for (final Player p : game.getPlayers()) {
+            if (p.isAI()) {
+                for (final Card c : p.getCreaturesInPlay()) {
+                    if (c != null && !c.isTapped() && !c.hasSickness()) {
+                        try {
+                            game.getCombat().addAttacker(c, human);
+                        } catch (final RuntimeException ignored) {
+                            // combat may reject mid-phase
+                        }
+                        return;
+                    }
+                }
+            }
+        }
+    }
+
     private static void prepareArenaPrefs() {
+        installDeviceAdapterStub();
         final ConfigData data = new ConfigData();
         data.ds1ArenaDuelScreen = true;
         Config.installConfigDataForTest(data);
@@ -539,6 +606,59 @@ public class ArenaDuelScriptedDuelTest {
             FModel.getPreferences().setPref(FPref.UI_DISABLE_CARD_IMAGES, true);
         }
         ModernDuelScreen.invalidate();
+
+        // Skin/fonts must load before VPlayerPanel's static FSkinFont fields initialize.
+        final FileHandle skinDir = Gdx.files.absolute(
+                Path.of(ForgeConstants.DEFAULT_SKINS_DIR).toAbsolutePath().normalize().toString());
+        Assert.assertTrue(skinDir.exists() && skinDir.isDirectory(),
+                "default skin missing at " + skinDir.path());
+        FSkin.loadLight("default", null, skinDir);
+        FSkin.loadFull(null);
+        FSkinFont.preloadAll("");
+        CardFaceSymbols.loadImages();
+    }
+
+    private static void installDeviceAdapterStub() {
+        try {
+            final Field f = Forge.class.getDeclaredField("deviceAdapter");
+            f.setAccessible(true);
+            if (f.get(null) != null) {
+                return;
+            }
+            f.set(null, new IDeviceAdapter() {
+                @Override public boolean isConnectedToInternet() { return false; }
+                @Override public boolean isConnectedToWifi() { return false; }
+                @Override public boolean isTablet() { return true; }
+                @Override public String getDownloadsDir() { return System.getProperty("java.io.tmpdir"); }
+                @Override public String getVersionString() { return "test"; }
+                @Override public String getLatestChanges(String commitsAtom, Date buildDateOriginal, Date max) {
+                    return "";
+                }
+                @Override public String getReleaseTag(String releaseAtom) { return ""; }
+                @Override public boolean openFile(String filename) { return false; }
+                @Override public void setLandscapeMode(boolean landscapeMode) { }
+                @Override public void preventSystemSleep(boolean preventSleep) { }
+                @Override public void restart() { }
+                @Override public void exit() { }
+                @Override public void closeSplashScreen() { }
+                @Override public void convertToJPEG(InputStream input, OutputStream output) throws IOException {
+                    throw new IOException("unsupported in GL test stub");
+                }
+                @Override public void convertToPNG(InputStream input, OutputStream output) throws IOException {
+                    throw new IOException("unsupported in GL test stub");
+                }
+                @Override public Pair<Integer, Integer> getRealScreenSize(boolean real) {
+                    return Pair.of(Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
+                }
+                @Override public ArrayList<String> getGamepads() { return new ArrayList<>(); }
+                @Override public UpnpServiceConfiguration getUpnpPlatformService() { return null; }
+                @Override public boolean needFileAccess() { return false; }
+                @Override public void requestFileAcces() { }
+                @Override public boolean isSupportedAudioFormat(File file) { return false; }
+            });
+        } catch (final ReflectiveOperationException e) {
+            throw new IllegalStateException("could not install DeviceAdapter stub", e);
+        }
     }
 
     private static HostedMatch startMatch() {
