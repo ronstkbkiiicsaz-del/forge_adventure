@@ -354,6 +354,12 @@ public class VPlayerPanel extends FContainer {
 
         float y = height - avatarHeight;
         float displayAreaHeight = displayAreaHeightFactor * y / 3;
+        // Arena landscape: keep the hand band close to ArenaDuelLayout's handFraction
+        // so cards stay readable instead of filling a third of a short player panel.
+        if (isArenaDuelLayout() && Forge.isLandscapeMode()) {
+            final float handFrac = arenaHandFraction();
+            displayAreaHeight = Math.max(Utils.scale(48), Math.min(y * 0.55f, height * handFrac));
+        }
         y -= displayAreaHeight;
         for (InfoTab tab : tabs) {
             tab.setDisplayBounds(0, y, width, displayAreaHeight);
@@ -441,6 +447,18 @@ public class VPlayerPanel extends FContainer {
     private static boolean isArenaDuelLayout() {
         final MatchScreen view = MatchController.getView();
         return view != null && view.isArenaDuelScreen();
+    }
+
+    private static float arenaHandFraction() {
+        try {
+            if (forge.adventure.util.Config.instance() != null
+                    && forge.adventure.util.Config.instance().getConfigData() != null) {
+                return forge.adventure.util.Config.instance().getConfigData().ds1HandFraction;
+            }
+        } catch (final RuntimeException ignored) {
+            // Config may be unavailable in some headless paths
+        }
+        return 0.28f;
     }
 
     private void doLandscapeLayout(float width, float height) {
