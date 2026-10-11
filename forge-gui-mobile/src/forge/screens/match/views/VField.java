@@ -282,10 +282,14 @@ public class VField extends FContainer {
         }
         final float w = getWidth();
         final float h = getHeight();
-        g.fillRect(new com.badlogic.gdx.graphics.Color(0.10f, 0.16f, 0.12f, 1f), 0, 0, w, h);
-        if (plate.getWidth() > 0) {
-            // Bias upward: map upper ~70% of the art into the field rect.
-            g.drawImage(plate, 0, -h * 0.35f, w, h * 1.55f);
+        g.startClip(0, 0, w, h);
+        try {
+            g.fillRect(new com.badlogic.gdx.graphics.Color(0.10f, 0.16f, 0.12f, 1f), 0, 0, w, h);
+            if (plate.getWidth() > 0) {
+                g.drawImage(plate, 0, -h * 0.35f, w, h * 1.55f);
+            }
+        } finally {
+            g.endClip();
         }
         g.resetAlphaComposite();
     }

@@ -499,12 +499,19 @@ public class VPlayerPanel extends FContainer {
         }
         final float w = getWidth();
         final float h = getHeight();
-        // Opaque forest-biased plate (same treatment as FieldScroller / VField) so the
-        // player half isn't a flat dark void from the water band of ADV_BG_MATCH.
-        g.fillRect(new Color(0.10f, 0.16f, 0.12f, 1f), 0, 0, w, h);
-        if (plate.getWidth() > 0) {
-            g.drawImage(plate, 0, -h * 0.25f, w, h * 1.50f);
+        // Opaque forest-biased plate, clipped so a flipped opponent panel cannot blit
+        // outside its band and punch FBO alpha holes into the local player field.
+        g.resetAlphaComposite();
+        g.startClip(0, 0, w, h);
+        try {
+            g.fillRect(new Color(0.10f, 0.16f, 0.12f, 1f), 0, 0, w, h);
+            if (plate.getWidth() > 0) {
+                g.drawImage(plate, 0, -h * 0.25f, w, h * 1.50f);
+            }
+        } finally {
+            g.endClip();
         }
+        g.resetAlphaComposite();
     }
 
     private void layoutFloatingMana(float panelWidth, float fieldBottom) {

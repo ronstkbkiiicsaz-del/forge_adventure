@@ -208,6 +208,15 @@ public class ArenaDuelScreen extends MatchScreen {
         top.setBounds(0, 0, visibleWidth, opp.h);
         // Leave the centre band empty inside the scroller (stack column draws above it).
         bottom.setBounds(0, opp.h + centre.h, visibleWidth, player.h);
+        // Draw opponent first, local player last. Classic MatchScreen adds bottom then top,
+        // so the flipped opponent panel painted after the local panel and wiped the
+        // player-field plate into FBO alpha holes (flat dark void in landscape).
+        final FScrollPane scroller = getFieldScroller();
+        if (scroller != null && scroller.indexOf(bottom) >= 0 && scroller.indexOf(top) >= 0
+                && scroller.indexOf(bottom) < scroller.indexOf(top)) {
+            scroller.remove(bottom);
+            scroller.add(bottom);
+        }
     }
 
     @Override

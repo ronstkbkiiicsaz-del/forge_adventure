@@ -93,7 +93,6 @@ public class ArenaDuelScreenGlTest {
             setViewport(true);
             MatchController.getView().setSize(1280, 720);
             MatchController.getView().revalidate();
-            dumpObjectsAt(MatchController.getView(), 1, 37, 446, 54);
             captureScreen(outDir.resolve("ds1-arena-duel-landscape.png"), 1280, 720);
             return null;
         });
