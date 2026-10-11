@@ -346,10 +346,16 @@ public class AdventureQuestController implements Serializable {
         Timer.schedule(new Timer.Task() {
             @Override
             public void run() {
-                stage.showDialog();
-                activeDialog.activate();
-                // Seems weird that data would be null here, but not null up there. Are we changing these values inside activate?
-                if (data.options == null || data.options.length == 0) {
+                // MapDialog.loadDialog already calls showDialog() when content is ready.
+                // Showing first left dialogOnlyInput stuck when activate() matched no conditions
+                // (common after dungeon wins that queue a quest epilogue/prologue) — reward
+                // returns, enemies still animate via Actor actions, but the player cannot move.
+                if (activeDialog == null) {
+                    return;
+                }
+                boolean shown = activeDialog.activate();
+                if (!shown) {
+                    stage.hideDialog();
                     displayNextDialog(stage);
                 }
             }
