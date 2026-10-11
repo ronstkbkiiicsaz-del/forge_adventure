@@ -904,6 +904,9 @@ public class DuelScene extends ForgeScene {
      */
     public void initDuels(PlayerSprite playerSprite, EnemySprite enemySprite, boolean isArena,
                           AdventureEventData eventData, boolean persistLife) {
+        // SV1: small dedicated hook so DS4 / MatchController merges stay easy.
+        // Arena rounds skip here — ArenaScene autosaves once before the entry fee.
+        maybeAutosaveBeforeDuel(isArena);
         this.player = playerSprite;
         this.enemy = enemySprite;
         this.isArena = isArena;
@@ -919,6 +922,18 @@ public class DuelScene extends ForgeScene {
         this.chaosBattle = this.enemy.getData().copyPlayerDeck && Current.player().isFantasyMode();
         this.AIExtras.clear();
         this.playerExtras.clear();
+    }
+
+    /**
+     * SV1: rotating autosave immediately before a duel is set up.
+     * Kept in its own method so take-back / match merges only touch a one-line call site.
+     * Arena rounds are skipped — see {@link ArenaScene#startArena()}.
+     */
+    private void maybeAutosaveBeforeDuel(boolean arenaRound) {
+        if (arenaRound) {
+            return;
+        }
+        forge.adventure.util.InteriorMapSave.maybeAutosaveBeforeDuel();
     }
 
     private String selectAI(String ai) { //Decide opponent AI.

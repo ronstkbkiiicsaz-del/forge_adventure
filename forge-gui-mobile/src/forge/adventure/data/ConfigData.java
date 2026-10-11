@@ -557,6 +557,19 @@ public class ConfigData {
      */
     public boolean cs0SourcePrintings = true;
 
+    // ---- Ascendant saving (Package SV1): save anywhere + autosave before fights. ----
+
+    /**
+     * When true (Ascendant default), allow manual save inside POI maps (dungeons/towns)
+     * and restore the player into that map on load. Stock modes ignore this.
+     */
+    public boolean sv1SaveAnywhere = true;
+    /**
+     * When true (Ascendant default), write the rotating autosave slot right before every
+     * duel starts. Skipped during active co-op sessions. Stock modes ignore this.
+     */
+    public boolean sv1AutosaveBeforeFight = true;
+
     // ---- Ascendant living towns (Package LT1): hand-made town pipeline (no shipments). ----
 
     /**
@@ -597,6 +610,27 @@ public class ConfigData {
      * Old saves omit this key and keep the default.
      */
     public boolean duelTakeBackEnabled = true;
+
+    // ---- Ascendant quest tracking (Package QL1): choose which quest the arrow tracks. ----
+
+    /**
+     * When true (Ascendant default), enable QL1 quest tracking behaviour: Track from the quest
+     * list, one tracked quest at a time (saved), new quests do not steal tracking, finishing
+     * the tracked quest moves tracking to the next active one, and "do any side quest" stages
+     * navigate to the nearest discovered QuestSource/Sidequest (or "no known location").
+     * Stock worlds leave this unused.
+     */
+    public boolean ql1QuestTracking = true;
+    /**
+     * When true with {@link #ql1QuestTracking}, CompleteQuest / any-side-quest navigation only
+     * considers visited (discovered) POIs. Undiscovered towns are never arrow targets.
+     */
+    public boolean ql1DiscoveredSideQuestTargetsOnly = true;
+    /**
+     * HUD / map line when a tracked "any side quest" stage has no discovered QuestSource or
+     * Sidequest POI. Not a town name — the arrow stays hidden.
+     */
+    public String ql1NoKnownLocationMessage = "no known location";
 
     // ---- Ascendant Arena duel screen (Package DS1 PR1): layout skeleton tunables. ----
 

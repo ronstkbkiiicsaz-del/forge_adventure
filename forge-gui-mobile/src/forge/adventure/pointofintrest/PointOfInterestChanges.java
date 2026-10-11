@@ -184,6 +184,22 @@ public class PointOfInterestChanges implements SaveFileContent  {
         return isVisited;
     }
     public void visit() {
+        boolean was = isVisited != null && isVisited;
         isVisited = true;
+        if (!was) {
+            try {
+                forge.adventure.world.WorldSave.getCurrentSave().notePoiDiscovered();
+            } catch (Exception ignored) {
+                // Headless / no live save.
+            }
+            try {
+                forge.adventure.stage.GameHUD hud = forge.adventure.stage.GameHUD.instance;
+                if (hud != null) {
+                    hud.updateTrackedQuestHud();
+                }
+            } catch (Exception ignored) {
+                // HUD not built in tests.
+            }
+        }
     }
 }

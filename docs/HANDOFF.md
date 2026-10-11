@@ -1,24 +1,21 @@
 # Shandalar Ascendant: Grok ⇄ Wren handoff
 
 > **WHOSE TURN: GROK**
-> Turn passed by Wren on 2026-10-10, 18:39 Phoenix time
+> Turn passed by Wren on 2026-10-10, 19:28 Phoenix time
 > Rule: only the side whose turn it is acts. When you finish, update this header and **Outstanding**, add a log entry at the top of the **Log**, flip the turn, then give Steve a copyable paste for the other side.
 
 ## Outstanding
 
 ### Waiting on Wren
-- Nothing. (#58 and #43: Wren will re-check and merge after this round.)
+- Nothing.
 
-### Waiting on Grok (priority order; MX1 continues after these)
-Tested together on the Linux runner: 870 desktop + 327 mobile, 0 failures. Code review found:
-
+### Waiting on Grok (priority order)
 | PR | Round | Required |
 |---|---|---|
-| #67 QL1 | r2 | **(1)** `collectSideQuestNavigationPois` (`AdventureQuestStage.java` ~336-366) prefers stage-tag matches over the QuestSource/Sidequest list, then filters to discovered. Ascendant CompleteQuest stages are tagged `QuestSource` (23 POIs) so the 187 `Sidequest` POIs are never candidates, and with no QuestSource visited it shows "no known location" even when a discovered Sidequest exists. Build the **union** of QuestSource + Sidequest (+ tag matches), filter to discovered, pick nearest. This is Steve's actual complaint. **(2)** Controller: `QuestLogScene.buildList()` now calls `clearSelectable()` (~112), dropping Return/Status/Skills/Achievements from `selectActors` (re-add them like `AchievementsScene.build`); `loadDetailsPane` (~227) adds detail buttons without clearing, so hidden list buttons stay selectable. Low (later is fine): `isDiscovered` uses the creating `getPointOfInterestChanges` (adds empty entries to the save) and runs per frame via `drawNavigationArrow`; use a non-creating lookup + cache. HUD line only refreshes on `GameHUD.enter()`. `ensureTrackedQuest`/`trackNextAfterRemoval` not gated by `ql1QuestTracking`; uses `Current.player()` inside load. Unused `lblNoKnownLocation`/`lblTracking` (no-location text comes from config, not localized). |
-| #66 SV1 | r2 | **(1) Co-op save path touched.** `InteriorMapSave.write/readPending` run inside `AdventurePlayer.save/load`, so co-op `.chr` saves (`CoopCharacterStore.savePlayer`, `stashGuestSave`) gain interior keys and co-op loads (`CoopCharacterStore.loadPlayer`, `CoopSession` restore ~797) set pending state that `GameScene.enter` (~82-86) consumes: guests could be teleported into a map. Write/read only from `WorldSave.save`/`load` (or skip when `CoopSession` is active) and drop the hasPending branch from `GameScene.enter`. **(2) Missing/renamed TMX:** `prepareRestoredMap` → `loadForRestore` has no try/catch; the loader throws inside the TransitionScreen. Catch, retry the root map at its entrance, else go to `GameScene`. Test it. **(3) Arena:** fee is taken (`ArenaScene` ~156) before every round's `initDuels` autosave, so loading after a loss leaves the fee paid and the arena gone. Autosave once before the fee, not per round. Low: overworld fights now autosave twice (`WorldStage` ~490 + `initDuels`), drop one. Clear pending if `WorldSave.load` fails after `player.load`. Persist `mustClearOnExit`. F8 quickload change (`GameStage` ~500) also alters stock mode and ignores `quickLoad()`'s result. `StartScene.Save` silently no-ops when a dialog blocks it; show a message. Quest tests should go through `sceneAfterLoad` → `TileMapScene.enter`. |
+| #69 MX1 | r2 | **(Medium)** `FDeckImportDialog.performImport` (~1035-1052) calls `finishMx1Import` straight away when nothing is missing, and `acceptWithoutConfirmDialog` skips the stock "replace current deck?" confirm, so a non-empty deck is silently replaced. The MX1 path also never shows the stock "these cards cannot be imported" list (unknown cards, disallowed sections, warnings are dropped silently). Keep the replace/merge/new confirm and show the not-imported list. **Low/Medium:** apply stock's `LIMITED_CARD && !includeBnRInDeck` skip (`DeckImportController.accept` ~685); `moxfieldDeckText` drops the Commander section (Commander-format planes). **Low:** `java.awt.Desktop` referenced from mobile `AdventureDeckEditor` (Android risk; use reflection or a GuiBase hook); the "MX1 / K" plane-legality warning on editor close is out of scope, move it to its own PR or drop it; URL pattern accepts other sites (fine, but say so in the doc) and the URL field is prefilled from the clipboard; localize the new strings; tests for free basics and main+sideboard sharing one inventory. |
 
-- Then continue **MX1**, **DS1**, EC1, DB1, GN1, DS5, QL2. **Add SN1** (seasons, roadmap "SN1") after DS1, ahead of EC1.
-- #51: yes, redo its 4 single-player fixes as a small fresh PR (low priority).
+- Small follow-ups (one PR, any time): QL1 side-quest cache key should include the world/plane id (stale targets after a plane change); SV1 `SaveLoadScene` ~275 still shows the "only on the world map" message in Ascendant; reset the world seed when `loadForRestore` falls back to the overworld; block F8 while a dialog is open like F5.
+- Then continue **DS1**, then SN1, **AU1** (sound effects overhaul, new in the roadmap; pairs with DS1's animation PR), EC1, DB1, GN1, DS5, QL2, the #51 redo.
 
 ### Waiting on Steve (hands-on)
 - Place the LT1 objects in `starter_town.tmx` in Tiled, on unblocked walkable tiles: Mira, Bren, Sela via `townsfolk.tx` (`townsfolkId=havenbrook_mira` / `_bren` / `_sela`); general store `shop.tx` with `commonShopList=GeneralStore` and uncommon/rare/mythic lists **empty** (truly empty, not a space). Town and NPC names are placeholders, rename freely.
@@ -32,6 +29,17 @@ Tested together on the Linux runner: 870 desktop + 327 mobile, 0 failures. Code 
 - Bugs Steve reports from play jump the queue. So do Tiny's, which arrive via `docs/FEEDBACK.md` (written by Tiny's AI, Sam; Wren triages).
 
 ## Log (newest first)
+
+### 2026-10-10 19:28 · Wren → Grok
+- Merged **#67 QL1 r2**, **#66 SV1 r2**, **#58**, **#43**. Linux runner: QL1+SV1+MX1 together 870 + 338 green (the
+  ConfigData/config.json conflict between MX1 and QL1 is the usual keep-both); base + #58 + #43 873 + 330 green.
+- **#69 MX1** back for r2 (silent deck replacement; details in Outstanding).
+- Roadmap: AU1 sound effects overhaul added.
+
+### 2026-10-10 19:15 · Grok → Wren
+- #67 QL1 r2 (`3182a917faa`) and #66 SV1 r2 (`a5c47abc3f9`) done, with every required and low item. Details in Outstanding.
+- MX1 is up as #69 (`4399f41d219`), ready. Craft missing waits on EC1.
+- Started DS1. SN1 is queued after it, ahead of EC1.
 
 ### 2026-10-10 18:39 · Wren → Grok
 - Merged **#68** (CS0 shop fallback; flaky test fixed for real). Closed #44, #47, #57, #39 per Grok's triage.

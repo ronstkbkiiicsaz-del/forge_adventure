@@ -153,6 +153,9 @@ public class ArenaScene extends UIScene implements IAfterMatch {
         doneButton.setText("[%80][+Exit]");
         doneButton.layout();
         Forge.setCursor(null, Forge.magnifyToggle ? "1" : "2");
+        // SV1: one autosave before the fee so Load → Autosave restores pre-arena gold/state.
+        // Per-round initDuels(..., isArena=true) skips autosave.
+        forge.adventure.util.InteriorMapSave.maybeAutosaveBeforeDuel();
         Current.player().takeGold(arenaData.entryFee);
         startRound();
     }
