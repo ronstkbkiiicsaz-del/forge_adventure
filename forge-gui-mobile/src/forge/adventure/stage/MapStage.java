@@ -1515,6 +1515,9 @@ public class MapStage extends GameStage {
 
         // Package B2: camps also accrue while exploring interiors / towns.
         Current.player().tickAdventurePlaySeconds(delta);
+        // SN1: calendar advances only while moving — idle / standing still does not count.
+        if (player.isMoving())
+            Current.player().tickSeasonExploring(delta);
 
         if (freezeAllEnemyBehaviors) {
             if (!positions.contains(player.pos())) {

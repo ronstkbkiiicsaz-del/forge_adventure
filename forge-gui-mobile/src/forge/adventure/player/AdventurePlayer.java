@@ -274,6 +274,7 @@ public class AdventurePlayer implements Serializable, SaveFileContent {
         toolEnchantments.clear();
         camps.clear();
         adventurePlaySeconds = 0d;
+        season.clear();
         maxDeckCount = 20;
         clearDecks();
         inventoryItems.clear();
@@ -304,6 +305,7 @@ public class AdventurePlayer implements Serializable, SaveFileContent {
     private final CardPool cards = new CardPool();
     private final PlayerSkills skills = new PlayerSkills();
     private final StandardWindow standardWindow = new StandardWindow();
+    private final AdventureSeason season = new AdventureSeason();
 
     public PlayerSkills getSkills() {
         return skills;
@@ -311,6 +313,11 @@ public class AdventurePlayer implements Serializable, SaveFileContent {
 
     public StandardWindow getStandardWindow() {
         return standardWindow;
+    }
+
+    /** SN1 in-game calendar and season state (Ascendant). */
+    public AdventureSeason getSeason() {
+        return season;
     }
 
     /** After cards enter the collection: check set mastery (may unlock and rotate in a new set). */
@@ -1660,6 +1667,18 @@ public class AdventurePlayer implements Serializable, SaveFileContent {
                 data.containsKey("standardSetUnlocked") && data.readBool("standardSetUnlocked"),
                 data.containsKey("standardChoicePending") && data.readBool("standardChoicePending"),
                 data.containsKey("unlockedHistory") ? (String[]) data.readObject("unlockedHistory") : null);
+        // SN1: load season calendar, or derive a default from the current rotation for old saves.
+        if (Config.ascendant()) {
+            season.load(data, standardWindow);
+            // Season clock replaces one-unlock-per-world; clear the legacy lock so mastery can
+            // end seasons again on migrated saves.
+            if (season.isEnabled() && standardWindow.isSetUnlockedThisWorld()
+                    && !season.isChoicePending()) {
+                standardWindow.startNewWorld();
+            }
+        } else {
+            season.clear();
+        }
 
         if (data.containsKey("questFlagsKey") && data.containsKey("questFlagsValue")) {
             String[] keys = (String[]) data.readObject("questFlagsKey");
@@ -2159,6 +2178,8 @@ public class AdventurePlayer implements Serializable, SaveFileContent {
         data.store("standardSetUnlocked", standardWindow.isSetUnlockedThisWorld());
         data.store("standardChoicePending", standardWindow.isChoicePending());
         data.storeObject("unlockedHistory", standardWindow.saveHistory());
+        if (Config.ascendant())
+            season.save(data);
 
         // Save quest flags.
         ArrayList<String> questFlagsKey = new ArrayList<>();
@@ -3615,11 +3636,45 @@ public class AdventurePlayer implements Serializable, SaveFileContent {
 
     // ---- Ascendant gathering methods (Package B2) ----
 
-    /** Advance in-game play time used by outpost production. Ascendant only. */
+    /**
+     * Advance in-game play time used by outpost production. Ascendant only.
+     * SN1 calendar exploring is separate — see {@link #tickSeasonExploring(float)}.
+     */
     public void tickAdventurePlaySeconds(float delta) {
         if (!Config.ascendant() || delta <= 0f)
             return;
         adventurePlaySeconds += delta;
+    }
+
+    /**
+     * SN1: advance the season calendar from real exploring time.
+     * Call only while the player is moving — idle / standing still must not count.
+     */
+    public void tickSeasonExploring(float delta) {
+        if (!Config.ascendant() || delta <= 0f || !season.isEnabled())
+            return;
+        season.tickExploring(delta, standardWindow, cards);
+    }
+
+    /** SN1: charge flat duel hours on the calendar (win or lose). */
+    public void chargeSeasonDuelHours() {
+        if (!Config.ascendant() || !season.isEnabled())
+            return;
+        season.chargeDuelHours(standardWindow, cards);
+    }
+
+    /** SN1: lock the free set-pick undo after a pack open or a won fight. */
+    public void lockSeasonPickUndo() {
+        if (!Config.ascendant() || !season.isEnabled())
+            return;
+        season.lockUndo();
+    }
+
+    /** SN1: rest at an inn until the next morning (gold cost, once per in-game day). */
+    public boolean restSeasonUntilMorning() {
+        if (!Config.ascendant() || !season.isEnabled())
+            return false;
+        return season.restUntilMorning(standardWindow, cards);
     }
 
     public double getAdventurePlaySeconds() {

@@ -160,11 +160,13 @@ public class WorldStage extends GameStage implements SaveFileContent {
         if (gatherFailNotifyCooldown > 0f)
             gatherFailNotifyCooldown -= delta;
 
-        // Package B2: outpost production uses active overworld play time.
-        Current.player().tickAdventurePlaySeconds(delta);
-
         boolean moving = player.isMoving();
         boolean channeling = channelNode != null;
+        // Package B2: outpost production uses overworld play time.
+        Current.player().tickAdventurePlaySeconds(delta);
+        // SN1: calendar advances only while exploring (moving) — idle does not count.
+        if (moving)
+            Current.player().tickSeasonExploring(delta);
         // Enemies keep chasing while the player channels so a touch can cancel gathering.
         boolean updateEnemies = moving || channeling;
 
