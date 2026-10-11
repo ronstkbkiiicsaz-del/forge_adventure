@@ -148,6 +148,9 @@ public class DeckImportController {
     }
 
     private void fillDateDropdowns() {
+        if (monthDropdown == null || yearDropdown == null) {
+            return;
+        }
         DateFormatSymbols dfs = new DateFormatSymbols();
         monthDropdown.removeAllItems();
         String[] months = dfs.getMonths();

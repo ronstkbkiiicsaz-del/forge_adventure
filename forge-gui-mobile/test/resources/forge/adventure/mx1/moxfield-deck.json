@@ -1,0 +1,42 @@
+{
+  "name": "MX1 Fixture Deck",
+  "format": "standard",
+  "commanders": {},
+  "mainboard": {
+    "Lightning Bolt": {
+      "quantity": 4,
+      "card": {
+        "name": "Lightning Bolt",
+        "set": "m10",
+        "cn": "146"
+      }
+    },
+    "Counterspell": {
+      "quantity": 2,
+      "card": {
+        "name": "Counterspell",
+        "set": "mh2",
+        "cn": "267"
+      }
+    },
+    "Island": {
+      "quantity": 10,
+      "card": {
+        "name": "Island",
+        "set": "jmp",
+        "cn": "48"
+      }
+    }
+  },
+  "sideboard": {
+    "Negate": {
+      "quantity": 2,
+      "card": {
+        "name": "Negate",
+        "set": "m20",
+        "cn": "69"
+      }
+    }
+  },
+  "companions": {}
+}

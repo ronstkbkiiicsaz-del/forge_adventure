@@ -21,9 +21,11 @@ import forge.Forge;
 import forge.adventure.player.AdventurePlayer;
 import forge.adventure.player.PlayerSkills;
 import forge.adventure.player.StandardWindow;
+import forge.adventure.util.CollectionExporter;
 import forge.adventure.util.Config;
 import forge.adventure.util.Controls;
 import forge.adventure.util.Current;
+import forge.adventure.util.MoxfieldMx1;
 
 /**
  * Lists every skill with its level, XP and progress to the next level.
@@ -106,6 +108,9 @@ public class SkillsScene extends UIScene {
             addRow("[BLACK]Gym badges", "[BLACK]" + Current.player().getBadgeCount() + "/8",
                     "[DARK_GRAY]" + league);
             addRow("[BLACK]Plane format", "", "[DARK_GRAY]" + planeFmt);
+            if (MoxfieldMx1.statusUiEnabled()) {
+                addMoxfieldExportStatusRow();
+            }
             try {
                 String equipped = forge.adventure.player.AchievementService.get()
                         .getProgress().getEquippedTitle();
@@ -135,6 +140,28 @@ public class SkillsScene extends UIScene {
         if (Config.ascendant() && Current.player().getMasterySurgePicksUnspent() > 0)
             addMasterySurgeChoice();
         performTouch(scrollPaneOfActor(scrollContainer)); //mouse wheel scrolling
+    }
+
+    /** MX1: "Collection exported &lt;time&gt;" plus a How-to scene dialog (not FOptionPane). */
+    private void addMoxfieldExportStatusRow() {
+        TypingLabel status = label("[BLACK]" + MoxfieldMx1.exportStatusLine());
+        status.setWrap(true);
+        scrollContainer.add(status).colspan(2).align(Align.left).padLeft(10).growX();
+        TextraButton howTo = Controls.newTextButton("How-to");
+        howTo.addListener(new ClickListener() {
+            @Override
+            public void clicked(InputEvent event, float x, float y) {
+                showDialog(createGenericDialog("Moxfield collection",
+                        MoxfieldMx1.moxfieldHowToBody(),
+                        Forge.getLocalizer().getMessage("lblOK"), null,
+                        SkillsScene.this::removeDialog, null));
+            }
+        });
+        scrollContainer.add(howTo).align(Align.right).padRight(10);
+        scrollContainer.row().padTop(4);
+        addToSelectable(howTo);
+        // Touch CollectionExporter so last_export.txt is considered after a save in another scene.
+        CollectionExporter.lastExportDisplay();
     }
 
     private void addSkillRow(PlayerSkills.Skill skill, int level, String progress, PlayerSkills skills) {
