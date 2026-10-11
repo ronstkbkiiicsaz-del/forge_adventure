@@ -287,7 +287,9 @@ Principle: the game is about building a collection, so selling cards must not be
   the board shows what each collector wants and offers before you commit.
 - **Locked sets.** Old sets that weren't designed for limited play (the earliest expansions and other non-booster
   oddities; exact list decided with Steve, e.g. Alpha/Beta/Unlimited, Arabian Nights, Antiquities, Legends, The Dark,
-  Fallen Empires) never appear in shops, packs, Standard choices or regular loot. Their cards come **only** from boss
+  Fallen Empires) never appear in shops, packs, Standard choices or regular loot, and **can't be picked as a starting
+  set or a season set** (new-game starter list, SN1 shortlist and "choose any" all exclude them). Their cards still
+  play by today's Oracle rules in Forge, so they work fine as individual cards in decks. Their cards come **only** from boss
   random loot and collector trades, so they stay rare and special. Crafting them with dust is either off or very
   expensive (decide in playtest).
 - Tests: town shops refuse card sales in Ascendant (stock unchanged); a stall listing at the card's value sells
