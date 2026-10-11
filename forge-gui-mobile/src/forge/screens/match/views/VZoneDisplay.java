@@ -210,8 +210,26 @@ public class VZoneDisplay extends VCardDisplayArea {
     }
 
     @Override
+    protected void drawBackground(Graphics g) {
+        // Arena hand: opaque band painted inside the zone's own draw so it sits above
+        // FieldScroller's full-bleed plate and below the card children.
+        if (zoneType == ZoneType.Hand
+                && MatchController.getView() != null
+                && MatchController.getView().isArenaDuelScreen()) {
+            g.resetAlphaComposite();
+            g.fillRect(new com.badlogic.gdx.graphics.Color(0.16f, 0.18f, 0.22f, 1f),
+                    0, 0, getWidth(), getHeight());
+        }
+    }
+
+    @Override
     protected void startClip(Graphics g) {
-        if (Forge.isLandscapeMode()) {
+        // Classic landscape stacks zones in a side column (tight clip). DS1 Arena hand
+        // is a bottom band like portrait — use the expanded clip so fanned cards paint.
+        final boolean arenaHand = zoneType == ZoneType.Hand
+                && MatchController.getView() != null
+                && MatchController.getView().isArenaDuelScreen();
+        if (Forge.isLandscapeMode() && !arenaHand) {
             g.startClip(0, 0, getWidth(), getHeight());
         }
         else {

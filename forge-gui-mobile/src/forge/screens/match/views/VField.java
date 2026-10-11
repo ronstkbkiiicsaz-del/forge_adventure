@@ -266,6 +266,36 @@ public class VField extends FContainer {
     }
 
     @Override
+    protected void drawBackground(forge.Graphics g) {
+        if (!arenaLayoutActive()) {
+            return;
+        }
+        // Screen-aligned match plate, clipped to this field so it cannot paint over
+        // the Arena hand band below (an unclipped blit was wiping the hand scrim).
+        g.resetAlphaComposite();
+        forge.assets.FSkinTexture plate = forge.assets.FSkinTexture.ADV_BG_MATCH;
+        if (plate.getWidth() <= 0) {
+            plate = forge.assets.FSkinTexture.BG_MATCH;
+        }
+        final float sw = Math.max(1f, Forge.getScreenWidth());
+        final float sh = Math.max(1f, Forge.getScreenHeight());
+        final float imgAspect = plate.getWidth() / (float) Math.max(1, plate.getHeight());
+        float bgW = sw;
+        float bgH = bgW / imgAspect;
+        if (bgH < sh) {
+            bgH = sh;
+            bgW = bgH * imgAspect;
+        }
+        g.startClip(0, 0, getWidth(), getHeight());
+        try {
+            g.drawImage(plate, (sw - bgW) / 2f - screenPos.x, (sh - bgH) / 2f - screenPos.y, bgW, bgH);
+        } finally {
+            g.endClip();
+        }
+        g.resetAlphaComposite();
+    }
+
+    @Override
     protected void doLayout(float width, float height) {
         if (arenaLayoutActive()) {
             doArenaLayout(width, height);

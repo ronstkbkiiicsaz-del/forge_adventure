@@ -337,44 +337,31 @@ public class VPlayerPanel extends FContainer {
     protected void doLayout(float width, float height) {
         // DS1 Arena: keep hand/field stacked (portrait-style) even in landscape so the
         // ArenaDuelLayout playerHand / playerField bands stay readable.
-        if (Forge.isLandscapeMode() && !isArenaDuelLayout()) {
+        if (isArenaDuelLayout()) {
+            doArenaLayout(width, height);
+            return;
+        }
+        // Restore classic chrome if we previously hid it for Arena.
+        setArenaChromeVisible(true);
+        if (Forge.isLandscapeMode()) {
             doLandscapeLayout(width, height);
             return;
         }
 
         //layout for bottom panel by default
-        // Arena: never let Utils.AVG_FINGER (tiny under a 64px GL window) collapse the
-        // avatar / zone-tab chrome into a clipped icon strip along the panel edge.
-        final boolean arena = isArenaDuelLayout();
-        final float chromeH = arena
-                ? Math.max(56f, Math.min(72f, height * 0.18f))
-                : avatarHeight;
+        final float chromeH = avatarHeight;
         float x = chromeH;
         float w = width - chromeH;
         float indicatorScale = 1f;
         if (chromeH < VAvatar.HEIGHT) {
             indicatorScale = 0.6f;
         }
-        // Arena reserves a phase-rail region in ArenaDuelLayout; keep the classic
-        // phase strip out of the player panel so it doesn't form a second tiny bar.
-        if (arena) {
-            phaseIndicator.setVisible(false);
-        } else {
-            phaseIndicator.setVisible(true);
-            float h = phaseIndicator.getPreferredHeight(w) * indicatorScale;
-            phaseIndicator.setBounds(x, height - h, w, h);
-        }
+        phaseIndicator.setVisible(true);
+        float phaseH = phaseIndicator.getPreferredHeight(w) * indicatorScale;
+        phaseIndicator.setBounds(x, height - phaseH, w, phaseH);
 
         float y = height - chromeH;
         float displayAreaHeight = displayAreaHeightFactor * y / 3;
-        // Arena: hand band tracks ds1HandFraction of the player panel (both orientations).
-        // Landscape gets a higher floor so fanned cards read as card-aspect faces, not a
-        // thin name-plate strip against a short band.
-        if (arena) {
-            final float handFrac = arenaHandFraction();
-            final float minHand = Forge.isLandscapeMode() ? 120f : 88f;
-            displayAreaHeight = Math.max(minHand, Math.min(y * 0.60f, height * Math.max(handFrac, 0.30f)));
-        }
         y -= displayAreaHeight;
         for (InfoTab tab : tabs) {
             tab.setDisplayBounds(0, y, width, displayAreaHeight);
@@ -385,7 +372,7 @@ public class VPlayerPanel extends FContainer {
         avatar.setPosition(0, y);
 
         float lifeLabelWidth = LIFE_FONT.getBounds("99").width * 1.2f * indicatorScale; //make just wide enough for 2-digit life totals
-        float infoLabelHeight = chromeH - (arena || !phaseIndicator.isVisible() ? 0f : phaseIndicator.getHeight());
+        float infoLabelHeight = chromeH - (!phaseIndicator.isVisible() ? 0f : phaseIndicator.getHeight());
         if (infoLabelHeight < chromeH * 0.55f) {
             infoLabelHeight = chromeH;
         }
@@ -425,6 +412,71 @@ public class VPlayerPanel extends FContainer {
 
         //this is used for landscape so set this to 0
         field.setFieldModifier(0);
+    }
+
+    /**
+     * DS1 Arena panel layout: hide classic avatar/zone-tab chrome (those were the
+     * thin clipped icon bars along the top/bottom edges) and pin the local hand to
+     * the bottom of the player panel at the same fraction ArenaDuelLayout uses.
+     */
+    private void doArenaLayout(final float width, final float height) {
+        setArenaChromeVisible(false);
+        phaseIndicator.setVisible(false);
+        if (commandZone != null) {
+            commandZone.setVisible(false);
+        }
+        field.setCommandZoneWidth(0);
+        field.setFieldModifier(0);
+
+        // Opponent panel: field fills the whole band (no hand strip, no classic tabs).
+        if (isFlipped()) {
+            for (InfoTab tab : tabs) {
+                tab.setDisplayBounds(0, 0, width, 0);
+                tab.setDisplayVisible(false);
+            }
+            field.setBounds(0, 0, width, height);
+            layoutFloatingMana(width, height);
+            return;
+        }
+
+        // Local player: hand band at the bottom, matching ArenaDuelLayout.playerHand.
+        // Landscape bumps the fraction so fanned cards stay card-aspect and fully on screen.
+        final float handFrac = Math.max(arenaHandFraction(), Forge.isLandscapeMode() ? 0.34f : 0.28f);
+        final float minHand = Forge.isLandscapeMode() ? 120f : 100f;
+        final float handH = Math.max(minHand, Math.min(height * 0.48f, height * handFrac));
+        final float fieldH = Math.max(1f, height - handH);
+
+        for (InfoTab tab : tabs) {
+            tab.setDisplayBounds(0, fieldH, width, handH);
+            // Only the selected zone (hand) should paint; keep others hidden.
+            tab.setDisplayVisible(false);
+        }
+        // Prefer the selected zone; fall back to the hand band for the local player.
+        final VZoneDisplay handZone = getZoneDisplay(ZoneType.Hand);
+        if (selectedTab != null) {
+            selectedTab.setDisplayVisible(true);
+        } else if (handZone != null) {
+            handZone.setVisible(true);
+        }
+        // Force the hand zone into the band so a prompt transition cannot leave it
+        // at a stale classic chrome position.
+        if (handZone != null) {
+            handZone.setBounds(0, fieldH, width, handH);
+            if (selectedTab == null || selectedTab.getDisplayArea() == handZone) {
+                handZone.setVisible(true);
+            }
+        }
+
+        field.setBounds(0, 0, width, fieldH);
+        layoutFloatingMana(width, fieldH);
+    }
+
+    private void setArenaChromeVisible(final boolean visible) {
+        avatar.setVisible(visible);
+        lblLife.setVisible(visible);
+        for (InfoTab tab : tabs) {
+            tab.setVisible(visible);
+        }
     }
 
     private void layoutFloatingMana(float panelWidth, float fieldBottom) {
@@ -604,19 +656,25 @@ public class VPlayerPanel extends FContainer {
         float y;
         InfoTab infoTab = selectedTab;
         float pad = Forge.isHorizontalTabLayout() ? avatarWidth / 16f : 0f;
+        final VDisplayArea selectedDisplayArea = infoTab == null ? null : infoTab.getDisplayArea();
+        // Arena: field plate comes from VField + FieldScroller. Here only paint an
+        // opaque hand band so fanned cards stay readable.
+        if (isArenaDuelLayout()) {
+            g.resetAlphaComposite();
+            final VZoneDisplay handZone = getZoneDisplay(ZoneType.Hand);
+            if (handZone != null && handZone.isVisible() && handZone.getHeight() > 1f) {
+                g.fillRect(new Color(0.16f, 0.18f, 0.22f, 1f),
+                        handZone.getLeft(), handZone.getTop(), handZone.getWidth(), handZone.getHeight());
+            }
+            return; // no classic zone-tab borders in Arena
+        }
         if (infoTab != null) { //draw background and border for selected zone if needed
-            VDisplayArea selectedDisplayArea = infoTab.getDisplayArea();
             float x = selectedDisplayArea == null ? 0 : selectedDisplayArea.getLeft();
             float w = selectedDisplayArea == null ? 0 : selectedDisplayArea.getWidth();
             float top = selectedDisplayArea == null ? 0 : selectedDisplayArea.getTop();
             float h = selectedDisplayArea == null ? 0 : selectedDisplayArea.getHeight();
             float bottom = selectedDisplayArea == null ? 0 : selectedDisplayArea.getBottom();
-            // Arena: keep the hand/field band clear so the match backdrop and card
-            // bodies stay visible (classic inactive fill reads as a black void in
-            // landscape and makes fanned cards look like clipped header strips).
-            if (!isArenaDuelLayout()) {
-                g.fillRect(Forge.isHorizontalTabLayout() ? getAltDisplayAreaBackColor() : getDisplayAreaBackColor(), x - pad, top, w + pad, h + pad);
-            }
+            g.fillRect(Forge.isHorizontalTabLayout() ? getAltDisplayAreaBackColor() : getDisplayAreaBackColor(), x - pad, top, w + pad, h + pad);
             if (Forge.isHorizontalTabLayout())
                 g.drawLine(1, MatchScreen.getBorderColor(), x, isFlipped() ? bottom : top, x + w, isFlipped() ? bottom : top);
 

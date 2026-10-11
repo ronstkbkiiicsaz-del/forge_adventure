@@ -195,6 +195,16 @@ public class VPrompt extends FContainer {
 
     @Override
     protected void drawBackground(Graphics g) {
+        // Arena replaces OK/Cancel with context / pass-until-EOT labels. Keep an
+        // opaque prompt bed (no translucent fillRect — that breaks FBO alpha).
+        if (forge.screens.match.MatchController.getView() != null
+                && forge.screens.match.MatchController.getView().isArenaDuelScreen()
+                && !btnOk.isVisible() && !btnCancel.isVisible()) {
+            g.resetAlphaComposite();
+            g.fillRect(new com.badlogic.gdx.graphics.Color(0.08f, 0.09f, 0.12f, 1f),
+                    0, 0, getWidth(), getHeight());
+            return;
+        }
         g.fillRect(getBackColor(), 0, 0, getWidth(), getHeight());
     }
     

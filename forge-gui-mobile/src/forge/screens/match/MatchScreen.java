@@ -1170,22 +1170,18 @@ public class MatchScreen extends FScreen {
         @Override
         public void drawBackground(Graphics g) {
             super.drawBackground(g);
-            if (!FModel.getPreferences().getPrefBoolean(FPref.UI_MATCH_IMAGE_VISIBLE)) {
-                if (!Forge.isMobileAdventureMode)
-                    if (!hasActivePlane())
-                        return;
-            }
-            // DS1 Arena: classic midField geometry leaves wide landscape lanes empty.
-            // Paint the match backdrop full-bleed inside the scroller so both
-            // orientations match the ArenaDuelScreen base layer.
+            // DS1 Arena: always paint a full-bleed match backdrop inside the scroller
+            // (before the classic UI_MATCH_IMAGE_VISIBLE early-return). Classic midField
+            // geometry leaves wide landscape lanes empty otherwise.
             if (MatchController.getView() != null && MatchController.getView().isArenaDuelScreen()) {
-                FSkinTexture arenaBG = currentBG;
-                if (!Forge.isMobileAdventureMode) {
-                    if (daytime == null) {
-                        arenaBG = FSkinTexture.BG_MATCH;
-                    } else {
-                        arenaBG = "Day".equals(daytime) ? FSkinTexture.BG_MATCH_DAY : FSkinTexture.BG_MATCH_NIGHT;
-                    }
+                FSkinTexture arenaBG = Forge.isMobileAdventureMode ? currentBG : FSkinTexture.BG_MATCH;
+                if (!Forge.isMobileAdventureMode && daytime != null) {
+                    arenaBG = "Day".equals(daytime) ? FSkinTexture.BG_MATCH_DAY : FSkinTexture.BG_MATCH_NIGHT;
+                }
+                // Prefer the higher-contrast adventure match plate when available so
+                // landscape screenshots aren't a near-black void next to portrait.
+                if (FSkinTexture.ADV_BG_MATCH.getWidth() > 0) {
+                    arenaBG = FSkinTexture.ADV_BG_MATCH;
                 }
                 final float aw = getWidth();
                 final float ah = getHeight();
@@ -1196,8 +1192,14 @@ public class MatchScreen extends FScreen {
                     bgH = ah;
                     bgW = bgH * aspect;
                 }
+                g.resetAlphaComposite();
                 g.drawImage(arenaBG, (aw - bgW) / 2f, (ah - bgH) / 2f, bgW, bgH);
                 return;
+            }
+            if (!FModel.getPreferences().getPrefBoolean(FPref.UI_MATCH_IMAGE_VISIBLE)) {
+                if (!Forge.isMobileAdventureMode)
+                    if (!hasActivePlane())
+                        return;
             }
             //boolean isGameFast = MatchController.instance.isGameFast(); //this used to control animation speed
             float midField = topPlayerPanel.getBottom();

@@ -26,6 +26,7 @@ import forge.Forge;
 import forge.Graphics;
 import forge.adventure.data.ConfigData;
 import forge.adventure.util.Config;
+import forge.assets.FSkinColor;
 import forge.assets.FSkinFont;
 import forge.assets.FSkinTexture;
 import forge.gamemodes.match.YieldController;
@@ -60,12 +61,16 @@ public class ArenaDuelScreen extends MatchScreen {
                 .text("Pass")
                 .font(FSkinFont.get(16))
                 .align(Align.center)
+                .opaque(true)
+                .textColor(FSkinColor.getStandardColor(230, 230, 235))
                 .command(this::onContext)
                 .build());
         btnPassUntilEot = add(new FLabel.Builder()
                 .text(ArenaContextActions.passUntilEotLabel())
-                .font(FSkinFont.get(12))
+                .font(FSkinFont.get(13))
                 .align(Align.center)
+                .opaque(true)
+                .textColor(FSkinColor.getStandardColor(210, 210, 220))
                 .command(this::onPassUntilEot)
                 .build());
         // Controller: Left Trigger still fires VPrompt OK (same selectButtonOk seam);
@@ -165,6 +170,12 @@ public class ArenaDuelScreen extends MatchScreen {
             getHeader().setHeight(menu.h);
         }
 
+        // Keep the local hand zone selected so the fanned hand band stays populated.
+        final VPlayerPanel bottomPanel = getBottomPlayerPanel();
+        if (bottomPanel != null) {
+            bottomPanel.setSelectedZone(forge.game.zone.ZoneType.Hand);
+        }
+
         refreshContextLabel();
     }
 
@@ -198,6 +209,7 @@ public class ArenaDuelScreen extends MatchScreen {
         // later opaque children wipe into a flat void in landscape captures.
         final float w = getWidth();
         final float h = getHeight();
+        g.resetAlphaComposite();
         g.fillRect(new Color(0.07f, 0.09f, 0.12f, 1f), 0, 0, w, h);
         final FSkinTexture matchBG = resolveMatchBackground();
         final float imgAspect = matchBG.getWidth() / (float) Math.max(1, matchBG.getHeight());
@@ -208,13 +220,17 @@ public class ArenaDuelScreen extends MatchScreen {
             bgW = bgH * imgAspect;
         }
         g.drawImage(matchBG, (w - bgW) / 2f, (h - bgH) / 2f, bgW, bgH);
-        g.setAlphaComposite(0.28f);
-        g.fillRect(Color.BLACK, 0, 0, w, h);
+        // Opaque darken (no translucent fillRect) so framebuffer alpha stays 1.
+        g.setAlphaComposite(0.30f);
+        g.fillRect(new Color(0f, 0f, 0f, 1f), 0, 0, w, h);
         g.resetAlphaComposite();
     }
 
-    /** Same backdrop selection as {@link MatchScreen#getBG()} / FieldScroller. */
+    /** Prefer ADV_BG_MATCH for readable contrast in both orientations. */
     private FSkinTexture resolveMatchBackground() {
+        if (FSkinTexture.ADV_BG_MATCH.getWidth() > 0) {
+            return FSkinTexture.ADV_BG_MATCH;
+        }
         if (Forge.isMobileAdventureMode) {
             return getBG();
         }
