@@ -579,12 +579,19 @@ public class RewardData implements Serializable {
                         // CS0: keep set-pinned shops only when the pin has enough non-basic
                         // cards in the window pool (same floor as SetPlaneRules.setPoolIsUsable).
                         // Basics / Commander reprints in 40K or AFR must not keep a dead pin.
+                        // Fall back to the live rotation editions — not an unrestricted pool —
+                        // so window staples without a ZEN/WWK/ROE (etc.) printing cannot rematch
+                        // to a newest-normal outlier (MSC/FRC/FIC) after an earlier test warmed
+                        // those scripts into the lazy card DB.
                         if (SourcePrintings.enabled() && !isForEnemy && editions != null && editions.length > 0
                                 && AdventurePlayer.current().getStandardWindow().isActive()
                                 && filter.editions != null
                                 && !SourcePrintings.pinnedEditionsUsable(cardPool, editions)) {
                             filter = new RewardData(this);
-                            filter.editions = null;
+                            List<String> rotation = SourcePrintings.currentRotationSets();
+                            filter.editions = rotation.isEmpty()
+                                    ? null
+                                    : rotation.toArray(new String[0]);
                         }
                         for (PaperCard card : CardUtil.generateCards(cardPool, filter, count + addedCount, rewardRandom)) {
                             if (card != null)

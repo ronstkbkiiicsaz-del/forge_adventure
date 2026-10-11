@@ -583,8 +583,8 @@ public class World implements Disposable, SaveFileContent {
             Pixmap mapMarkerPixmap = texture.consumePixmap();
             clearTerrain((int) (data.width * data.playerStartPosX), (int) (data.height * data.playerStartPosY), 10);
 
-            // Town spacing on (Ascendant): capitals first, then towns, then everything else, so capitals are
-            // never skipped. Off (stock worlds): the original biome-by-biome order, so seeds give the same maps.
+            // Town spacing on (Ascendant): the start POI (Spawn) first, then capitals, then towns, then everything
+            // else, so neither the start nor capitals are ever skipped. Off (stock worlds): the original biome-by-biome order, so seeds give the same maps.
             List<BiomeData> biomes = data.GetBiomes();
             boolean legacyPlacement = data.minTownSpacing <= 0;
             List<int[]> placeOrder = new ArrayList<>(); // [biomeIndex, poiIndexInBiomeList]
@@ -601,9 +601,11 @@ public class World implements Disposable, SaveFileContent {
                         String type = poi.type;
                         boolean isCapital = type != null && type.equals("capital");
                         boolean isTown = type != null && type.equals("town");
-                        if (phase == 0 && isCapital)
+                        if (phase == 0 && isStartPoi(poi))
+                            placeOrder.add(0, new int[]{bi, pi});
+                        else if (phase == 0 && isCapital)
                             placeOrder.add(new int[]{bi, pi});
-                        else if (phase == 1 && isTown)
+                        else if (phase == 1 && isTown && !isStartPoi(poi))
                             placeOrder.add(new int[]{bi, pi});
                         else if (phase == 2 && !isCapital && !isTown)
                             placeOrder.add(new int[]{bi, pi});
@@ -675,8 +677,8 @@ public class World implements Disposable, SaveFileContent {
                                 }
                                 if (!foundSolution) {
                                     if (counter == 499) {
-                                        // Skip only regular towns under minTownSpacing — never capitals.
-                                        if (isTown && !isCapital && data.minTownSpacing > 0) {
+                                        // Skip only regular towns under minTownSpacing — never capitals or the start.
+                                        if (isTown && !isCapital && !isStartPoi(poi) && data.minTownSpacing > 0) {
                                             System.err.print("Can not place town POI " + poi.name
                                                     + " with minTownSpacing=" + data.minTownSpacing
                                                     + "...Skipping instance.\n");
@@ -1137,6 +1139,11 @@ public class World implements Disposable, SaveFileContent {
 
     public List<Pair<Vector2, Integer>> GetMapObjects(int chunkX, int chunkY) {
         return mapObjectIds.positions(chunkX, chunkY);
+    }
+
+    /** The player's start POI (the tutorial's Spawn); it must always be placed. */
+    private static boolean isStartPoi(PointOfInterestData poi) {
+        return poi != null && "Spawn".equals(poi.name);
     }
 
     public List<PointOfInterest> getPointsOfInterest(Actor player) {

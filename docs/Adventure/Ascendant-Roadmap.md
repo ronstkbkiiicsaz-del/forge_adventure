@@ -995,6 +995,65 @@ with him.
 
 ## Formats, achievements and card styles (2026-10-08)
 
+### SN1. Seasons: a 4-set Standard that moves with time, and the player still chooses (Steve, 2026-10-10)
+Problem from play: with RW1 sending most loot into the newest set, one ~250-card set saturates fast and a 3-set
+window is too thin to build from. Step 1 is already in: home-plane loot spreads over the whole window
+(`rw1NewestSetShare`, 50% newest). SN1 is the rest.
+
+**Standard = 4 sets** (`StandardWindow.WINDOW_SIZE` 3 → 4, tunable), plus the staples as today. Old saves keep their
+current sets; the window just has room for one more.
+
+**Campaign start (decided 2026-10-10).** New games keep today's two picks: a starter set (sealed packs) plus a core set
+or the Core Set Collection, so Standard opens with 2 sets. The **first two seasons are short** (7 in-game days,
+tunable) and each adds a set the player picks from the shortlist, so Standard reaches 4 sets within the first month;
+from then on normal seasons rotate one set in and the oldest out.
+
+**Seasons.** Forge Adventure has no world clock today (the day/night look is only a cosmetic background tint), so SN1
+adds an in-game calendar, shown on the HUD and Status screen (all numbers tunable, decided with Steve 2026-10-10):
+- **Overworld, towns and dungeons:** time flows; **15 minutes of real exploring = 1 in-game day**. Menus, pauses
+  and idle time don't count.
+- **A duel costs a flat 2 in-game hours**, win or lose, however long it really took (most play time is duels, so
+  real duel length must not drive the calendar).
+- **Resting at an inn** skips to the next morning.
+- Estimate: a typical real hour (about 40 min of duels, 4 fights, plus 20 min exploring) is about 1.7 in-game days.
+  So a **normal season = 14 in-game days (about 8 hours of play)** and an **opening season = 7 days (about 4
+  hours)**. More dueling stretches a season in real time; more exploring shortens it.
+A **season** lasts a tunable number of in-game days (14 by default; see above). Each season brings **one new set**
+into Standard; when the window is full the oldest set rotates to Historic. Nothing owned is ever lost.
+- **Mastery pulls the next season forward**: mastering the newest set (today's requirement) ends the season early, so
+  fast players aren't held back and slow players aren't left behind; the calendar guarantees progress either way.
+- The season name is the newest set ("The Zendikar season"); a short banner and town criers announce it. Shops
+  restock with the new set, events and the League switch to it, prerelease-style events run in the first days.
+
+**Choice: how the player picks the next set.** Today, mastering a set opens a pick from every booster set not in the
+window (`choosableSets`), and only one unlock happens per world. SN1 keeps the player in charge:
+- **Season vote / pick at the season's end.** When a season ends (by calendar or mastery), the player picks the next
+  set from a **shortlist of 3** offered by the world, plus **"Choose any set"** behind a cost (a rare Planar Key item
+  from bosses or achievements, or gold), so choice exists without decision paralysis every time.
+- The shortlist follows a sensible order: the block or era after the newest set (real release order) for one slot,
+  a set the player has shown interest in (cards owned, plane visited, decks built) for another, and one random set.
+- **No pick made?** If the player skips the choice (closes it, or the season ends mid-dungeon), the world picks the
+  release-order option after a grace period of a few in-game days, with a reminder. The pick is never forced mid-duel.
+- **Undo window**: the choice can be changed for free until the player opens a pack or wins a fight with the new set.
+- **Pin a set (optional, tunable):** the player can keep one favourite set from rotating out for one extra season,
+  once per few seasons, so a loved set isn't lost the moment it ages.
+- The current one-unlock-per-world rule (`setUnlockedThisWorld`) is replaced by the season clock; set planes and
+  portals still open for each set that enters Standard (`masteryUnlocksSetPlane` keeps working, triggered by entry).
+
+**Rewards and economy under seasons**
+- Home-plane loot: 50% newest, 50% spread over the other three (already live, tunable). Set planes give their set.
+- Duplicates beyond 4 copies of a card can auto-convert to dust (player toggle), so long seasons feed crafting.
+- Season rewards: finishing a season with its set mastered grants a cosmetic (card style or title) and a Planar Key.
+
+**Co-op note (standing rule):** the host's calendar and window rule the session; partner picks happen in their own
+world. Co-op is frozen, so nothing here may touch the co-op save path.
+
+**Tests:** window holds 4 and rotates the oldest to Historic on the 5th; calendar ends a season after N days and
+mastery ends it early; the shortlist has 3 distinct sets not already in the window, including the next by release
+order; skipping the choice auto-picks after the grace period; undo works until a pack is opened or a fight won; old
+saves load with their 3 sets and gain the 4th slot; stock world unchanged.
+
+
 ### EN1. Enemy decks by format and theme (depends on K for the plane format; data can start now)
 - Enemies carry **theme tags** by creature type (merfolk, goblin, zombie, ...). Each tag has **2-3 themes**: for
   merfolk, e.g. merfolk tribal, krakens/octopus, leviathans. A spawned enemy picks one theme at random and keeps

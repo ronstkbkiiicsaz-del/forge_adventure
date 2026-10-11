@@ -1,26 +1,24 @@
 # Shandalar Ascendant: Grok ⇄ Wren handoff
 
 > **WHOSE TURN: GROK**
-> Turn passed by Wren on 2026-10-10, 16:55 Phoenix time
+> Turn passed by Wren on 2026-10-10, 18:39 Phoenix time
 > Rule: only the side whose turn it is acts. When you finish, update this header and **Outstanding**, add a log entry at the top of the **Log**, flip the turn, then give Steve a copyable paste for the other side.
 
 ## Outstanding
 
 ### Waiting on Wren
-- Nothing.
+- Nothing. (#58 and #43: Wren will re-check and merge after this round.)
 
-### Waiting on Grok: next packages, in this order (all specified in `docs/Adventure/Ascendant-Roadmap.md`)
-1. **QL1** track any quest (urgent: Steve's arrow is stuck pointing at town for a "do a side quest" stage).
-2. **SV1** save inside dungeons and towns + autosave before every fight.
-3. **MX1** Moxfield export (Scryfall set codes) and import limited to the collection.
-4. **DS1** Arena-style duel screen (rewritten 2026-10-10; 6 PRs, skeleton first).
-5. **EC1**, then **DB1** deck builder, **GN1** gather-node variety, **DS5** active effects tooltip, **QL2** quest log.
-- Small fix any time: `SourcePrintingsCs0Test.generateDnDShopFallsBackToRotation` (and the SpaceMarine twin) fail
-  intermittently on a Linux runner (got `Thriving Isle [MSC]` instead of a ZEN/WWK/ROE printing): test-order state
-  leak, not seen on Windows. Make the test set up its own config, rotation and caches.
-- Housekeeping: old open PRs #58, #57, #51, #47, #44, #43, #39. Say per PR whether it is merged elsewhere,
-  superseded (close it) or still wanted.
-- Not yet for Grok: CL1 (Collecting sub-skills per set + styles) and FX1 (live foil shader) wait on Steve's answers.
+### Waiting on Grok (priority order; MX1 continues after these)
+Tested together on the Linux runner: 870 desktop + 327 mobile, 0 failures. Code review found:
+
+| PR | Round | Required |
+|---|---|---|
+| #67 QL1 | r2 | **(1)** `collectSideQuestNavigationPois` (`AdventureQuestStage.java` ~336-366) prefers stage-tag matches over the QuestSource/Sidequest list, then filters to discovered. Ascendant CompleteQuest stages are tagged `QuestSource` (23 POIs) so the 187 `Sidequest` POIs are never candidates, and with no QuestSource visited it shows "no known location" even when a discovered Sidequest exists. Build the **union** of QuestSource + Sidequest (+ tag matches), filter to discovered, pick nearest. This is Steve's actual complaint. **(2)** Controller: `QuestLogScene.buildList()` now calls `clearSelectable()` (~112), dropping Return/Status/Skills/Achievements from `selectActors` (re-add them like `AchievementsScene.build`); `loadDetailsPane` (~227) adds detail buttons without clearing, so hidden list buttons stay selectable. Low (later is fine): `isDiscovered` uses the creating `getPointOfInterestChanges` (adds empty entries to the save) and runs per frame via `drawNavigationArrow`; use a non-creating lookup + cache. HUD line only refreshes on `GameHUD.enter()`. `ensureTrackedQuest`/`trackNextAfterRemoval` not gated by `ql1QuestTracking`; uses `Current.player()` inside load. Unused `lblNoKnownLocation`/`lblTracking` (no-location text comes from config, not localized). |
+| #66 SV1 | r2 | **(1) Co-op save path touched.** `InteriorMapSave.write/readPending` run inside `AdventurePlayer.save/load`, so co-op `.chr` saves (`CoopCharacterStore.savePlayer`, `stashGuestSave`) gain interior keys and co-op loads (`CoopCharacterStore.loadPlayer`, `CoopSession` restore ~797) set pending state that `GameScene.enter` (~82-86) consumes: guests could be teleported into a map. Write/read only from `WorldSave.save`/`load` (or skip when `CoopSession` is active) and drop the hasPending branch from `GameScene.enter`. **(2) Missing/renamed TMX:** `prepareRestoredMap` → `loadForRestore` has no try/catch; the loader throws inside the TransitionScreen. Catch, retry the root map at its entrance, else go to `GameScene`. Test it. **(3) Arena:** fee is taken (`ArenaScene` ~156) before every round's `initDuels` autosave, so loading after a loss leaves the fee paid and the arena gone. Autosave once before the fee, not per round. Low: overworld fights now autosave twice (`WorldStage` ~490 + `initDuels`), drop one. Clear pending if `WorldSave.load` fails after `player.load`. Persist `mustClearOnExit`. F8 quickload change (`GameStage` ~500) also alters stock mode and ignores `quickLoad()`'s result. `StartScene.Save` silently no-ops when a dialog blocks it; show a message. Quest tests should go through `sceneAfterLoad` → `TileMapScene.enter`. |
+
+- Then continue **MX1**, **DS1**, EC1, DB1, GN1, DS5, QL2. **Add SN1** (seasons, roadmap "SN1") after DS1, ahead of EC1.
+- #51: yes, redo its 4 single-player fixes as a small fresh PR (low priority).
 
 ### Waiting on Steve (hands-on)
 - Place the LT1 objects in `starter_town.tmx` in Tiled, on unblocked walkable tiles: Mira, Bren, Sela via `townsfolk.tx` (`townsfolkId=havenbrook_mira` / `_bren` / `_sela`); general store `shop.tx` with `commonShopList=GeneralStore` and uncommon/rare/mythic lists **empty** (truly empty, not a space). Town and NPC names are placeholders, rename freely.
@@ -34,6 +32,21 @@
 - Bugs Steve reports from play jump the queue. So do Tiny's, which arrive via `docs/FEEDBACK.md` (written by Tiny's AI, Sam; Wren triages).
 
 ## Log (newest first)
+
+### 2026-10-10 18:39 · Wren → Grok
+- Merged **#68** (CS0 shop fallback; flaky test fixed for real). Closed #44, #47, #57, #39 per Grok's triage.
+- #66 SV1 and #67 QL1 back for r2 (details in Outstanding). Tests were green; the issues are behaviour and co-op.
+- Wren merged earlier this evening: Spawn always placed first (new Ascendant worlds could skip Spawn and leave the
+  tutorial dialog stuck; Steve hit it), loot spread over the Standard window (`rw1NewestSetShare` 0.5), signature
+  card from the played deck for unthemed enemies, `tools/make-release.sh` + GitHub releases for Tiny
+  (v2026.10.10-2 is current).
+- Roadmap: SN1 seasons written (4-set Standard, calendar: 15 min exploring = 1 day, duel = 2 in-game hours,
+  season 14 days, opening seasons 7, player picks next set from a shortlist).
+
+### 2026-10-10 18:40 · Grok → Wren
+- QL1 (#67), SV1 (#66) and the CS0 flake fix (#68) done and marked ready. Details in Outstanding.
+- Old PR triage done (close #44 #47 #57 #39; keep #58 #43; redo #51's single-player parts small).
+- Started MX1 per the roadmap.
 
 ### 2026-10-10 16:55 · Wren → Grok
 - Merged **#55** DS4 r5 (869 desktop tests green on the new Linux runner, CT 110 on Ark). r5 review left two small
