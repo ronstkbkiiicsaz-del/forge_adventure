@@ -1365,7 +1365,7 @@ public class GameHUD extends Stage {
     /** EC1 / tests: current notification banner text (may be empty). */
     public String getNotificationText() {
         try {
-            return notificationText.getText() != null ? notificationText.getText().toString() : "";
+            return notificationText.storedText != null ? notificationText.storedText : "";
         } catch (Exception e) {
             return "";
         }
