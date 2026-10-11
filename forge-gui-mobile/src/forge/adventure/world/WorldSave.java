@@ -130,6 +130,7 @@ public class WorldSave {
     }
 
     static public boolean load(int currentSlot) {
+        forge.adventure.util.InteriorMapSave.clearPending();
         JSONStringLoader.clearCache();
         CardUtil.clearPriceCache();
         EnemyThemeDecks.clearCache();
@@ -146,7 +147,8 @@ public class WorldSave {
                  ObjectInputStream oos = new ObjectInputStream(inf)) {
                 currentSave.header = (WorldSaveHeader) oos.readObject();
                 SaveFileData mainData = (SaveFileData) oos.readObject();
-                currentSave.player.load(mainData.readSubData("player"));
+                SaveFileData playerData = mainData.readSubData("player");
+                currentSave.player.load(playerData);
                 GamePlayerUtil.getGuiPlayer().setName(currentSave.player.getName());
                 try {
                     currentSave.world.load(mainData.readSubData("world"));
@@ -155,8 +157,10 @@ public class WorldSave {
 
                 } catch (Exception e) {
                     System.err.println("Generating New World");
-                    if (!currentSave.world.generateNew(0))
+                    if (!currentSave.world.generateNew(0)) {
+                        forge.adventure.util.InteriorMapSave.clearPending();
                         return false;
+                    }
                 }
 
                 // MV1: multi-plane registry, or wrap legacy single-world saves as home.
@@ -225,11 +229,15 @@ public class WorldSave {
                     FortressService.get().clear();
                 }
 
+                // SV1: interior location lives on the WorldSave player blob only (not co-op .chr).
+                forge.adventure.util.InteriorMapSave.readPending(playerData);
+
                 currentSave.onLoadList.emit();
 
             }
         } catch (ClassNotFoundException | IOException e) {
             e.printStackTrace();
+            forge.adventure.util.InteriorMapSave.clearPending();
             return false;
         }
         return true;
@@ -436,6 +444,8 @@ public class WorldSave {
                 currentSave.multiverse.updateCurrentSeed(currentSave.world.getSeed());
 
                 SaveFileData player = currentSave.player.save();
+                // SV1: attach interior keys only to WorldSave slots — never to co-op .chr via player.save().
+                forge.adventure.util.InteriorMapSave.write(player);
                 SaveFileData world = currentSave.world.save();
                 SaveFileData worldStage = WorldStage.getInstance().save();
                 SaveFileData poiChanges = currentSave.pointOfInterestChanges.save();

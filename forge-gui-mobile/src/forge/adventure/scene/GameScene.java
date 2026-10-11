@@ -75,9 +75,8 @@ public class GameScene extends HudScene {
         Forge.clearTransitionScreen();
         Forge.clearCurrentScreen();
         super.enter();
-        // This causes the infinite load of POI if the two collision point is too close.
-        // IIRC This is used before and the player will start inside the POI.
-        // but we don't allow saving inside the POI anymore.
+        // Avoid auto-entering a POI from overworld collision on load (can soft-lock).
+        // Interior restore goes through InteriorMapSave.sceneAfterLoad() after WorldSave.load.
         // WorldStage.getInstance().handlePointsOfInterestCollision();
     }
 
