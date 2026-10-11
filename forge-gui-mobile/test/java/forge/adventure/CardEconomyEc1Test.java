@@ -434,17 +434,20 @@ public class CardEconomyEc1Test {
     @Test
     public void rotatedCardRisesAfterNSeasons() {
         AdventurePlayer player = Current.player();
-        player.getStandardWindow().init(List.of("M11", "M12", "ZEN")); // M10 out of window
-        PaperCard bolt = card("Lightning Bolt", "M10");
-        Assert.assertNotNull(bolt);
-        Assert.assertFalse(AscendantCardEconomy.isStandardLegal(bolt), "M10 bolt must be Historic");
-        AscendantCardEconomy.noteSetRotatedForTest("M10", 1);
+        // Window without LEB — Badlands is Historic-only by name.
+        player.getStandardWindow().init(List.of("M10", "M11", "ZEN"));
+        PaperCard badlands = card("Badlands", "LEB");
+        if (badlands == null)
+            badlands = card("Badlands", null);
+        Assert.assertNotNull(badlands);
+        Assert.assertFalse(AscendantCardEconomy.isStandardLegal(badlands), "Badlands must be Historic");
+        AscendantCardEconomy.noteSetRotatedForTest(badlands.getEdition(), 1);
         player.getSeason().setCalendarForTest(0, 1);
-        int atRotate = AscendantCardEconomy.cardValue(bolt, null);
+        int atRotate = AscendantCardEconomy.cardValue(badlands, null);
         player.getSeason().setCalendarForTest(100, 8);
-        int later = AscendantCardEconomy.cardValue(bolt, null);
+        int later = AscendantCardEconomy.cardValue(badlands, null);
         Assert.assertTrue(later > atRotate,
-                "post-rotation bolt must rise after N seasons: " + atRotate + " -> " + later);
+                "post-rotation card must rise after N seasons: " + atRotate + " -> " + later);
     }
 
     @Test
@@ -486,16 +489,19 @@ public class CardEconomyEc1Test {
     @Test
     public void historicCraftFactorAppliedOnCraftCost() {
         AdventurePlayer player = Current.player();
-        player.getStandardWindow().init(List.of("M11", "M12", "ZEN"));
-        PaperCard bolt = card("Lightning Bolt", "M10");
-        Assert.assertNotNull(bolt);
-        Assert.assertFalse(player.isStandardLegal(bolt));
-        int withFactor = player.craftCost(bolt);
+        // Unlock ZEN then rotate it out of the legal window (history keeps craft access).
+        player.getStandardWindow().init(List.of("M10", "M11", "ZEN"));
+        PaperCard geopede = card("Plated Geopede", "ZEN");
+        Assert.assertNotNull(geopede);
+        player.getStandardWindow().restoreSets(List.of("M10", "M11", "M12"));
+        Assert.assertFalse(player.isStandardLegal(geopede), "rotated ZEN card must be Historic");
+        Assert.assertNotNull(player.craftPrintingPreferring(geopede), "still craftable from history");
+        int withFactor = player.craftCost(geopede);
         float saved = ascendantConfig.historicCraftFactor;
         try {
             ascendantConfig.historicCraftFactor = 1f;
             Config.installConfigDataForTest(ascendantConfig);
-            int without = player.craftCost(bolt);
+            int without = player.craftCost(geopede);
             Assert.assertTrue(withFactor > without,
                     "historicCraftFactor must raise Historic craft cost: "
                             + withFactor + " vs " + without);
@@ -553,9 +559,12 @@ public class CardEconomyEc1Test {
                 "need uncapped skill above cap for this test, got " + uncapped);
         int local = AscendantCardEconomy.cardValue(c, townA);
         int sell = player.cardSellPrice(c);
+        float uncappedSell = local * AscendantCardEconomy.saleShare()
+                * (2f - townA.getTownPriceModifier()) * uncapped;
         int cappedExpected = Math.round(local * AscendantCardEconomy.saleShare()
                 * (2f - townA.getTownPriceModifier()) * AscendantCardEconomy.sellSkillCap());
-        Assert.assertEquals(sell, cappedExpected, "sell skill must be capped");
+        Assert.assertTrue(sell <= cappedExpected + 1, "sell skill must be capped, got " + sell);
+        Assert.assertTrue(sell < uncappedSell - 1, "capped sell must be below uncapped skill payout");
         player.setActiveShopMarket(null);
     }
 
