@@ -408,7 +408,7 @@ public class ArenaDuelScreenGlTest {
             Assert.assertTrue(panel.getAvatar().isVisible(), "avatar visible");
             final float[] badge = panel.getArenaLifeBadgeScreenBounds();
             Assert.assertNotNull(badge, "Arena life badge bounds for " + panel.getPlayer());
-            Assert.assertTrue(badge[2] >= 28f && badge[3] >= 28f,
+            Assert.assertTrue(badge[2] >= 40f && badge[3] >= 36f,
                     "life badge too small: " + badge[2] + "x" + badge[3]);
             final int life = panel.getPlayer().getLife();
             Assert.assertEquals(panel.getArenaLifeLabel(), String.valueOf(life),

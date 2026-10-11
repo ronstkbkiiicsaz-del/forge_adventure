@@ -283,7 +283,7 @@ public class VPhaseIndicator extends FContainer {
                 if (active) {
                     g.drawRect(Math.max(2f, Utils.scale(2)), ARENA_ACTIVE_BORDER, x, 0, w, h);
                 }
-                final FSkinFont labelFont = h >= Utils.scale(18) ? FSkinFont.get(12) : FSkinFont.get(10);
+                final FSkinFont labelFont = h >= 18f ? FSkinFont._get(12) : FSkinFont._get(10);
                 g.drawText(caption, labelFont, ARENA_LABEL_INK, x, 0, w, h, false, Align.center, true);
             } else {
                 FSkinColor backColor;

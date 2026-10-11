@@ -70,8 +70,8 @@ public class VPlayerPanel extends FContainer {
     private static final Color ARENA_LIFE_BADGE_FILL = new Color(0.08f, 0.09f, 0.12f, 1f);
     private static final Color ARENA_LIFE_BADGE_BORDER = new Color(0.92f, 0.78f, 0.32f, 1f);
     private static final Color ARENA_LIFE_BADGE_INK = new Color(1f, 0.96f, 0.82f, 1f);
-    private static final FSkinFont ARENA_LIFE_FONT = FSkinFont.get(28);
-    private static final FSkinFont ARENA_LIFE_COUNTER_FONT = FSkinFont.get(14);
+    private static final FSkinFont ARENA_LIFE_FONT = FSkinFont._get(28);
+    private static final FSkinFont ARENA_LIFE_COUNTER_FONT = FSkinFont._get(14);
 
     /**
      * Zones to include in the extra zones dropdown.
@@ -473,19 +473,20 @@ public class VPlayerPanel extends FContainer {
         final forge.screens.match.ArenaDuelLayout.Rect handR = arenaHandSlot;
 
         // Avatar + Arena life badge beside it (MTG Arena-style high-contrast total).
+        // Absolute dp (not Utils.scale) so xvfb AVG_FINGER cannot collapse the badge.
         if (av != null && av.w > 1f && av.h > 1f) {
             avatar.setVisible(true);
             avatar.setBounds(av.x, av.y, av.w, av.h);
-            final float badgeH = Math.min(Math.max(Utils.scale(36), av.h * 0.55f), av.h * 0.85f);
-            final float badgeW = Math.min(Math.max(Utils.scale(44), av.w * 0.72f), Utils.scale(64));
-            // Prefer to the right of the avatar inside the field; clamp into panel.
-            float badgeX = av.x + av.w - Utils.scale(8);
-            float badgeY = av.y + (av.h - badgeH) * 0.55f;
-            if (badgeX + badgeW > width - Utils.scale(2)) {
-                badgeX = Math.max(0f, av.x + av.w - badgeW);
+            final float badgeH = Math.min(Math.max(40f, av.h * 0.55f), Math.max(40f, av.h * 0.85f));
+            final float badgeW = Math.min(Math.max(52f, av.w * 0.70f), 72f);
+            // Prefer overlapping the avatar's lower-right (Arena-style), clamped in-panel.
+            float badgeX = av.x + Math.max(0f, av.w - badgeW * 0.85f);
+            float badgeY = av.y + Math.max(0f, av.h - badgeH * 0.92f);
+            if (badgeX + badgeW > width - 2f) {
+                badgeX = Math.max(0f, width - badgeW - 2f);
             }
-            if (badgeY + badgeH > height) {
-                badgeY = Math.max(0f, height - badgeH);
+            if (badgeY + badgeH > height - 2f) {
+                badgeY = Math.max(0f, height - badgeH - 2f);
             }
             lblLife.setVisible(true);
             lblLife.setBounds(badgeX, badgeY, badgeW, badgeH);
@@ -1024,7 +1025,7 @@ public class VPlayerPanel extends FContainer {
             final float h = getHeight();
             g.resetAlphaComposite();
             g.fillRect(ARENA_LIFE_BADGE_FILL, 0, 0, w, h);
-            g.drawRect(Math.max(2f, Utils.scale(2)), ARENA_LIFE_BADGE_BORDER, 0, 0, w, h);
+            g.drawRect(2f, ARENA_LIFE_BADGE_BORDER, 0, 0, w, h);
             final boolean showCounters = poisonCounters > 0 || energyCounters > 0;
             final float lifeH = showCounters ? h * 0.62f : h;
             g.drawText(lifeStr, ARENA_LIFE_FONT, ARENA_LIFE_BADGE_INK,
@@ -1032,8 +1033,8 @@ public class VPlayerPanel extends FContainer {
             if (showCounters) {
                 final float cy = lifeH;
                 final float ch = h - lifeH;
-                final float icon = Math.min(ch - 2f, Utils.scale(14));
-                float x = Utils.scale(3);
+                final float icon = Math.min(ch - 2f, 14f);
+                float x = 3f;
                 if (poisonCounters > 0) {
                     g.drawImage(FSkinImage.POISON, x, cy + (ch - icon) / 2f, icon, icon);
                     g.drawText(String.valueOf(poisonCounters), ARENA_LIFE_COUNTER_FONT, ARENA_LIFE_BADGE_INK,
