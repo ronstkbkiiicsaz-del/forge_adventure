@@ -132,6 +132,19 @@ public class ArenaDuelLayoutTest {
     }
 
     @Test
+    public void stackColumnPreservesCardAspectInWideLane() {
+        // Landscape centre lane is wide and short — cards must not stretch to colW.
+        final List<ArenaStackColumnLayout.ItemRect> items =
+                ArenaStackColumnLayout.layout(1, 600f, 110f);
+        Assert.assertEquals(items.size(), 1);
+        final ArenaStackColumnLayout.ItemRect top = items.get(0);
+        final float aspect = top.h / top.w;
+        Assert.assertTrue(aspect > 1.2f && aspect < 1.6f,
+                "stack card aspect should stay near 3.5/2.5, got " + aspect);
+        Assert.assertTrue(top.w < 200f, "wide lane must not stretch card width to column");
+    }
+
+    @Test
     public void contextLabelsResolveFromPromptAndCombat() {
         Assert.assertEquals(
                 ArenaContextActions.resolve("OK", false, false, false),

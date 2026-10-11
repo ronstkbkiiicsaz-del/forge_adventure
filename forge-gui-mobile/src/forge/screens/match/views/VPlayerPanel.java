@@ -335,7 +335,9 @@ public class VPlayerPanel extends FContainer {
 
     @Override
     protected void doLayout(float width, float height) {
-        if (Forge.isLandscapeMode()) {
+        // DS1 Arena: keep hand/field stacked (portrait-style) even in landscape so the
+        // ArenaDuelLayout playerHand / playerField bands stay readable.
+        if (Forge.isLandscapeMode() && !isArenaDuelLayout()) {
             doLandscapeLayout(width, height);
             return;
         }
@@ -434,6 +436,12 @@ public class VPlayerPanel extends FContainer {
 
     private float initW, initH, commandZoneWidth, commandZoneCount, avatarWidth, prefWidth;
     private final float mod = 2.4f;
+
+    /** True when the active match view is the DS1 Arena skeleton (hand stays bottom-stacked). */
+    private static boolean isArenaDuelLayout() {
+        final MatchScreen view = MatchController.getView();
+        return view != null && view.isArenaDuelScreen();
+    }
 
     private void doLandscapeLayout(float width, float height) {
         initW = width;

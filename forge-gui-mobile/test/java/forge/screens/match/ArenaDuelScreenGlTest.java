@@ -7,6 +7,7 @@ import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.graphics.Pixmap;
 import com.badlogic.gdx.graphics.PixmapIO;
 import com.badlogic.gdx.graphics.glutils.FrameBuffer;
+import com.badlogic.gdx.math.Matrix4;
 import com.google.common.collect.ImmutableMap;
 import forge.Forge;
 import forge.Graphics;
@@ -131,6 +132,7 @@ public class ArenaDuelScreenGlTest {
             FModel.getPreferences().setPref(FPref.PLAYER_NAME, "Human");
             FModel.getPreferences().setPref(FPref.UI_ENABLE_SOUNDS, false);
             FModel.getPreferences().setPref(FPref.UI_ENABLE_MUSIC, false);
+            FModel.getPreferences().setPref(FPref.UI_MATCH_IMAGE_VISIBLE, true);
             // Avoid Scryfall HTTP on the GL thread during screen.draw (deadlocks capture).
             FModel.getPreferences().setPref(FPref.UI_DISABLE_CARD_IMAGES, true);
         }
@@ -414,14 +416,15 @@ public class ArenaDuelScreenGlTest {
         final FrameBuffer fbo = new FrameBuffer(Pixmap.Format.RGBA8888, w, h, false);
         fbo.begin();
         Gdx.gl.glViewport(0, 0, w, h);
-        Gdx.gl.glClearColor(0.05f, 0.06f, 0.08f, 1f);
+        // Opaque clear — matches FBufferedImage FBO path but keeps alpha=1 so PNGs
+        // don't show checkerboard/void through undrawn regions.
+        Gdx.gl.glClearColor(0.07f, 0.09f, 0.12f, 1f);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
 
         final Graphics g = Forge.getGraphics();
         Assert.assertNotNull(g);
-        if (Forge.camera != null) {
-            g.setProjectionMatrix(Forge.camera.combined);
-        }
+        // Same ortho as FBufferedImage: Graphics.adjustY flips into this Y-up space.
+        g.setProjectionMatrix(new Matrix4().setToOrtho2D(0, 0, w, h));
         g.begin(w, h);
         try {
             screen.screenPos.setSize(w, h);
@@ -435,11 +438,29 @@ public class ArenaDuelScreenGlTest {
         }
 
         final Pixmap pixmap = Pixmap.createFromFrameBuffer(0, 0, w, h);
-        // libGDX framebuffers are Y-up; flip for a normal PNG.
+        // libGDX framebuffers are Y-up; flip for a normal PNG. Composite any leftover
+        // transparent pixels over the clear color so the artifact is fully opaque.
+        final int clearRgba = (18 << 24) | (23 << 16) | (31 << 8) | 255; // ~0.07,0.09,0.12
         final Pixmap flipped = new Pixmap(w, h, pixmap.getFormat());
         for (int y = 0; y < h; y++) {
             for (int x = 0; x < w; x++) {
-                flipped.drawPixel(x, h - 1 - y, pixmap.getPixel(x, y));
+                int px = pixmap.getPixel(x, y);
+                final int a = px & 0xff;
+                if (a == 0) {
+                    px = clearRgba;
+                } else if (a < 255) {
+                    final int sr = (px >>> 24) & 0xff;
+                    final int sg = (px >>> 16) & 0xff;
+                    final int sb = (px >>> 8) & 0xff;
+                    final int dr = (clearRgba >>> 24) & 0xff;
+                    final int dg = (clearRgba >>> 16) & 0xff;
+                    final int db = (clearRgba >>> 8) & 0xff;
+                    final int r = (sr * a + dr * (255 - a)) / 255;
+                    final int gch = (sg * a + dg * (255 - a)) / 255;
+                    final int b = (sb * a + db * (255 - a)) / 255;
+                    px = (r << 24) | (gch << 16) | (b << 8) | 255;
+                }
+                flipped.drawPixel(x, h - 1 - y, px);
             }
         }
         PixmapIO.writePNG(Gdx.files.absolute(file.toAbsolutePath().toString()), flipped);

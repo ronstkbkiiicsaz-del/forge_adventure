@@ -68,10 +68,15 @@ public final class ArenaStackColumnLayout {
         float y = 0f;
         final float pad = Math.min(6f, colH * 0.04f);
         final float usableH = Math.max(1f, colH - pad * (count + 1));
+        // Match FCardPanel.ASPECT_RATIO (h/w = 3.5/2.5) so wide centre lanes don't
+        // squash stack cards into unreadable horizontal bars.
+        final float cardAspect = 3.5f / 2.5f;
         for (int i = 0; i < count; i++) {
             final float h = usableH * (weights[i] / weightSum);
             final float scale = weights[i];
-            final float w = colW * (0.55f + 0.45f * scale);
+            final float maxW = colW * (0.55f + 0.45f * scale);
+            final float aspectW = h / cardAspect;
+            final float w = Math.min(maxW, aspectW);
             final float x = (colW - w) / 2f;
             y += pad;
             out.add(new ItemRect(i, x, y, w, h, scale));

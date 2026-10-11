@@ -171,6 +171,14 @@ public class ArenaDuelScreen extends MatchScreen {
     }
 
     @Override
+    protected void drawBackground(final Graphics g) {
+        // Always paint an opaque base before MatchScreen/FieldScroller imagery so
+        // FBO captures (and devices without match BG) never show through as void.
+        g.fillRect(new Color(0.07f, 0.09f, 0.12f, 1f), 0, 0, getWidth(), getHeight());
+        super.drawBackground(g);
+    }
+
+    @Override
     protected void drawOverlay(final Graphics g) {
         super.drawOverlay(g);
         // Soft centre-lane frame so the stack column reads as its own plane.
