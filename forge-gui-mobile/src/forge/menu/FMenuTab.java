@@ -101,6 +101,10 @@ public class FMenuTab extends FDisplayObject implements IUnreadIndicator {
         menuBar.revalidate();
     }
 
+    public String getText() {
+        return text;
+    }
+
     public void setActiveIcon(boolean value) {
         active = value;
     }

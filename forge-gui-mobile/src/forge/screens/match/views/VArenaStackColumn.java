@@ -83,8 +83,11 @@ public class VArenaStackColumn extends FContainer {
         if (cards.isEmpty()) {
             return;
         }
-        g.fillRect(new Color(0.05f, 0.07f, 0.1f, 0.55f), 0, 0, getWidth(), getHeight());
-        g.drawRect(Utils.scale(1), new Color(0.85f, 0.75f, 0.35f, 0.7f), 0, 0, getWidth(), getHeight());
+        // Opaque plate — translucent fills punch FBO alpha and leave a black void
+        // in landscape GL captures where the centre lane should show the match BG.
+        g.resetAlphaComposite();
+        g.fillRect(new Color(0.06f, 0.08f, 0.11f, 1f), 0, 0, getWidth(), getHeight());
+        g.drawRect(Utils.scale(1), new Color(0.85f, 0.75f, 0.35f, 1f), 0, 0, getWidth(), getHeight());
     }
 
     private static final class StackCard extends FDisplayObject {

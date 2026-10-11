@@ -93,6 +93,8 @@ public final class ArenaContextActions {
     }
 
     public static String passUntilEotLabel() {
-        return "Pass until EOT";
+        // Short label so the Arena prompt-end button doesn't ellipsize to "…"
+        // in the landscape prompt strip.
+        return "Pass EOT";
     }
 }

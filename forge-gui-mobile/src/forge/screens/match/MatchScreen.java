@@ -1192,8 +1192,11 @@ public class MatchScreen extends FScreen {
                     bgH = ah;
                     bgW = bgH * aspect;
                 }
+                // Force opaque blit so later translucent children cannot leave the
+                // scroller's backdrop as an FBO alpha hole (reads as black in captures).
                 g.resetAlphaComposite();
                 g.drawImage(arenaBG, (aw - bgW) / 2f, (ah - bgH) / 2f, bgW, bgH);
+                g.resetAlphaComposite();
                 return;
             }
             if (!FModel.getPreferences().getPrefBoolean(FPref.UI_MATCH_IMAGE_VISIBLE)) {

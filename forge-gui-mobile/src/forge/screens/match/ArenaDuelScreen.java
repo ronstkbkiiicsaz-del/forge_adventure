@@ -109,12 +109,15 @@ public class ArenaDuelScreen extends MatchScreen {
 
         lastLayout = ArenaDuelLayout.compute(width, height, landscape, railF, handF, stackF, promptH);
 
-        // Menu bar across the top.
+        // Menu bar across the top. Classic MatchScreen also hosts "• • •" player
+        // tabs that read as a clipped icon strip in the Arena menuBand — hide those
+        // and keep the readable Game/Log/Dev/Stack tabs only.
         final ArenaDuelLayout.Rect menu = lastLayout.get("menuBar");
         if (getHeader() != null && menu != null) {
             getHeader().setBounds(menu.x, menu.y, menu.w, menu.h);
             if (getHeader() instanceof FMenuBar) {
                 getHeader().setRotate90(false);
+                hideArenaMenuBulletTabs((FMenuBar) getHeader());
             }
         }
 
@@ -220,9 +223,9 @@ public class ArenaDuelScreen extends MatchScreen {
             bgW = bgH * imgAspect;
         }
         g.drawImage(matchBG, (w - bgW) / 2f, (h - bgH) / 2f, bgW, bgH);
-        // Opaque darken (no translucent fillRect) so framebuffer alpha stays 1.
-        g.setAlphaComposite(0.30f);
-        g.fillRect(new Color(0f, 0f, 0f, 1f), 0, 0, w, h);
+        // No setAlphaComposite darken: multiplicative alpha punches FBO holes that the
+        // GL capture composites to a flat void (centre lane / player field in landscape).
+        // ADV_BG_MATCH is already dark enough for readable contrast.
         g.resetAlphaComposite();
     }
 
@@ -245,10 +248,11 @@ public class ArenaDuelScreen extends MatchScreen {
     protected void drawOverlay(final Graphics g) {
         super.drawOverlay(g);
         // Soft centre-lane frame so the stack column reads as its own plane.
+        // Keep the stroke opaque (a=1) — translucent drawRect punches FBO alpha.
         if (lastLayout != null) {
             final ArenaDuelLayout.Rect centre = lastLayout.get("centreLane");
             if (centre != null) {
-                g.drawRect(Utils.scale(1), new Color(0.9f, 0.85f, 0.55f, 0.35f),
+                g.drawRect(Utils.scale(1), new Color(0.75f, 0.70f, 0.40f, 1f),
                         centre.x, centre.y, centre.w, centre.h);
             }
         }
@@ -302,5 +306,18 @@ public class ArenaDuelScreen extends MatchScreen {
 
     public FDisplayObject arenaPassUntilEotControl() {
         return btnPassUntilEot;
+    }
+
+    /** Hide classic "• • •" player-menu tabs that read as a clipped ellipsis strip. */
+    private static void hideArenaMenuBulletTabs(final FMenuBar menuBar) {
+        for (final FDisplayObject child : menuBar.getChildren()) {
+            if (child instanceof forge.menu.FMenuTab) {
+                final forge.menu.FMenuTab tab = (forge.menu.FMenuTab) child;
+                final String t = tab.getText();
+                if (t != null && t.indexOf('\u2022') >= 0) {
+                    tab.setVisible(false);
+                }
+            }
+        }
     }
 }

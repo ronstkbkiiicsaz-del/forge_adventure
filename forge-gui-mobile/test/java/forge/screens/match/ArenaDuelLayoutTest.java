@@ -202,7 +202,7 @@ public class ArenaDuelLayoutTest {
                 ArenaContextActions.ContextKind.KEEP);
         Assert.assertEquals(ArenaContextActions.label(ArenaContextActions.ContextKind.RESOLVE),
                 "Resolve");
-        Assert.assertEquals(ArenaContextActions.passUntilEotLabel(), "Pass until EOT");
+        Assert.assertEquals(ArenaContextActions.passUntilEotLabel(), "Pass EOT");
     }
 
     @Test
