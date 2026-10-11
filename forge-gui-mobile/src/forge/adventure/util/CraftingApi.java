@@ -177,24 +177,53 @@ public final class CraftingApi {
                                 + e.getValue() + ", have " + have + ").");
             }
         }
+        // Full-count reagent check: temporarily reserve materials for every copy.
+        List<Map.Entry<String, Integer>> reserved = new ArrayList<>();
+        String reagentBlock = null;
+        outer:
         for (MissingRequest r : normalized) {
             PaperCard print = r.preferred != null ? r.preferred : p.craftPrinting(r.name);
             if (print == null)
                 continue;
-            // One-copy reagent check (craftMissing still fails cleanly mid-batch if short).
-            if (!p.craftReagentCost(print).canAfford(p)) {
-                List<String> missingMats = p.craftReagentCost(print).missing(p);
-                String reason = missingMats.isEmpty() ? "Missing reagents for " + r.name + "."
-                        : missingMats.get(0);
-                return new CraftMissingPlan(normalized, needByRarity, totalCopies, false, reason);
+            int need = r.gap();
+            for (int i = 0; i < need; i++) {
+                var cost = p.craftReagentCost(print);
+                if (cost.isEmpty())
+                    continue;
+                if (!cost.canAfford(p)) {
+                    List<String> missingMats = cost.missing(p);
+                    reagentBlock = missingMats.isEmpty()
+                            ? "Missing reagents for " + r.name + " (" + need + " copies)."
+                            : missingMats.get(0);
+                    break outer;
+                }
+                Map<String, Integer> pay = cost.resolvePayment(p);
+                if (pay == null || pay.isEmpty()) {
+                    reagentBlock = "Missing reagents for " + r.name + ".";
+                    break outer;
+                }
+                for (Map.Entry<String, Integer> e : pay.entrySet()) {
+                    if (!p.takeMaterial(e.getKey(), e.getValue())) {
+                        reagentBlock = "Missing reagents for " + r.name + ".";
+                        break outer;
+                    }
+                    reserved.add(Map.entry(e.getKey(), e.getValue()));
+                }
             }
+        }
+        for (int i = reserved.size() - 1; i >= 0; i--) {
+            Map.Entry<String, Integer> e = reserved.get(i);
+            p.addMaterial(e.getKey(), e.getValue());
+        }
+        if (reagentBlock != null) {
+            return new CraftMissingPlan(normalized, needByRarity, totalCopies, false, reagentBlock);
         }
         return new CraftMissingPlan(normalized, needByRarity, totalCopies, true, null);
     }
 
     /**
-     * Craft as many missing copies as dust/reagents allow, in list order.
-     * Uses each request's preferred (source) printing when unlocked.
+     * All-or-nothing craft of every missing copy (source printings). If the plan is not
+     * affordable, nothing is crafted. Uses each request's preferred printing when unlocked.
      */
     public static List<CraftResult> craftMissing(List<MissingRequest> requests) {
         List<CraftResult> out = new ArrayList<>();
@@ -206,44 +235,49 @@ public final class CraftingApi {
                 out.add(CraftResult.failed(r == null ? null : r.name, 0, "No player."));
             return out;
         }
-        for (MissingRequest r : requests) {
-            if (r == null || r.name == null || r.name.isBlank()) {
-                out.add(CraftResult.failed(null, 0, "No card."));
-                continue;
+        CraftMissingPlan plan = planCraftMissing(requests);
+        if (!plan.craftEnabled) {
+            List<MissingRequest> src = !plan.requests.isEmpty() ? plan.requests : requests;
+            for (MissingRequest r : src) {
+                if (r == null)
+                    continue;
+                out.add(CraftResult.failed(r.name, r.gap(),
+                        plan.disabledReason != null ? plan.disabledReason : "Cannot craft."));
             }
-            int need = Math.max(0, r.wanted - Math.max(0, r.owned));
-            if (need <= 0) {
-                out.add(new CraftResult(r.name, 0, 0, null));
-                continue;
-            }
+            return out;
+        }
+        // Plan already verified full dust + reagents for every copy — craft all or nothing.
+        for (MissingRequest r : plan.requests) {
+            int need = r.gap();
             PaperCard print = r.preferred != null
                     ? p.craftPrintingPreferring(r.preferred)
                     : p.craftPrinting(r.name);
             if (print == null) {
                 out.add(CraftResult.failed(r.name, need, "Not in craftable pool."));
+                return failRemaining(out, plan.requests, r);
+            }
+            for (int i = 0; i < need; i++) {
+                if (!p.craftCard(print)) {
+                    out.add(CraftResult.failed(r.name, need, "Craft failed mid-batch."));
+                    return failRemaining(out, plan.requests, r);
+                }
+            }
+            out.add(new CraftResult(r.name, need, need, null));
+        }
+        return out;
+    }
+
+    private static List<CraftResult> failRemaining(List<CraftResult> out,
+            List<MissingRequest> requests, MissingRequest failed) {
+        boolean past = false;
+        for (MissingRequest r : requests) {
+            if (r == failed) {
+                past = true;
                 continue;
             }
-            int crafted = 0;
-            String lastProblem = null;
-            for (int i = 0; i < need; i++) {
-                String problem = p.craftProblem(print);
-                if (problem != null) {
-                    lastProblem = problem;
-                    break;
-                }
-                if (!canAfford(print)) {
-                    lastProblem = "Not enough dust or reagents.";
-                    break;
-                }
-                if (!p.craftCard(print)) {
-                    lastProblem = p.craftProblem(print);
-                    if (lastProblem == null)
-                        lastProblem = "Craft failed.";
-                    break;
-                }
-                crafted++;
-            }
-            out.add(new CraftResult(r.name, need, crafted, crafted < need ? lastProblem : null));
+            if (!past)
+                continue;
+            out.add(CraftResult.failed(r.name, r.gap(), "Craft missing aborted (all-or-nothing)."));
         }
         return out;
     }

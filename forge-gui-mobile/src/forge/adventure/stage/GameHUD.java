@@ -90,6 +90,8 @@ public class GameHUD extends Stage {
     private final TypingLabel partyStatusLabel;
     /** QL1: HUD line for the tracked quest target (or "no known location"). */
     private final TypingLabel trackedQuestHud;
+    /** SN1: calendar / season line on the HUD (TextraLabel — static text stays crisp). */
+    private final TextraLabel seasonHud;
     private final TextraButton partyActor;
     private final Image miniMap, gamehud, mapborder, avatarborder, blank;
     private final InputEvent eventTouchDown, eventTouchUp;
@@ -266,6 +268,14 @@ public class GameHUD extends Stage {
         trackedQuestHud.setPosition(5, Forge.isLandscapeMode() ? 78 : getHeight() - 145);
         trackedQuestHud.setWidth(Math.min(220f, getWidth() * 0.45f));
 
+        seasonHud = Controls.newTextraLabel("");
+        seasonHud.setName("seasonHud");
+        // White reads on overworld biomes (ocean/forest); black vanishes on water tiles.
+        seasonHud.setColor(Color.WHITE);
+        seasonHud.setVisible(false);
+        float[] seasonBounds = seasonHudStageBounds(Forge.isLandscapeMode(), getHeight());
+        seasonHud.setBounds(seasonBounds[0], seasonBounds[1], seasonBounds[2], seasonBounds[3]);
+
         partyActor = Controls.newTextButton("[%100]Party", this::partyButtonPressed);
         partyActor.setSize(72f, 25f);
         partyActor.setPosition(Forge.isLandscapeMode() ? 378 : getWidth() - 80, Forge.isLandscapeMode() ? 0 : 30);
@@ -275,6 +285,7 @@ public class GameHUD extends Stage {
         ui.addActor(hostPresencePane);
         ui.addActor(partyStatusLabel);
         ui.addActor(trackedQuestHud);
+        ui.addActor(seasonHud);
         //move touchpad here so z-index is over notificationPane and we can still move the player
         if (GuiBase.isAndroid()) //add touchpad for android
             ui.addActor(touchpad);
@@ -484,10 +495,52 @@ public class GameHUD extends Stage {
             openMapActor.layout();
         }
         updateTrackedQuestHud();
+        updateSeasonHud();
         if (MapStage.getInstance().isInMap())
             updateBookmarkActor(MapStage.getInstance().getChanges().isBookmarked());
         updateEnemyCounter();
         avatarGroup.setZIndex(ui.getChildren().size);
+    }
+
+    /**
+     * Stage-space (y-up) SN1 season HUD bounds. Landscape sits under the quest line;
+     * portrait under the party/quest stack on the left.
+     *
+     * @return {@code {x, y, w, h}} in stage coordinates
+     */
+    public static float[] seasonHudStageBounds(boolean landscape, float layoutH) {
+        // Sit under the QL1 quest line with a clear gap; tall enough for one HUD line.
+        if (landscape) {
+            return new float[] { 5f, 50f, Math.min(280f, 480f * 0.58f), 22f };
+        }
+        return new float[] { 5f, layoutH - 172f, Math.min(240f, 270f * 0.88f), 22f };
+    }
+
+    /** SN1: show the calendar day and current season on the HUD. */
+    public void updateSeasonHud() {
+        if (seasonHud == null)
+            return;
+        if (!Config.ascendant()) {
+            seasonHud.setVisible(false);
+            return;
+        }
+        try {
+            AdventurePlayer player = Current.player();
+            if (player == null || player.getSeason() == null || !player.getSeason().isConfigured()) {
+                seasonHud.setVisible(false);
+                return;
+            }
+            String line = player.getSeason().hudLine(player.getStandardWindow());
+            if (line == null || line.isEmpty()) {
+                seasonHud.setVisible(false);
+                return;
+            }
+            seasonHud.setText("[%70]" + line);
+            seasonHud.layout();
+            seasonHud.setVisible(true);
+        } catch (Throwable ignored) {
+            seasonHud.setVisible(false);
+        }
     }
 
     /** QL1: show the tracked quest name and target (or "no known location") on the HUD. */

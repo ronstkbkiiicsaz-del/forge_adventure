@@ -152,7 +152,7 @@ public class CardEconomyEc1Test {
         pinStaticData(magicDb);
         AdventureTestUserDir.requireIsolatedUserDir();
         Config.installConfigDataForTest(ascendantConfig);
-        AscendantCardEconomy.resetFallbackGameDays();
+        AscendantCardEconomy.resetLifecycleStateForTest();
         CardUtil.clearPriceCache();
 
         AdventurePlayer player = WorldSave.getCurrentSave().getPlayer();
@@ -161,6 +161,11 @@ public class CardEconomyEc1Test {
         goldSnapshot = player.getGold();
         dustCommonSnapshot = player.getDust(AdventurePlayer.DUST_COMMON);
         dustRareSnapshot = player.getDust(AdventurePlayer.DUST_RARE);
+
+        player.getStandardWindow().init(List.of("M10", "M11", "ZEN"));
+        player.getSeason().initNewGame(player.getStandardWindow());
+        AscendantCardEconomy.bindSeasonCalendar(player.getSeason());
+        player.setActiveShopMarket(null);
 
         townA = new PointOfInterestChanges();
         townB = new PointOfInterestChanges();
@@ -173,7 +178,9 @@ public class CardEconomyEc1Test {
     public void tearDown() {
         try {
             AdventurePlayer player = WorldSave.getCurrentSave().getPlayer();
+            player.setActiveShopMarket(null);
             player.loadChanges(previousLocation);
+            AscendantCardEconomy.resetLifecycleStateForTest();
             int goldNow = player.getGold();
             if (goldNow > goldSnapshot)
                 player.takeGold(goldNow - goldSnapshot);
@@ -185,7 +192,7 @@ public class CardEconomyEc1Test {
             int dustR = player.getDust(AdventurePlayer.DUST_RARE);
             if (dustR != dustRareSnapshot)
                 player.addDust(AdventurePlayer.DUST_RARE, dustRareSnapshot - dustR);
-            AscendantCardEconomy.resetFallbackGameDays();
+            AscendantCardEconomy.resetLifecycleStateForTest();
             Config.installConfigDataForTest(ascendantConfig);
             pinStaticData(magicDb);
         } finally {
@@ -248,12 +255,13 @@ public class CardEconomyEc1Test {
         AdventurePlayer player = Current.player();
         PaperCard c = pickZenByRarity(CardRarity.Common, true);
         Assert.assertNotNull(c);
-        player.loadChanges(townA);
+        player.setActiveShopMarket(townA);
         int local = AscendantCardEconomy.cardValue(c, townA);
         int sell = player.cardSellPrice(c);
         int expected = Math.round(local * AscendantCardEconomy.saleShare());
         Assert.assertEquals(sell, expected, "sell = local × saleShare (neutral town/skill mods)");
         Assert.assertEquals(AscendantCardEconomy.saleShare(), 0.30f, 0.0001f);
+        player.setActiveShopMarket(null);
     }
 
     @Test
@@ -263,19 +271,19 @@ public class CardEconomyEc1Test {
         Assert.assertNotNull(c);
         player.addCard(c, 10);
 
-        player.loadChanges(townA);
+        player.setActiveShopMarket(townA);
         int beforeA = AscendantCardEconomy.cardValue(c, townA);
         int beforeB = AscendantCardEconomy.cardValue(c, townB);
 
         Assert.assertEquals(player.sellCard(c, 5), 5);
         int afterA = AscendantCardEconomy.cardValue(c, townA);
-        player.loadChanges(townB);
         int afterB = AscendantCardEconomy.cardValue(c, townB);
 
         Assert.assertTrue(afterA < beforeA, "town A price must drop after selling five");
         Assert.assertEquals(afterB, beforeB, "town B price must be unchanged");
         Assert.assertTrue(townA.getMarketSupply(c.getName()) > 0);
         Assert.assertEquals(townB.getMarketSupply(c.getName()), 0f, 0.0001f);
+        player.setActiveShopMarket(null);
     }
 
     @Test
@@ -286,7 +294,11 @@ public class CardEconomyEc1Test {
         float supply0 = townA.getMarketSupply(c.getName());
         int price0 = AscendantCardEconomy.cardValue(c, townA);
 
-        AscendantCardEconomy.setFallbackGameDays(10);
+        // Drive drift through the real SN1 calendar (not a static fallback).
+        AdventurePlayer player = Current.player();
+        player.getSeason().initNewGame(player.getStandardWindow());
+        AscendantCardEconomy.bindSeasonCalendar(player.getSeason());
+        player.getSeason().advanceGameDaysForTest(10);
         int price1 = AscendantCardEconomy.cardValue(c, townA);
         float supply1 = townA.getMarketSupply(c.getName());
 
@@ -405,6 +417,188 @@ public class CardEconomyEc1Test {
         int inBlueTown = AscendantCardEconomy.cardValue(red, townB);
         Assert.assertTrue(inRedTown > inBlueTown, "red town pays more for red cards");
     }
+
+
+    @Test
+    public void standardCardPricedNearRarityBase() {
+        AdventurePlayer player = Current.player();
+        player.getStandardWindow().init(List.of("M10", "M11", "ZEN"));
+        PaperCard bolt = card("Lightning Bolt", "M10");
+        Assert.assertNotNull(bolt);
+        Assert.assertTrue(AscendantCardEconomy.isStandardLegal(bolt));
+        int price = AscendantCardEconomy.cardValue(bolt, null);
+        // rarity base 50 × rank band — stay in a Standard-ish band, not a jackpot.
+        Assert.assertTrue(price >= 20 && price <= 200, "Standard bolt near rarity/power base, got " + price);
+    }
+
+    @Test
+    public void rotatedCardRisesAfterNSeasons() {
+        AdventurePlayer player = Current.player();
+        player.getStandardWindow().init(List.of("M11", "M12", "ZEN")); // M10 out of window
+        PaperCard bolt = card("Lightning Bolt", "M10");
+        Assert.assertNotNull(bolt);
+        Assert.assertFalse(AscendantCardEconomy.isStandardLegal(bolt), "M10 bolt must be Historic");
+        AscendantCardEconomy.noteSetRotatedForTest("M10", 1);
+        player.getSeason().setCalendarForTest(0, 1);
+        int atRotate = AscendantCardEconomy.cardValue(bolt, null);
+        player.getSeason().setCalendarForTest(100, 8);
+        int later = AscendantCardEconomy.cardValue(bolt, null);
+        Assert.assertTrue(later > atRotate,
+                "post-rotation bolt must rise after N seasons: " + atRotate + " -> " + later);
+    }
+
+    @Test
+    public void badlandsStartsLowAndClimbsTowardListPrice() {
+        AdventurePlayer player = Current.player();
+        // Keep Badlands Historic (not in Standard window).
+        player.getStandardWindow().init(List.of("M10", "M11", "ZEN"));
+        PaperCard badlands = card("Badlands", "LEB");
+        if (badlands == null)
+            badlands = card("Badlands", null);
+        Assert.assertNotNull(badlands);
+        AscendantCardEconomy.noteSetRotatedForTest(badlands.getEdition(), 1);
+        player.getSeason().setCalendarForTest(0, 1);
+        int early = AscendantCardEconomy.cardValue(badlands, null);
+        Assert.assertTrue(early > 0 && early < 1000,
+                "Badlands starts near rarity base, got " + early);
+        player.getSeason().setCalendarForTest(400, 24);
+        int late = AscendantCardEconomy.cardValue(badlands, null);
+        Assert.assertTrue(late > early, "Badlands climbs over many seasons: " + early + " -> " + late);
+        Assert.assertTrue(late <= 3000, "must not exceed pedigree list ceiling, got " + late);
+        Assert.assertTrue(late > 800, "should approach list price materially after 24 seasons, got " + late);
+    }
+
+    @Test
+    public void spikedCommonShowsRumour() {
+        PaperCard common = pickZenByRarity(CardRarity.Common, true);
+        Assert.assertNotNull(common);
+        AscendantCardEconomy.setSeasonSpikesForTest(List.of(common.getName()));
+        Assert.assertTrue(AscendantCardEconomy.isSpiked(common.getName()));
+        String rumour = AscendantCardEconomy.spikeRumourLine();
+        Assert.assertTrue(rumour.toLowerCase().contains("demand")
+                        || rumour.contains(common.getName()), rumour);
+        int spiked = AscendantCardEconomy.cardValue(common, null);
+        AscendantCardEconomy.setSeasonSpikesForTest(List.of());
+        int normal = AscendantCardEconomy.cardValue(common, null);
+        Assert.assertTrue(spiked > normal, "spike mult must raise price");
+    }
+
+    @Test
+    public void historicCraftFactorAppliedOnCraftCost() {
+        AdventurePlayer player = Current.player();
+        player.getStandardWindow().init(List.of("M11", "M12", "ZEN"));
+        PaperCard bolt = card("Lightning Bolt", "M10");
+        Assert.assertNotNull(bolt);
+        Assert.assertFalse(player.isStandardLegal(bolt));
+        int withFactor = player.craftCost(bolt);
+        float saved = ascendantConfig.historicCraftFactor;
+        try {
+            ascendantConfig.historicCraftFactor = 1f;
+            Config.installConfigDataForTest(ascendantConfig);
+            int without = player.craftCost(bolt);
+            Assert.assertTrue(withFactor > without,
+                    "historicCraftFactor must raise Historic craft cost: "
+                            + withFactor + " vs " + without);
+        } finally {
+            ascendantConfig.historicCraftFactor = saved;
+            Config.installConfigDataForTest(ascendantConfig);
+        }
+    }
+
+    @Test
+    public void shopPricesAndRecordsFromOwnMarketOnly() {
+        AdventurePlayer player = Current.player();
+        PaperCard c = pickZenByRarity(CardRarity.Common, true);
+        Assert.assertNotNull(c);
+        player.addCard(c, 6);
+
+        // Shop A prices from townA; buy recording hits townA only.
+        player.setActiveShopMarket(townA);
+        int priceA0 = CardUtil.getCardPrice(c);
+        AscendantCardEconomy.noteBought(townA, c, 3);
+        Assert.assertTrue(townA.getMarketSupply(c.getName()) < 0);
+        Assert.assertEquals(townB.getMarketSupply(c.getName()), 0f, 0.0001f);
+        int priceA1 = CardUtil.getCardPrice(c);
+        Assert.assertTrue(priceA1 > priceA0, "buying in A raises A's local price");
+
+        // Map shop B uses its own POI — A's buy pressure must not inflate B.
+        player.setActiveShopMarket(townB);
+        int priceB = CardUtil.getCardPrice(c);
+        Assert.assertTrue(priceB < priceA1, "no cross-town arbitrage: B stays below pumped A");
+        Assert.assertEquals(priceB, priceA0, "B matches the pre-buy baseline");
+
+        // Selling outside town moves no market.
+        float supplyA = townA.getMarketSupply(c.getName());
+        float supplyB = townB.getMarketSupply(c.getName());
+        player.setActiveShopMarket(null);
+        Assert.assertEquals(player.sellCard(c, 2), 2);
+        Assert.assertEquals(townA.getMarketSupply(c.getName()), supplyA, 0.0001f);
+        Assert.assertEquals(townB.getMarketSupply(c.getName()), supplyB, 0.0001f);
+    }
+
+    @Test
+    public void sellSkillCapPreventsMarketLoop() {
+        AdventurePlayer player = Current.player();
+        PaperCard c = pickZenByRarity(CardRarity.Common, true);
+        Assert.assertNotNull(c);
+        player.setActiveShopMarket(townA);
+        // Max Salvaging skill would otherwise push sellPriceFactor well above the cap.
+        while (player.getSkills().getLevel(forge.adventure.player.PlayerSkills.Skill.SALVAGING) < 99) {
+            player.getSkills().addXp(forge.adventure.player.PlayerSkills.Skill.SALVAGING, 10_000);
+            if (player.getSkills().getLevel(forge.adventure.player.PlayerSkills.Skill.SALVAGING) >= 99)
+                break;
+        }
+        float uncapped = player.getSkills().sellPriceFactor();
+        Assert.assertTrue(uncapped > AscendantCardEconomy.sellSkillCap(),
+                "need uncapped skill above cap for this test, got " + uncapped);
+        int local = AscendantCardEconomy.cardValue(c, townA);
+        int sell = player.cardSellPrice(c);
+        int cappedExpected = Math.round(local * AscendantCardEconomy.saleShare()
+                * (2f - townA.getTownPriceModifier()) * AscendantCardEconomy.sellSkillCap());
+        Assert.assertEquals(sell, cappedExpected, "sell skill must be capped");
+        player.setActiveShopMarket(null);
+    }
+
+    @Test
+    public void craftMissingReagentsFullCountAllOrNothing() {
+        AdventurePlayer player = Current.player();
+        player.getStandardWindow().init(List.of("M10", "M11", "ZEN"));
+        PaperCard bolt = card("Lightning Bolt", "M10");
+        Assert.assertNotNull(bolt);
+        player.getCards().clear();
+        // Enough dust for 3 copies but only 1 ash → plan disabled (full-count reagents).
+        int unit = Math.max(1, player.craftCost(bolt));
+        player.addDust(AdventurePlayer.DUST_COMMON, unit * 3 + 20);
+        forge.adventure.data.MaterialData ash = forge.adventure.data.MaterialListData.primaryReagent("R", 1);
+        Assert.assertNotNull(ash);
+        int ashHave = player.getMaterial(ash.id);
+        if (ashHave > 0)
+            player.takeMaterial(ash.id, ashHave);
+        player.addMaterial(ash.id, 1);
+        CraftingApi.CraftMissingPlan shortPlan = CraftingApi.planCraftMissing(List.of(
+                new CraftingApi.MissingRequest("Lightning Bolt", 3, 0, bolt)));
+        Assert.assertFalse(shortPlan.craftEnabled, shortPlan.disabledReason);
+        Assert.assertTrue(shortPlan.disabledReason != null
+                        && shortPlan.disabledReason.toLowerCase().contains("reagent")
+                        || shortPlan.disabledReason.toLowerCase().contains("need"),
+                shortPlan.disabledReason);
+        List<CraftingApi.CraftResult> none = CraftingApi.craftMissing(List.of(
+                new CraftingApi.MissingRequest("Lightning Bolt", 3, 0, bolt)));
+        Assert.assertEquals(player.getCards().count(bolt), 0, "all-or-nothing: no partial craft");
+        Assert.assertFalse(none.isEmpty());
+        Assert.assertFalse(none.get(0).ok());
+
+        // Enough reagents for full count → crafts all three.
+        player.addMaterial(ash.id, 5);
+        CraftingApi.CraftMissingPlan ok = CraftingApi.planCraftMissing(List.of(
+                new CraftingApi.MissingRequest("Lightning Bolt", 3, 0, bolt)));
+        Assert.assertTrue(ok.craftEnabled, ok.disabledReason);
+        List<CraftingApi.CraftResult> done = CraftingApi.craftMissing(ok.requests);
+        Assert.assertTrue(done.get(0).ok());
+        Assert.assertEquals(done.get(0).crafted, 3);
+        Assert.assertEquals(player.getCards().count(bolt), 3);
+    }
+
 
     // ---- helpers -------------------------------------------------------------------------------
 

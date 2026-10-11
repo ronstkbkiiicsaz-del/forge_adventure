@@ -219,6 +219,11 @@ public class AdventurePlayer implements Serializable, SaveFileContent {
     final SignalList onEquipmentChange = new SignalList();
     final SignalList onBlessing = new SignalList();
     private PointOfInterestChanges currentLocationChanges;
+    /**
+     * EC1: shop/map POI whose market is used for price + buy/sell recording while shopping.
+     * Null outside a shop — selling outside town must not move any town's market.
+     */
+    private PointOfInterestChanges activeShopMarket;
 
     public AdventurePlayer() {
         clear();
@@ -274,6 +279,7 @@ public class AdventurePlayer implements Serializable, SaveFileContent {
         toolEnchantments.clear();
         camps.clear();
         adventurePlaySeconds = 0d;
+        season.clear();
         maxDeckCount = 20;
         clearDecks();
         inventoryItems.clear();
@@ -304,6 +310,7 @@ public class AdventurePlayer implements Serializable, SaveFileContent {
     private final CardPool cards = new CardPool();
     private final PlayerSkills skills = new PlayerSkills();
     private final StandardWindow standardWindow = new StandardWindow();
+    private final AdventureSeason season = new AdventureSeason();
 
     public PlayerSkills getSkills() {
         return skills;
@@ -311,6 +318,11 @@ public class AdventurePlayer implements Serializable, SaveFileContent {
 
     public StandardWindow getStandardWindow() {
         return standardWindow;
+    }
+
+    /** SN1 in-game calendar and season state (Ascendant). */
+    public AdventureSeason getSeason() {
+        return season;
     }
 
     /** After cards enter the collection: check set mastery (may unlock and rotate in a new set). */
@@ -1660,6 +1672,18 @@ public class AdventurePlayer implements Serializable, SaveFileContent {
                 data.containsKey("standardSetUnlocked") && data.readBool("standardSetUnlocked"),
                 data.containsKey("standardChoicePending") && data.readBool("standardChoicePending"),
                 data.containsKey("unlockedHistory") ? (String[]) data.readObject("unlockedHistory") : null);
+        // SN1: load season calendar, or derive a default from the current rotation for old saves.
+        if (Config.ascendant()) {
+            season.load(data, standardWindow);
+            // Season clock replaces one-unlock-per-world; clear the legacy lock so mastery can
+            // end seasons again on migrated saves.
+            if (season.isEnabled() && standardWindow.isSetUnlockedThisWorld()
+                    && !season.isChoicePending()) {
+                standardWindow.startNewWorld();
+            }
+        } else {
+            season.clear();
+        }
 
         if (data.containsKey("questFlagsKey") && data.containsKey("questFlagsValue")) {
             String[] keys = (String[]) data.readObject("questFlagsKey");
@@ -2159,6 +2183,8 @@ public class AdventurePlayer implements Serializable, SaveFileContent {
         data.store("standardSetUnlocked", standardWindow.isSetUnlockedThisWorld());
         data.store("standardChoicePending", standardWindow.isChoicePending());
         data.storeObject("unlockedHistory", standardWindow.saveHistory());
+        if (Config.ascendant())
+            season.save(data);
 
         // Save quest flags.
         ArrayList<String> questFlagsKey = new ArrayList<>();
@@ -2851,23 +2877,38 @@ public class AdventurePlayer implements Serializable, SaveFileContent {
             return 0;
         }
 
-        // EC1: fixed sale share of the current local (game) price. Stock keeps difficulty sellFactor.
+        // EC1: fixed sale share of the active shop's local price. Stock keeps difficulty sellFactor.
         float sellShare = AscendantCardEconomy.enabled()
                 ? AscendantCardEconomy.saleShare()
                 : difficultyData.sellFactor;
-        int basePrice = (int) (CardUtil.getCardPrice(card) * sellShare);
+        PointOfInterestChanges market = AscendantCardEconomy.enabled() ? activeShopMarket : currentLocationChanges;
+        int basePrice = (int) (CardUtil.getCardPrice(card, market) * sellShare);
 
         if (card.isFoil()) {
             basePrice += basePrice * 20 / 100;
         }
 
-        float townPriceModifier = currentLocationChanges == null ? 1f : currentLocationChanges.getTownPriceModifier();
-        return (int) (basePrice * (2.0f - townPriceModifier) * skills.sellPriceFactor());
+        float townPriceModifier = market == null ? 1f : market.getTownPriceModifier();
+        float skill = skills.sellPriceFactor();
+        if (AscendantCardEconomy.enabled())
+            skill = Math.min(skill, AscendantCardEconomy.sellSkillCap());
+        return (int) (basePrice * (2.0f - townPriceModifier) * skill);
     }
 
-    /** Current POI shop/market changes (null outside a town map). EC1 / tests. */
+    /** Current POI changes (inn / town). Not used for EC1 shop pricing. */
     public PointOfInterestChanges getCurrentLocationChanges() {
         return currentLocationChanges;
+    }
+
+    /** Active shop market for EC1 price + record (null outside a shop). */
+    public PointOfInterestChanges getActiveShopMarket() {
+        return activeShopMarket;
+    }
+
+    public void setActiveShopMarket(PointOfInterestChanges market) {
+        this.activeShopMarket = market;
+        if (market != null)
+            AscendantCardEconomy.bindSeasonCalendar(season);
     }
 
     /**
@@ -3148,16 +3189,17 @@ public class AdventurePlayer implements Serializable, SaveFileContent {
         int amountToSell = Math.min(amount, cards.count(card) - vaultedCount(card));
         if (amountToSell <= 0)
             return 0;
-        // Progressive local prices (EC1): each copy sold deepens supply for the next.
+        // Progressive local prices (EC1): only the active shop's market moves; outside town = none.
+        PointOfInterestChanges market = AscendantCardEconomy.enabled() ? activeShopMarket : currentLocationChanges;
         int earned = 0;
         for (int i = 0; i < amountToSell; i++) {
             earned += cardSellPrice(card);
-            AscendantCardEconomy.noteSold(currentLocationChanges, card, 1);
+            AscendantCardEconomy.noteSold(market, card, 1);
         }
         if (!cards.remove(card, amountToSell)) {
             // Roll back market notes if the inventory remove failed.
             for (int i = 0; i < amountToSell; i++)
-                AscendantCardEconomy.noteBought(currentLocationChanges, card, 1);
+                AscendantCardEconomy.noteBought(market, card, 1);
             return 0;
         }
         List<PaperCard> removed = new ArrayList<>(amountToSell);
@@ -3358,10 +3400,11 @@ public class AdventurePlayer implements Serializable, SaveFileContent {
             return 0;
         ConfigData config = Config.instance().getConfigData();
         float base = config.craftCost;
-        // EC1: shared worth (rank × rotation). Historic factor still applies when EC1 is off;
-        // when on, rotation is already in relativeWorth — skip double historicCraftFactor.
+        // EC1: craft follows life-cycle value; historicCraftFactor keeps the old 2× Historic intent.
         if (AscendantCardEconomy.enabled()) {
             base *= AscendantCardEconomy.craftWorthFactor(printing);
+            if (!isStandardLegal(printing))
+                base *= config.historicCraftFactor;
         } else if (!isStandardLegal(printing)) {
             base *= config.historicCraftFactor;
         }
@@ -3651,11 +3694,34 @@ public class AdventurePlayer implements Serializable, SaveFileContent {
 
     // ---- Ascendant gathering methods (Package B2) ----
 
-    /** Advance in-game play time used by outpost production. Ascendant only. */
+    /** Advance in-game play time used by outpost production and SN1 exploring calendar. Ascendant only. */
     public void tickAdventurePlaySeconds(float delta) {
         if (!Config.ascendant() || delta <= 0f)
             return;
         adventurePlaySeconds += delta;
+        if (season.isEnabled())
+            season.tickExploring(delta, standardWindow, cards);
+    }
+
+    /** SN1: charge flat duel hours on the calendar (win or lose). */
+    public void chargeSeasonDuelHours() {
+        if (!Config.ascendant() || !season.isEnabled())
+            return;
+        season.chargeDuelHours(standardWindow, cards);
+    }
+
+    /** SN1: lock the free set-pick undo after a pack open or a won fight. */
+    public void lockSeasonPickUndo() {
+        if (!Config.ascendant() || !season.isEnabled())
+            return;
+        season.lockUndo();
+    }
+
+    /** SN1: rest at an inn until the next morning. */
+    public void restSeasonUntilMorning() {
+        if (!Config.ascendant() || !season.isEnabled())
+            return;
+        season.restUntilMorning(standardWindow, cards);
     }
 
     public double getAdventurePlaySeconds() {
@@ -4504,6 +4570,7 @@ public class AdventurePlayer implements Serializable, SaveFileContent {
 
     public void loadChanges(PointOfInterestChanges changes) {
         this.currentLocationChanges = changes;
+        AscendantCardEconomy.bindSeasonCalendar(season);
     }
 
     /**

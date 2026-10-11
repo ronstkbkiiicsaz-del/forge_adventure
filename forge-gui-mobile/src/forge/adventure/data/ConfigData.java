@@ -679,15 +679,16 @@ public class ConfigData {
      * outprice a bottom rare: {@code baseCommon × max > baseRare × min}.
      */
     public float ec1RankMultMax = 3.5f;
-    /** Multiplier while the card is legal in the current Standard window. */
-    public float ec1StandardMult = 1.25f;
-    /** Multiplier for Historic-only (rotated) cards. */
-    public float ec1HistoricMult = 0.75f;
     /**
      * Sell payout as a fixed share of the current local price (buy gold value). About 30%.
      * Replaces difficulty {@code sellFactor} for Ascendant when EC1 is on.
      */
     public float ec1SaleShare = 0.30f;
+    /**
+     * Cap on the skill sell-price factor so a pumped market cannot be looped at high skill.
+     * Applied as {@code min(skills.sellPriceFactor(), ec1SellSkillCap)}.
+     */
+    public float ec1SellSkillCap = 1.35f;
     /** Local market price band around the base (never leave this range). */
     public float ec1MarketBandMin = 0.5f;
     public float ec1MarketBandMax = 2.0f;
@@ -706,5 +707,73 @@ public class ConfigData {
      * Craft uses worth directly against {@link #craftCost}.
      */
     public float ec1SalvageWorthFactor = 1.0f;
+    /**
+     * Per-season appreciation after a card rotates out of Standard (rares/mythics use a
+     * higher rate). Tunable life-cycle curve.
+     */
+    public float ec1PostRotationAppreciateCommon = 0.04f;
+    public float ec1PostRotationAppreciateUncommon = 0.06f;
+    public float ec1PostRotationAppreciateRare = 0.12f;
+    public float ec1PostRotationAppreciateMythic = 0.16f;
+    /**
+     * Soft asymptote toward the pedigree ceiling: after this many post-rotation seasons a
+     * pedigree card is near its {@code cardprices.txt} target (never an immediate jump).
+     */
+    public int ec1PedigreeSeasonsToCeiling = 24;
+    /**
+     * Share of the pedigree list price used as the long-term ceiling (1.0 = full list).
+     */
+    public float ec1PedigreeCeilingShare = 1.0f;
+    /** Commons/uncommons that spike each season (town rumour). */
+    public int ec1SeasonSpikeCount = 3;
+    /** Spike demand multiplier on relative worth for rumoured cards. */
+    public float ec1SeasonSpikeMult = 2.5f;
+
+    // ---- Ascendant seasons (Package SN1): 4-set Standard + in-game calendar. ----
+
+    /**
+     * When true (Ascendant default), enable the SN1 season calendar, shortlist picks, and
+     * 4-set Standard window. Stock worlds leave this unused.
+     */
+    public boolean sn1Seasons = true;
+    /**
+     * Max sets legal in Shandalar Standard at once (SN1 default 4). Tunable; minimum 2.
+     * Replaces the hard-coded {@code StandardWindow.WINDOW_SIZE} of 3.
+     */
+    public int sn1WindowSize = 4;
+    /**
+     * Real exploring minutes that advance one in-game day (menus/pauses/idle do not count).
+     * Default 15: 15 minutes exploring = 1 day.
+     */
+    public float sn1ExploreMinutesPerDay = 15f;
+    /** Flat in-game hours charged for every duel, win or lose (default 2). */
+    public float sn1DuelHours = 2f;
+    /** Length of a normal season in in-game days (default 14). */
+    public int sn1SeasonDays = 14;
+    /** Length of each opening season in in-game days (default 7). */
+    public int sn1OpeningSeasonDays = 7;
+    /**
+     * How many short opening seasons run after New Game before normal seasons.
+     * New games start with 2 sets; each opening season adds one until the window is full.
+     */
+    public int sn1OpeningSeasonCount = 2;
+    /** Sets offered on the season-end shortlist (default 3). */
+    public int sn1ShortlistSize = 3;
+    /**
+     * In-game days after a skipped / deferred season pick before the world auto-picks
+     * the release-order option (default 3). Never forced mid-duel.
+     */
+    public int sn1GracePeriodDays = 3;
+    /** Gold cost for "Choose any set" instead of a shortlist option. */
+    public int sn1ChooseAnyGoldCost = 500;
+    /**
+     * When true, the player may pin one favourite set so it skips one rotation,
+     * once every {@link #sn1PinCooldownSeasons} seasons.
+     */
+    public boolean sn1PinEnabled = true;
+    /** Seasons that must pass between pin uses (default 3). */
+    public int sn1PinCooldownSeasons = 3;
+    /** Planar Keys granted when finishing a season whose newest set was mastered. */
+    public int sn1SeasonMasteryPlanarKeys = 1;
 
 }
