@@ -1,5 +1,5 @@
 wren_drafts_material_icons.png
-size: 80,224
+size: 144,256
 format: RGBA8888
 filter: Nearest,Nearest
 repeat: none
@@ -173,4 +173,43 @@ pure_brine
   size: 16, 16
 elemental_brine
   xy: 48, 208
+  size: 16, 16
+gym_white_essence
+  xy: 0, 224
+  size: 16, 16
+gym_blue_essence
+  xy: 16, 224
+  size: 16, 16
+gym_black_essence
+  xy: 32, 224
+  size: 16, 16
+gym_red_essence
+  xy: 48, 224
+  size: 16, 16
+gym_green_essence
+  xy: 64, 224
+  size: 16, 16
+gym_colorless_essence
+  xy: 80, 224
+  size: 16, 16
+gym_guild_essence
+  xy: 96, 224
+  size: 16, 16
+gym_rainbow_essence
+  xy: 112, 224
+  size: 16, 16
+league_champion_trophy
+  xy: 128, 224
+  size: 16, 16
+prismatic_t1
+  xy: 0, 240
+  size: 16, 16
+prismatic_t2
+  xy: 16, 240
+  size: 16, 16
+prismatic_t3
+  xy: 32, 240
+  size: 16, 16
+prismatic_t4
+  xy: 48, 240
   size: 16, 16
