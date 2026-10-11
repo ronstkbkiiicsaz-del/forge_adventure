@@ -151,6 +151,16 @@ public final class InteriorMapSave {
      * After a successful {@link WorldSave#load}, return the scene to enter:
      * the restored map when interior fields are present, otherwise the overworld.
      */
+    /**
+     * Switch to the scene a load should land in and drop the load's transition screen. The overworld
+     * ({@code GameScene.enter}) clears it itself; {@code TileMapScene} does not, so without this a save
+     * made inside a map loads correctly but stays hidden behind "Loading world" forever.
+     */
+    public static void switchToSceneAfterLoad() {
+        forge.Forge.switchScene(sceneAfterLoad());
+        forge.Forge.clearTransitionScreen();
+    }
+
     public static Scene sceneAfterLoad() {
         if (prepareRestoredMap()) {
             return TileMapScene.instance();

@@ -147,7 +147,7 @@ public class StartScene extends UIScene {
                     loaded = false;
                     if (WorldSave.load(WorldSave.filenameToSlot(lastActiveSave))) {
                         SoundSystem.instance.changeBackgroundTrack();
-                        Forge.switchScene(forge.adventure.util.InteriorMapSave.sceneAfterLoad());
+                        forge.adventure.util.InteriorMapSave.switchToSceneAfterLoad();
                     } else {
                         Forge.clearTransitionScreen();
                     }
