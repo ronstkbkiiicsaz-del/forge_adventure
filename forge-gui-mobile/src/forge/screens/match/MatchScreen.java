@@ -1164,6 +1164,8 @@ public class MatchScreen extends FScreen {
     }
 
     private class FieldScroller extends FScrollPane {
+        private static final Color ARENA_SEAL_PLATE = new Color(0.10f, 0.16f, 0.12f, 1f);
+
         private float extraHeight = 0;
         private String plane = "";
         private String imageName = "";
@@ -1191,7 +1193,7 @@ public class MatchScreen extends FScreen {
                 // centering mapped the lower band onto dark water; negative-Y bias
                 // escaped clips and punched alpha holes into the other half.
                 g.resetAlphaComposite();
-                g.fillRect(new com.badlogic.gdx.graphics.Color(0.10f, 0.16f, 0.12f, 1f), 0, 0, aw, ah);
+                g.fillRect(ARENA_SEAL_PLATE, 0, 0, aw, ah);
                 if (arenaBG.getWidth() > 0) {
                     g.drawImage(arenaBG, 0, 0, aw, ah);
                 }
@@ -1266,8 +1268,6 @@ public class MatchScreen extends FScreen {
 
         //auto adjust zoom for local multiplayer landscape mode
         List<VPlayerPanel> losers = new ArrayList<>();
-
-        private static final Color ARENA_SEAL_PLATE = new Color(0.10f, 0.16f, 0.12f, 1f);
 
         @Override
         public void drawOverlay(Graphics g) {
