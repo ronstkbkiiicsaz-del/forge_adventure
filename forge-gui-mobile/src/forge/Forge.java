@@ -414,6 +414,7 @@ public class Forge implements ApplicationListener {
         clearScreenStack();
         openHomeScreen(-1, null); //default for startup
         isMobileAdventureMode = false;
+        forge.adventure.sound.Au1Sounds.refreshRegistration();
         MusicPlaylist.invalidateMusicPlaylist();
         SoundSystem.instance.setBackgroundMusic(MusicPlaylist.MENUS);
         if (isLandscapeMode()) { //open preferred new game screen by default if landscape mode
@@ -431,6 +432,7 @@ public class Forge implements ApplicationListener {
         GuiBase.setAdventureDirectory(ForgeConstants.ADVENTURE_COMMON_DIR);
         advStartup = false;
         isMobileAdventureMode = true;
+        forge.adventure.sound.Au1Sounds.refreshRegistration();
         //force it for adventure mode if the prefs is not updated from boolean value to string value
         if ("true".equalsIgnoreCase(FModel.getPreferences().getPref(FPref.UI_ALT_PLAYERZONETABS)) ||
             "false".equalsIgnoreCase(FModel.getPreferences().getPref(FPref.UI_ALT_PLAYERZONETABS))) {
@@ -494,6 +496,7 @@ public class Forge implements ApplicationListener {
                         //preload adventure resources to speedup startup if selector is adventure. Needs in edt when setting up worldstage
                         loadAdventureResources(false);
                         isMobileAdventureMode = true;
+                        forge.adventure.sound.Au1Sounds.refreshRegistration();
                     }
                     //selection transition
                     setTransitionScreen(new TransitionScreen(() -> {

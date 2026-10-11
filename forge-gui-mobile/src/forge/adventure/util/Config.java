@@ -78,6 +78,18 @@ public class Config {
         forge.adventure.data.TownsfolkListData.clearCache();
         // allowedEditions / restricted* feed the adventure reward filter and card pool.
         forge.adventure.data.RewardData.invalidateCardPool();
+        try {
+            forge.adventure.sound.Au1Sounds.refreshRegistration();
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /**
+     * AU1: Ascendant sound overhaul configured on. Prefer {@link forge.adventure.sound.Au1Sounds#enabled()}
+     * for playback (also requires Adventure mode so constructed/quest/draft stay stock).
+     */
+    public static boolean au1SoundOverhaul() {
+        return ascendant() && instance().configData != null && instance().configData.au1SoundOverhaul;
     }
 
     private Config() {
@@ -149,6 +161,12 @@ public class Config {
             } catch (Throwable ignored) {
                 // Headless / missing res — gates register again on first use.
             }
+        }
+        // AU1: register (or clear) Ascendant sound enrichment against SoundSystem.
+        try {
+            forge.adventure.sound.Au1Sounds.refreshRegistration();
+        } catch (Throwable ignored) {
+            // Headless tests without SoundSystem prefs still load config.
         }
     }
 
