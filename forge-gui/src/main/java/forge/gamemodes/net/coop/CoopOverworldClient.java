@@ -53,11 +53,8 @@ public final class CoopOverworldClient implements IHasForgeLog {
                                 new ClientHandler());
                     }
                 });
-        // Assign channel before sync so channelActive → onConnected → send() sees it.
-        // Otherwise hello/reject tests race: send() no-ops while channel is still null.
-        final ChannelFuture future = b.connect(hostname, port);
+        final ChannelFuture future = b.connect(hostname, port).sync();
         channel = future.channel();
-        future.sync();
         connected = true;
         connectLatch.countDown();
         netLog.info("Co-op overworld client connected to {}:{}", hostname, port);
