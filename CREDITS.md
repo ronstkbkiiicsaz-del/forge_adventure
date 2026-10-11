@@ -33,6 +33,23 @@ license. **Add an entry here whenever a new asset, library or data source is add
   Kenney Vleugels, <https://kenney.nl>. CC0 1.0 (public domain); credited with thanks.
   License files: `LICENSE-kenney-impact-sounds.txt`, `LICENSE-kenney-rpg-audio.txt`.
 
+- **AU1 Ascendant sound overhaul** (`forge-gui/res/adventure/Shandalar Ascendant/sound/au1_*.ogg`) —
+  Kenney Vleugels, <https://kenney.nl>. CC0 1.0; credited with thanks. Stock `forge-gui/res/sound/`
+  is unchanged. Steve can replace any `au1_*.ogg` under the same name. Per-pack license stubs and
+  file→pack map: `LICENSE-kenney-*.txt` and `AU1-SOURCES.txt` in that folder.
+  - **Kenney Interface Sounds** — `au1_ui_confirm`, `au1_quest_accept`, `au1_quest_complete`, `au1_dialog_blip`
+  - **Kenney UI Audio** — `au1_ui_hover`
+  - **Kenney Impact Sounds** — `au1_footstep_*`, `au1_attack`, `au1_block`, `au1_combat_damage_*`,
+    `au1_creature_dies`, `au1_cast_creature_*`, `au1_cast_artifact`, `au1_cast_other`,
+    `au1_enemy_notice`, `au1_node_depleted`
+  - **Kenney RPG Audio** — `au1_door_open`, `au1_chest_open`, `au1_item_pickup`
+  - **Kenney Digital Audio** — `au1_cast_instant_*`, `au1_cast_sorcery_*`, `au1_cast_enchantment`,
+    `au1_cast_planeswalker`, `au1_land_*`, `au1_life_gain`, `au1_life_loss`, `au1_exile`, `au1_token`,
+    `au1_portal`, `au1_counter`, `au1_level_up`, `au1_skill_up`, `au1_rare_reveal`, `au1_reward_reveal`
+  - **Kenney Casino Audio** — `au1_draw`, `au1_mulligan`, `au1_shuffle`, `au1_resolve`, `au1_pack_rip`,
+    `au1_card_flip`, `au1_shop_buy`, `au1_shop_sell`
+  - **Kenney Music Jingles** — `au1_win`, `au1_lose`, `au1_achievement`
+
 ## Map tiles
 
 - **Kenney — Tiny Town, Tiny Battle, Tiny Dungeon** (16px tilesets in

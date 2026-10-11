@@ -333,6 +333,9 @@ public class PortalActor extends EntryActor {
         if (stage == null || stage.getPlayerSprite() == null) {
             return;
         }
+        if (forge.adventure.sound.Au1Sounds.enabled()) {
+            forge.adventure.sound.Au1Sounds.playPortal();
+        }
         stage.getPlayerSprite().playEffect(Paths.EFFECT_TELEPORT, 0.5f);
         stage.startPause(1.5f);
     }
