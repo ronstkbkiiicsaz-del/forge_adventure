@@ -446,7 +446,7 @@ public class VPlayerPanel extends FContainer {
      */
     private void doArenaLayout(final float width, final float height) {
         // Phase lives on ArenaDuelScreen's phaseRail — never paint classic panel chrome.
-        if (phaseIndicator.getParent() == this) {
+        if (!phaseIndicator.isArenaRailHosted()) {
             phaseIndicator.setVisible(false);
             phaseIndicator.setBounds(0, 0, 0, 0);
         }
@@ -568,8 +568,8 @@ public class VPlayerPanel extends FContainer {
     private void setArenaChromeVisible(final boolean visible) {
         avatar.setVisible(visible);
         lblLife.setVisible(visible);
-        // Phase may be reparented onto ArenaDuelScreen — only toggle when still ours.
-        if (phaseIndicator.getParent() == this) {
+        // Phase may be hosted on ArenaDuelScreen's rail — only toggle when still ours.
+        if (!phaseIndicator.isArenaRailHosted()) {
             phaseIndicator.setVisible(visible);
         }
         for (InfoTab tab : tabs) {

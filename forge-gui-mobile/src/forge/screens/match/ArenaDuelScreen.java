@@ -247,12 +247,19 @@ public class ArenaDuelScreen extends MatchScreen {
         if (phase == null) {
             return;
         }
-        if (phase.getParent() != this) {
-            if (phase.getParent() instanceof forge.toolbox.FContainer) {
-                ((forge.toolbox.FContainer) phase.getParent()).remove(phase);
-            }
+        // FDisplayObject has no parent pointer — pull from both panels then adopt.
+        final VPlayerPanel top = getTopPlayerPanel();
+        final VPlayerPanel bottom = getBottomPlayerPanel();
+        if (top != null) {
+            top.remove(phase);
+        }
+        if (bottom != null) {
+            bottom.remove(phase);
+        }
+        if (indexOf(phase) < 0) {
             add(phase);
         }
+        phase.setArenaRailHosted(true);
         phase.setVisible(true);
         final boolean landscape = Forge.isLandscapeMode();
         if (landscape) {

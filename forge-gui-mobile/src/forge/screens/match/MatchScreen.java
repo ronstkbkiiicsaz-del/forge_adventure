@@ -17,7 +17,6 @@ import forge.assets.FImage;
 import forge.card.CardImageRenderer;
 import forge.card.CardMagnifierControls;
 import forge.card.CardRenderer;
-import forge.card.CardRenderer.CardStackPosition;
 import forge.card.CardZoom;
 import forge.card.HoverMagnifierPreview;
 import forge.game.spellability.StackItemView;

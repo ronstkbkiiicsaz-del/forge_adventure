@@ -337,6 +337,23 @@ public class ArenaDuelScreenGlTest {
         return hBf != null && aBf != null && hBf.size() >= 3 && aBf.size() >= 3;
     }
 
+    /** Make the secondary Cancel context button visible for screenshot proof. */
+    private static void ensureCancelChromeVisible(final ArenaDuelScreen arena) {
+        if (arena.getBottomPlayerPrompt() != null
+                && arena.getBottomPlayerPrompt().getBtnCancel() != null) {
+            arena.getBottomPlayerPrompt().getBtnCancel().setVisible(true);
+            if (arena.getBottomPlayerPrompt().getBtnCancel().getText() == null
+                    || arena.getBottomPlayerPrompt().getBtnCancel().getText().isEmpty()) {
+                arena.getBottomPlayerPrompt().getBtnCancel().setText("Cancel");
+            }
+        }
+        // Context labels sync from the prompt on overlay; force a layout pass.
+        arena.revalidate();
+        if (arena.arenaCancelControl() != null) {
+            arena.arenaCancelControl().setVisible(true);
+        }
+    }
+
     private static void advanceOnce(final HostedMatch match) {
         if (MatchController.instance.getGameController() == null) {
             return;

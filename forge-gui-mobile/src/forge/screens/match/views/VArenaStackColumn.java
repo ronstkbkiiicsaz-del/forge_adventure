@@ -64,7 +64,7 @@ public class VArenaStackColumn extends FContainer {
 
     private final List<StackCard> cards = new ArrayList<>();
     private StackItemView activeStackInstance;
-    private Map<PlayerView, CardView> playersWithValidTargets;
+    private Map<PlayerView, Object> playersWithValidTargets;
     private int lastLaidOutSize = -1;
 
     public void refresh() {

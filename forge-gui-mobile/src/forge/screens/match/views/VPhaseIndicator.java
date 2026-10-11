@@ -24,13 +24,28 @@ public class VPhaseIndicator extends FContainer {
     public static final float PADDING_X = Utils.scale(1);
     public static final float PADDING_Y = Utils.scale(2);
 
+    /** True when ArenaDuelScreen hosts this indicator in the phaseRail band. */
+    private boolean arenaRailHosted;
+
+    public boolean isArenaRailHosted() {
+        return arenaRailHosted;
+    }
+
+    public void setArenaRailHosted(final boolean hosted) {
+        arenaRailHosted = hosted;
+    }
+
+    private boolean arenaPhaseChromeSuppressed() {
+        // Skip classic leftover strip when Arena is active but this indicator is
+        // still zero-sized inside a player panel (not yet / never hosted on the rail).
+        return forge.screens.match.ArenaDuelUi.isActive()
+                && !arenaRailHosted
+                && (getWidth() < 1f || getHeight() < 1f);
+    }
+
     @Override
     public void draw(final Graphics g) {
-        // DS1: when still parented under a player panel with zeroed bounds, skip the
-        // classic green leftover strip. When hosted on ArenaDuelScreen's phaseRail,
-        // paint normally.
-        if (forge.screens.match.ArenaDuelUi.isActive()
-                && (getWidth() < 1f || getHeight() < 1f)) {
+        if (arenaPhaseChromeSuppressed()) {
             return;
         }
         super.draw(g);
