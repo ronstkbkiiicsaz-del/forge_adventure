@@ -516,7 +516,11 @@ public abstract class GameStage extends Stage {
         if (keycode == Input.Keys.F5)//todo config
         {
             // Ascendant SV1: quicksave inside maps; stock stays world-map only.
-            if (TileMapScene.instance().currentMap().isInMap()
+            if (forge.adventure.util.InteriorMapSave.saveAnywhereEnabled()
+                    && !forge.adventure.util.InteriorMapSave.allowsManualSave()) {
+                GameHUD.getInstance().addNotification(Forge.getLocalizer().getMessageorUseDefault(
+                        "lblQuicksaveBlocked", "Can't save right now (finish the dialog or fight first)."));
+            } else if (TileMapScene.instance().currentMap().isInMap()
                     && !forge.adventure.util.InteriorMapSave.allowsManualSave()) {
                 DialogData noQuicksave = new DialogData();
                 DialogData noQuicksaveOK = new DialogData();
@@ -529,7 +533,10 @@ public abstract class GameStage extends Stage {
             } else {
                 getPlayerSprite().storePos();
                 WorldSave.requestPreview();
-                WorldSave.getCurrentSave().quickSave();
+                boolean saved = WorldSave.getCurrentSave().quickSave();
+                GameHUD.getInstance().addNotification(saved
+                        ? Forge.getLocalizer().getMessageorUseDefault("lblQuicksaveDone", "Game saved (quick save).")
+                        : Forge.getLocalizer().getMessageorUseDefault("lblQuicksaveFailed", "Quick save failed; the game was not saved."));
             }
         }
         if (keycode == Input.Keys.F8)//todo config
@@ -543,6 +550,11 @@ public abstract class GameStage extends Stage {
             if (forge.adventure.util.InteriorMapSave.saveAnywhereEnabled()) {
                 if (WorldSave.getCurrentSave().quickLoad()) {
                     forge.adventure.util.InteriorMapSave.switchToSceneAfterLoad();
+                    GameHUD.getInstance().addNotification(Forge.getLocalizer().getMessageorUseDefault(
+                            "lblQuickloadDone", "Quick save loaded."));
+                } else {
+                    GameHUD.getInstance().addNotification(Forge.getLocalizer().getMessageorUseDefault(
+                            "lblQuickloadFailed", "No quick save to load."));
                 }
             } else if (!TileMapScene.instance().currentMap().isInMap()) {
                 if (WorldSave.getCurrentSave().quickLoad()) {
