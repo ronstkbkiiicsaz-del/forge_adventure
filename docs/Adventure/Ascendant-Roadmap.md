@@ -1003,6 +1003,11 @@ window is too thin to build from. Step 1 is already in: home-plane loot spreads 
 **Standard = 4 sets** (`StandardWindow.WINDOW_SIZE` 3 → 4, tunable), plus the staples as today. Old saves keep their
 current sets; the window just has room for one more.
 
+**Campaign start (decided 2026-10-10).** New games keep today's two picks: a starter set (sealed packs) plus a core set
+or the Core Set Collection, so Standard opens with 2 sets. The **first two seasons are short** (~15 in-game days,
+tunable) and each adds a set the player picks from the shortlist, so Standard reaches 4 sets within the first month;
+from then on normal seasons rotate one set in and the oldest out.
+
 **Seasons.** The world has an in-game calendar (days pass with travel and rest; shown on the HUD and Status screen).
 A **season** lasts a tunable number of in-game days (start with ~30, playtest it). Each season brings **one new set**
 into Standard; when the window is full the oldest set rotates to Historic. Nothing owned is ever lost.
