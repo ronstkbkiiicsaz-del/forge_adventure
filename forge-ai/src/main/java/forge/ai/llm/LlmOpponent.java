@@ -290,7 +290,22 @@ public final class LlmOpponent {
             log("  -> hand size " + handSize + " at/below AI1 floor " + floor + ", using Forge AI for mulligan");
             return null;
         }
+        // Land screw/flood is not a judgment call: 0-1 lands (or nothing but lands) is always a mulligan,
+        // the model kept a zero-land seven calling it "a strong curve". Forge AI handles these.
+        int lands = 0;
+        for (Card c : ai.getCardsIn(ZoneType.Hand)) {
+            if (c.isLand()) {
+                lands++;
+            }
+        }
+        if (lands <= 1 || lands >= handSize - 1 && handSize >= 6) {
+            log("  -> " + lands + " land(s) in " + handSize + " cards, using Forge AI for mulligan");
+            return null;
+        }
         StringBuilder prompt = new StringBuilder(describeState(ai));
+        prompt.append("\nThis hand has ").append(lands).append(" land(s) and ").append(handSize - lands)
+                .append(" spell(s). Most 40-card decks want 2-4 lands in an opening seven and 17 lands total; "
+                        + "a hand you can't cast spells from is a mulligan however good the spells are.");
         prompt.append("\nMulligan decision. Cards you would put back if you mulligan: ")
                 .append(Math.max(0, cardsToReturn))
                 .append(". Current hand size: ").append(handSize)
