@@ -247,19 +247,21 @@ public class ArenaDuelScreen extends MatchScreen {
         if (phase == null) {
             return;
         }
-        // FDisplayObject has no parent pointer — pull from both panels then adopt.
-        final VPlayerPanel top = getTopPlayerPanel();
-        final VPlayerPanel bottom = getBottomPlayerPanel();
-        if (top != null) {
-            top.remove(phase);
+        if (!phase.isArenaRailHosted()) {
+            // FDisplayObject has no parent pointer — pull from both panels then adopt once.
+            final VPlayerPanel top = getTopPlayerPanel();
+            final VPlayerPanel bottom = getBottomPlayerPanel();
+            if (top != null) {
+                top.remove(phase);
+            }
+            if (bottom != null) {
+                bottom.remove(phase);
+            }
+            if (indexOf(phase) < 0) {
+                add(phase);
+            }
+            phase.setArenaRailHosted(true);
         }
-        if (bottom != null) {
-            bottom.remove(phase);
-        }
-        if (indexOf(phase) < 0) {
-            add(phase);
-        }
-        phase.setArenaRailHosted(true);
         phase.setVisible(true);
         final boolean landscape = Forge.isLandscapeMode();
         if (landscape) {
@@ -271,7 +273,6 @@ public class ArenaDuelScreen extends MatchScreen {
             final float x = opponentHalf ? rail.x : rail.x + half;
             phase.setBounds(x, rail.y, half, rail.h);
         }
-        phase.revalidate();
     }
 
     @Override

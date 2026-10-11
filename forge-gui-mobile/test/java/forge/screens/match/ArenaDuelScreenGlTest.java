@@ -70,6 +70,25 @@ public class ArenaDuelScreenGlTest {
         final Path outDir = Path.of("/opt/cursor/artifacts/screenshots");
         Files.createDirectories(outDir);
 
+        // Clear any leftover match from a prior GL test (scripted duel) so openView
+        // / FSkin work on the GL thread cannot wait forever on a wedged game thread.
+        try {
+            GuiBase.getInterface().invokeInEdtNow(() -> {
+                try {
+                    if (MatchController.instance != null
+                            && MatchController.instance.getGameController() != null) {
+                        MatchController.instance.getGameController().concede();
+                    }
+                } catch (final RuntimeException ignored) {
+                    // best-effort
+                }
+                MatchController.instance.resetForNewMatch();
+            });
+        } catch (final RuntimeException ignored) {
+            // headless / no prior match
+        }
+        Thread.sleep(200);
+
         final AtomicReference<HostedMatch> matchRef = new AtomicReference<>();
 
         AdventureGlTestSupport.runOnGl(() -> {

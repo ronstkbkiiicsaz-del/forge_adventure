@@ -61,12 +61,20 @@ public class ArenaDuelScriptedDuelTest {
         boolean castAttempted = false;
         boolean attackAttempted = false;
 
+        // Size once on the GL thread — avoid EDT↔GL revalidate spam that can wedge runOnGl.
+        AdventureGlTestSupport.runOnGl(() -> {
+            final ArenaDuelScreen arena = (ArenaDuelScreen) MatchController.getView();
+            if (arena != null) {
+                arena.setSize(1280, 720);
+                arena.revalidate();
+            }
+            return null;
+        });
+
         while (System.currentTimeMillis() < deadline) {
             GuiBase.getInterface().invokeInEdtNow(() -> {
                 final ArenaDuelScreen arena = (ArenaDuelScreen) MatchController.getView();
                 if (arena != null) {
-                    arena.setSize(1280, 720);
-                    arena.revalidate();
                     if (arena.arenaCancelControl() != null
                             && arena.arenaCancelControl().isVisible()) {
                         sawCancelChrome.set(true);
@@ -158,10 +166,12 @@ public class ArenaDuelScriptedDuelTest {
                 if (MatchController.instance.getGameController() != null) {
                     MatchController.instance.getGameController().concede();
                 }
+                MatchController.instance.resetForNewMatch();
             });
         } catch (final RuntimeException ignored) {
             // best-effort
         }
+        Thread.sleep(200);
     }
 
     private static boolean ForgeGraphicsSafe(final ArenaDuelScreen arena) {
