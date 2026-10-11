@@ -239,6 +239,92 @@ public final class PlanarPortalPlacer {
     }
 
     /**
+     * SN1 undo: revert {@link #onSetUnlocked} for a set pick — remove a pending
+     * plane registration, clear a pending home gate, and drop a portal POI that
+     * targets the set plane from the live home world <em>or</em> the inactive
+     * home blob when the player is currently on a set plane.
+     */
+    public static void onSetUnlockUndone(WorldSave save, String setCode) {
+        if (save == null || setCode == null || setCode.isEmpty() || !ascendantGatesEnabled()) {
+            return;
+        }
+        if (StandardWindow.CORE_COLLECTION.equalsIgnoreCase(setCode)
+                || !SetPlaneRules.isKnownEdition(setCode)) {
+            return;
+        }
+        String planeId = SetPlaneGenerator.planeIdForSet(setCode);
+        MultiverseState multi = save.getMultiverse();
+        if (multi != null) {
+            multi.removePendingSetPlane(planeId);
+        }
+        World world = save.getWorld();
+        if (world != null && PlaneMeta.HOME_ID.equals(save.getCurrentPlaneId())) {
+            if (world.removePointOfInterestByTargetPlane(planeId) > 0) {
+                notifyCoopHashRefresh();
+            }
+        } else if (multi != null) {
+            // Player is on a set plane — gate may have been stamped into the inactive home blob.
+            removeGateFromInactiveHomeBlob(multi, planeId);
+        }
+    }
+
+    /**
+     * Remove a Planar Gate targeting {@code planeId} from the compressed inactive home blob.
+     * Used when undoing a set unlock while not currently on home. Edits the blob's
+     * {@code mapPoiIds} in place so a full live World inflate is not required.
+     * @return true when a gate POI was removed and the blob rewritten
+     */
+    public static boolean removeGateFromInactiveHomeBlob(MultiverseState multi, String planeId) {
+        if (multi == null || planeId == null || planeId.isEmpty()) {
+            return false;
+        }
+        if (!multi.hasCompressedBlob(PlaneMeta.HOME_ID)) {
+            return false;
+        }
+        try {
+            forge.adventure.util.SaveFileData blob = multi.readInactiveBlob(PlaneMeta.HOME_ID);
+            if (blob == null) {
+                return false;
+            }
+            forge.adventure.util.SaveFileData worldData = PlaneBlob.world(blob);
+            if (worldData == null || !worldData.containsKey("mapPoiIds")) {
+                return false;
+            }
+            int width = worldData.containsKey("width") ? Math.max(1, worldData.readInt("width")) : 64;
+            int height = worldData.containsKey("height") ? Math.max(1, worldData.readInt("height")) : 64;
+            int tileSize = 16;
+            int chunk = Math.max(1, tileSize);
+            int chunksX = Math.max(1, width / chunk);
+            int chunksY = Math.max(1, height / chunk);
+            forge.adventure.pointofintrest.PointOfInterestMap map =
+                    new forge.adventure.pointofintrest.PointOfInterestMap(chunk, tileSize, chunksX, chunksY);
+            map.load(worldData.readSubData("mapPoiIds"));
+            int removed = map.removeByTargetPlane(planeId);
+            if (removed <= 0) {
+                return false;
+            }
+            worldData.store("mapPoiIds", map.save());
+            PlaneMeta homeMeta = PlaneBlob.readMeta(blob);
+            if (homeMeta == null) {
+                homeMeta = multi.getMeta(PlaneMeta.HOME_ID);
+            }
+            forge.adventure.util.SaveFileData stage = PlaneBlob.worldStage(blob);
+            forge.adventure.util.SaveFileData poi = PlaneBlob.poiChanges(blob);
+            forge.adventure.util.SaveFileData packed = PlaneBlob.pack(
+                    worldData,
+                    stage != null ? stage : new forge.adventure.util.SaveFileData(),
+                    poi != null ? poi : new forge.adventure.util.SaveFileData(),
+                    homeMeta);
+            multi.writeInactiveBlob(PlaneMeta.HOME_ID, packed);
+            multi.clearPendingHomeGate(planeId);
+            notifyCoopHashRefresh();
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
      * Call after load / switch to home: place any missing Standard-window gates
      * and pending mastery gates.
      */

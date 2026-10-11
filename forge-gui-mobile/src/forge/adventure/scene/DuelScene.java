@@ -312,6 +312,15 @@ public class DuelScene extends ForgeScene {
             Forge.advFreezePlayerControls = false;
             Scene last = Forge.switchToLast();
             Current.player().getStatistic().setResult(enemyName, winner);
+            // SN1: every duel costs a flat 2 in-game hours; a win locks the free set-pick undo.
+            if (Config.ascendant()) {
+                try {
+                    Current.player().chargeSeasonDuelHours();
+                    if (winner)
+                        Current.player().lockSeasonPickUndo();
+                } catch (Throwable ignored) {
+                }
+            }
             // AC1: account-wide duel-win counter (not copied from the save; guests stay local).
             if (winner && Config.ascendant()) {
                 try {
