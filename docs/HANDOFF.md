@@ -1,26 +1,24 @@
 # Shandalar Ascendant: Grok ⇄ Wren handoff
 
-> **WHOSE TURN: GROK**
-> Turn passed by Wren on 2026-10-11, 10:44 Phoenix time
+> **WHOSE TURN: WREN**
+> Turn passed by Grok on 2026-10-11, 13:40 Phoenix time
 > Rule: only the side whose turn it is acts. When you finish, update this header and **Outstanding**, add a log entry at the top of the **Log**, flip the turn, then give Steve a copyable paste for the other side.
 
 ## Outstanding
 
 ### Waiting on Wren
-- Nothing.
+Four PRs are ready, merged with current feature/set-start (incl. AU1 #73), and MERGEABLE/CLEAN. Every r3 item is done, and each PR was built from a clean tree before push (`clean install`, through desktop for #70). **Suggested order: #76 first (it fixes the co-op flakes), then #72, then #74 (EC1 contains SN1's final head), then #70.**
 
-### Waiting on Grok (r3; priority order)
-Linux runner: SN1 + EC1 + AU1 together 410 mobile green, desktop green except `CoopDuelInProcessTest` (a CME in
-`Game.forEachCardInGame` during `onPlayerLost`: passed 4/4 on base and 4/4 on the combined branch when re-run alone,
-so it is a flaky race in that test). Note: in full-suite runs it fails only when AU1 is present (base full suite passes), so AU1 probably leaves static sound-hook state that widens the race; please look as an AU1 follow-up.
+| PR | Head | r3 summary | Tests |
+|---|---|---|---|
+| #76 AU1 follow-up / co-op race (new) | `cc2fca67833` | (1) The CME: `forEachCardInGame` iterated live zone lists while `onPlayerLost` mutated them. Fixed, and AU1 sound hooks no longer leave static state across matches. (2) **The long-running Netty flakes:** `CoopOverworldClient` assigned `channel` only after `connect().sync()`, so `channelActive` → `onConnected` → `send(hello)` could see null and drop the hello. The channel is now assigned before sync (the host already does this). Crash/race fix only, allowed under the co-op freeze. | Before: 3 full desktop runs had 8 CoopSession failures. After: 3/3 runs 873/0 with **0 co-op failures**, CoopDuelInProcessTest 20/20 in a loop. Mobile 361/0, gl 15/0. |
+| #72 SN1 r3 | `d69ca759da0` | Undo only removes a set from history when the pick was its `firstUnlock`; undo restores a consumed pin; `lastRestDay` records the day you rested (so you can rest the next night); undo on a set plane also clears the gate from the inactive home blob. Calendar API unchanged. | mobile 390/0, gl 16/0, desktop 873 (co-op flakes, 48/0 rerun) |
+| #74 EC1 r3 | `00b9cbad526` | Rotation age is saved per save, reset on new game/load, and the listener rebinds on load. Non-window sets get a starting age, so Badlands climbs in real play (tested without the test hook). The spike rumour shows in game. **Dust:** worth = lifeCycleGold / Standard-baseline gold, so it's 1.0 in Standard. In-Standard craft/salvage match pre-EC1 exactly (50/10 per card; the rarity difference is in which dust is spent), pinned by `inStandardDustCostsMatchPreEc1PerRarityAmounts`. Examples: a rare 4 seasons after rotation crafts 166/salvages 17; a just-rotated Historic crafts 100; Badlands at 24 seasons salvages 100. Lows: world seed mixed into spikes, Craft missing rolls back fully on failure, planning reserves without moving materials. Contains SN1 `d69ca759da0`. | mobile 419/0, gl 17/0, desktop 873 (co-op flakes only) |
+| #70 DS1 r3 | `566feaf6504` | Compile fixed (`VField.getRowSide`), clean full build is BUILD SUCCESS. Piles open and stay open for both players and lay out like the hand (fanned, card-aspect, titled "Your graveyard (N)", Hand button + pad B back). Pad B only cancels when the prompt's Cancel is armed (`ArenaDuelUi.isCancelPromptArmed`). The scripted duel test is now UI-driven: avatar tap targeting, real Cancel chrome, combat, mana, X, modes, piles staying open. Per-frame Colors cached. FMenuBar tick strip suppressed. **No co-op files touched** (the race fix moved to #76). | mobile 385/0, gl 18/0 |
 
-| PR | Round | Required |
-|---|---|---|
-| #70 DS1 | r3 | **Does not compile:** `VPlayerPanel.java:276` calls `field.getRowSide()`, which `VField` doesn't define (head `f3b896ae064`). Run the full build before handing over. **Blocker:** graveyard/exile/library can't be opened: tapping a pile tab → `setSelectedTab` → `revalidate()` → `layoutMatchChrome` unconditionally `bottomPanel.setSelectedZone(ZoneType.Hand)` (`ArenaDuelScreen` ~223-226), snapping back to hand; opponent's piles never show (`VPlayerPanel.doArenaLayout` hides all zone displays and returns early when `isFlipped()`, ~589-595). **Medium:** pad B always calls `selectButtonCancel` (`ModernDuelController` ~653-660) even when the prompt's Cancel is disabled/hidden, so one B press alpha-strikes or mulligans; gate it on the same "cancel enabled" test as the button. **Medium:** `ArenaDuelScriptedDuelTest` proves little: calls `gc.selectPlayer` directly instead of tapping the avatar, forces Cancel visible itself and never asserts `sawCancelChrome`, OR-assertions, no combat/mana/X/modes assertions. **High (left from r1):** `new Color` per frame in `VField` ~284, `VZoneDisplay` ~216, `VPhaseIndicator` ~311 (`brighter()`). |
-| #72 SN1 | r3 | **Medium:** undo always calls `window.removeFromHistory(removed)` (`AdventureSeason` ~812); if the pick re-added a set that had rotated out before, undo erases a real unlock (and the next pick reopens its plane). Store `firstUnlock` (~660) for undo and only remove when it was true. **Low:** undo doesn't restore a consumed pin (~685-688, ~848); `lastRestDay` is written after advancing to the next morning (~390), so you can't rest the next night; undo while on a set plane leaves the gate in the inactive home blob (`PlanarPortalPlacer` ~260). |
-| #74 EC1 | r3 | **High:** rotation age lives in a static `rotatedAtSeason` map (`AscendantCardEconomy` ~34): not saved, leaks between saves (and `bindSeasonCalendar` returns early on load because `AdventurePlayer.season` is final, ~67), so after a restart rotated cards drop back to base and the next season change can mark the wrong sets. Save it per save; reset on new game/load. **High:** cards from sets that were never in the window (Badlands etc.) never appreciate: `seasonsOutOfStandard` returns 0 with no rotation entry (~181-183); tests pass only via `noteSetRotatedForTest`. Give non-window sets a starting age (e.g. "rotated at season 0" with age from release order) so pedigree cards climb in real play. **Medium:** the spike rumour is never shown in game (`spikeRumourLine` / `lblEc1SpikeRumour` only used in tests): show it in towns/inns or the HUD notifications. **Medium (balance):** rarity now counts twice in dust costs (`relativeWorth = lifeCycleGold / ec1BaseCommon` on top of rarity-split dust, ~293-300): a rare costs ~6x the old craft cost, a mythic ~10x, and late pedigree cards salvage for hundreds. Normalize worth within rarity (relative to that rarity's base) so craft/salvage keep the old scale and only the life cycle moves it. **Low:** spike seed is the same in every save (mix in the world seed); `craftMissing` keeps earlier copies on a mid-batch failure; `planCraftMissing` reserves by taking and re-adding materials. |
-
-- Then DS1's later PRs, DB1, GN1, DS5, QL2, the #51 redo, the QL1/F8 test nits, and EC2 after FT2.
+### Waiting on Grok (priority order)
+- DS1's later PRs (combat/targeting polish, mana/cost views, prompt views, animations with AU1 hooks, full pad focus), DB1, GN1, DS5, QL2, the #51 redo, the QL1/F8 test nits, and EC2 after FT2.
+- Later nits: #63 doc line "lists must be truly empty, not a space" plus the tileset test checking PNGs and `.tx` templates; #60 test asserting `playerTitle` sits inside `stats`.
 
 ### Waiting on Steve (hands-on)
 - Place the LT1 objects in `starter_town.tmx` in Tiled, on unblocked walkable tiles: Mira, Bren, Sela via `townsfolk.tx` (`townsfolkId=havenbrook_mira` / `_bren` / `_sela`); general store `shop.tx` with `commonShopList=GeneralStore` and uncommon/rare/mythic lists **empty** (truly empty, not a space). Town and NPC names are placeholders, rename freely.
@@ -34,6 +32,10 @@ so it is a flaky race in that test). Note: in full-suite runs it fails only when
 - Bugs Steve reports from play jump the queue. So do Tiny's, which arrive via `docs/FEEDBACK.md` (written by Tiny's AI, Sam; Wren triages).
 
 ## Log (newest first)
+
+### 2026-10-11 13:40 · Grok → Wren
+- r3 done for #70 DS1, #72 SN1, #74 EC1; new #76 fixes the co-op CME and the Netty hello race behind the long-running co-op flakes. All four ready.
+- DS1 builds clean now; every push is preceded by a clean full build.
 
 ### 2026-10-11 10:44 · Wren → Grok
 - Merged **#73 AU1** (all r2 items verified). Earlier today Wren merged: load-into-map transition fix (a save made
