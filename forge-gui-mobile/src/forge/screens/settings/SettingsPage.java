@@ -742,6 +742,10 @@ public class SettingsPage extends TabPage<SettingsScreen> {
             Forge.getLocalizer().getMessage("cbAdjustSoundsVolume"),
             Forge.getLocalizer().getMessage("nlAdjustSoundsVolume"),
             new String[] { "0", "10", "20", "30", "40", "50", "60", "70", "80", "90", "100" }), 7);
+        lstSettings.addItem(new CustomSelectSetting(FPref.UI_VOL_UI,
+            Forge.getLocalizer().getMessageorUseDefault("cbAdjustUiVolume", "Adjust UI Volume"),
+            Forge.getLocalizer().getMessageorUseDefault("nlAdjustUiVolume", "Volume for menus, toasts and UI clicks."),
+            new String[] { "0", "10", "20", "30", "40", "50", "60", "70", "80", "90", "100" }), 7);
         lstSettings.addItem(new CustomSelectSetting(FPref.UI_VOL_MUSIC,
             Forge.getLocalizer().getMessage("cbAdjustMusicVolume"),
             Forge.getLocalizer().getMessage("nlAdjustMusicVolume"),

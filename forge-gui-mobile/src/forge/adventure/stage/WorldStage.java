@@ -112,6 +112,8 @@ public class WorldStage extends GameStage implements SaveFileContent {
     private float channelElapsed;
     private float channelDuration;
     private float gatherFailNotifyCooldown;
+    /** AU1: seconds until the next footstep clip while walking. */
+    private float footstepCooldown;
 
     NavArrowActor navArrow;
     final Rectangle tempBoundingRect = new Rectangle();
@@ -165,6 +167,21 @@ public class WorldStage extends GameStage implements SaveFileContent {
         boolean channeling = channelNode != null;
         // Enemies keep chasing while the player channels so a touch can cancel gathering.
         boolean updateEnemies = moving || channeling;
+
+        if (moving && Config.au1SoundOverhaul()) {
+            footstepCooldown -= delta;
+            if (footstepCooldown <= 0f) {
+                float interval = 0.35f;
+                if (Config.instance().getConfigData() != null) {
+                    interval = Math.max(0.1f, Config.instance().getConfigData().au1FootstepInterval);
+                }
+                footstepCooldown = interval;
+                String terrain = GameScene.instance().getAdventurePlayerLocation(false, false);
+                forge.adventure.sound.Au1Sounds.playFootstep(terrain);
+            }
+        } else {
+            footstepCooldown = 0f;
+        }
 
         final CoopOverworldRuntime coop = CoopOverworldRuntime.get();
         final boolean guestMirror = coop.guestIsPureMirror();
@@ -248,7 +265,11 @@ public class WorldStage extends GameStage implements SaveFileContent {
                     player.setAnimation(CharacterSprite.AnimationTypes.Attack);
                     player.playEffect(Paths.EFFECT_SPARKS, 0.5f);
                     mob.setAnimation(CharacterSprite.AnimationTypes.Attack);
-                    SoundSystem.instance.play(SoundEffectType.Block, false);
+                    if (Config.au1SoundOverhaul()) {
+                        forge.adventure.sound.Au1Sounds.playEnemyNotice();
+                    } else {
+                        SoundSystem.instance.play(SoundEffectType.Block, false);
+                    }
                     HapticEngine.vibrate(FPref.UI_VIBRATE_ON_ENEMY_ENCOUNTER, mob.getData().boss ? 400 : 200);
                     Forge.advFreezePlayerControls = true;
                     player.clearCollisionHeight();
@@ -981,6 +1002,9 @@ public class WorldStage extends GameStage implements SaveFileContent {
 
     private static void playGatherFinishSound(MaterialData mat) {
         SoundSystem.instance.play(gatherSoundSet(mat)[2], false);
+        if (Config.au1SoundOverhaul()) {
+            forge.adventure.sound.Au1Sounds.playNodeDepleted();
+        }
     }
 
     /** Floating "+2 Oak" text that rises from a gathered node and fades out. */
@@ -1246,6 +1270,9 @@ public class WorldStage extends GameStage implements SaveFileContent {
                     .append(" → ").append(dust).append(" dust");
         } else {
             ap.addMaterial(grantMat.id, amount);
+            if (Config.au1SoundOverhaul() && primary) {
+                forge.adventure.sound.Au1Sounds.playItemPickup();
+            }
             msg.append("Gathered ").append(amount).append("× ").append(grantMat.getDisplayName());
             // Floating text: the main material plus any extra nodes of the same material.
             if (primary) {

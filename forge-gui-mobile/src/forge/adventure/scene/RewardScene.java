@@ -229,20 +229,29 @@ public class RewardScene extends UIScene {
     }
 
     void clearGenerated() {
+        boolean grantedLoot = false;
         for (int i = 0; i < generated.size; i++) {
             Actor actor = generated.get(i);
             if (!(actor instanceof RewardActor rewardActor)) {
                 continue;
             }
-            if (type == Type.Loot || type == Type.EventReward)
+            if (type == Type.Loot || type == Type.EventReward) {
                 AdventurePlayer.current().addReward(rewardActor.getReward());
-            if (type == Type.QuestReward)
+                grantedLoot = true;
+            }
+            if (type == Type.QuestReward) {
                 AdventurePlayer.current().addReward(rewardActor.getReward()); // TODO Want to customize this soon to have selectable rewards which will be handled different here
+                grantedLoot = true;
+            }
             rewardActor.clearLabel();
             try {
                 stage.getActors().removeValue(rewardActor, true);
             } catch (Exception e) {
             }
+        }
+        // AU1: one item-pickup sting when loot is taken into the inventory (not per card).
+        if (grantedLoot && Config.au1SoundOverhaul()) {
+            forge.adventure.sound.Au1Sounds.playItemPickup();
         }
     }
 

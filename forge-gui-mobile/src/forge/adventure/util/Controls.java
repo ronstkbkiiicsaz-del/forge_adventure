@@ -71,7 +71,11 @@ public class Controls {
                 @Override
                 public void clicked(InputEvent event, float x, float y) {
                     super.clicked(event, x, y);
-                    SoundSystem.instance.play(SoundEffectType.ButtonPress, false);
+                    if (Config.au1SoundOverhaul()) {
+                        forge.adventure.sound.Au1Sounds.playUiConfirm();
+                    } else {
+                        SoundSystem.instance.play(SoundEffectType.ButtonPress, false);
+                    }
                 }
             });
         }
@@ -106,7 +110,11 @@ public class Controls {
                 @Override
                 public void clicked(InputEvent event, float x, float y) {
                     super.clicked(event, x, y);
-                    SoundSystem.instance.play(SoundEffectType.ButtonPress, false);
+                    if (Config.au1SoundOverhaul()) {
+                        forge.adventure.sound.Au1Sounds.playUiConfirm();
+                    } else {
+                        SoundSystem.instance.play(SoundEffectType.ButtonPress, false);
+                    }
                 }
             });
         }

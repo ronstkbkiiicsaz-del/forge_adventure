@@ -1048,7 +1048,24 @@ public class RewardActor extends Actor implements Disposable, ImageFetcher.Callb
             return;
         clicked = true;
         flipProcess = 0;
-        SoundSystem.instance.play(SoundEffectType.FlipCard, false);
+        if (Config.au1SoundOverhaul()) {
+            if (reward != null && (reward.type == Reward.Type.CardPack || reward.type == Reward.Type.Item)) {
+                forge.adventure.sound.Au1Sounds.playPackRip();
+            }
+            forge.adventure.sound.Au1Sounds.playCardFlip();
+            if (reward != null && reward.type == Reward.Type.Card && reward.getCard() != null) {
+                forge.card.CardRarity rarity = reward.getCard().getRarity();
+                if (rarity == forge.card.CardRarity.Rare || rarity == forge.card.CardRarity.MythicRare) {
+                    forge.adventure.sound.Au1Sounds.playRareReveal();
+                } else {
+                    forge.adventure.sound.Au1Sounds.playRewardReveal();
+                }
+            } else {
+                forge.adventure.sound.Au1Sounds.playRewardReveal();
+            }
+        } else {
+            SoundSystem.instance.play(SoundEffectType.FlipCard, false);
+        }
         if (canAutoSell && autoSell != null) {
             autoSell.setPosition(this.getX(), this.getY());
             getStage().addActor(autoSell);

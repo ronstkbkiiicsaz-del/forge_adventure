@@ -5,6 +5,7 @@ import forge.game.Game;
 import forge.game.GameLogEntryType;
 import forge.game.ability.AbilityKey;
 import forge.game.event.GameEventAddLog;
+import forge.game.event.GameEventSpellCountered;
 import forge.game.ability.ApiType;
 import forge.game.ability.SpellAbilityEffect;
 import forge.game.card.*;
@@ -299,6 +300,12 @@ public class CounterEffect extends SpellAbilityEffect {
         runParams.put(AbilityKey.Cause, srcSA);
         runParams.put(AbilityKey.SpellAbility, tgtSA);
         game.getTriggerHandler().runTrigger(TriggerType.Countered, runParams, false);
+
+        // Engine event for clients (AU1 sound, etc.). Only for successfully countered spells —
+        // not for abilities, and not for ordinary stack removal on resolve/fizzle.
+        if (tgtSA.isSpell()) {
+            game.fireEvent(new GameEventSpellCountered(tgtSA, srcSA));
+        }
 
         if (!tgtSA.isAbility()) {
             game.fireEvent(new GameEventAddLog(GameLogEntryType.ZONE_CHANGE, "Send countered spell to " + destination));
