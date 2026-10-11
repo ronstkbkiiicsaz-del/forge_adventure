@@ -17,6 +17,7 @@ import forge.assets.FImage;
 import forge.card.CardImageRenderer;
 import forge.card.CardMagnifierControls;
 import forge.card.CardRenderer;
+import forge.card.CardRenderer.CardStackPosition;
 import forge.card.CardZoom;
 import forge.card.HoverMagnifierPreview;
 import forge.game.spellability.StackItemView;
@@ -1276,25 +1277,34 @@ public class MatchScreen extends FScreen {
                     || (MatchController.getView() != null && MatchController.getView().isArenaDuelScreen());
             if (arenaSeal
                     && topPlayerPanel != null && bottomPlayerPanel != null) {
-                final float gapTop = topPlayerPanel.getBottom();
-                final float gapH = bottomPlayerPanel.getTop() - gapTop;
+                // Full-scroller opaque plate after children. Panel/row clips can zero FBO
+                // alpha in the other half; this pass restores one continuous backdrop, then
+                // re-paints battlefield + hand cards on top using screenPos from the main pass.
                 final float aw = getWidth();
-                if (gapH > 1f) {
-                    FSkinTexture arenaBG = FSkinTexture.ADV_BG_MATCH.getWidth() > 0
-                            ? FSkinTexture.ADV_BG_MATCH : FSkinTexture.BG_MATCH;
-                    g.resetAlphaComposite();
-                    g.startClip(0, gapTop, aw, gapH);
-                    try {
-                        g.fillRect(new com.badlogic.gdx.graphics.Color(0.10f, 0.16f, 0.12f, 1f),
-                                0, gapTop, aw, gapH);
-                        if (arenaBG.getWidth() > 0) {
-                            g.drawImage(arenaBG, 0, gapTop, aw, gapH);
-                        }
-                    } finally {
-                        g.endClip();
-                    }
-                    g.resetAlphaComposite();
+                final float ah = getHeight();
+                final FSkinTexture arenaBG = FSkinTexture.ADV_BG_MATCH.getWidth() > 0
+                        ? FSkinTexture.ADV_BG_MATCH : FSkinTexture.BG_MATCH;
+                g.resetAlphaComposite();
+                g.fillRect(new Color(0.10f, 0.16f, 0.12f, 1f), 0, 0, aw, ah);
+                if (arenaBG.getWidth() > 0) {
+                    g.drawImage(arenaBG, 0, 0, aw, ah);
                 }
+                final forge.screens.match.views.VZoneDisplay hand =
+                        bottomPlayerPanel.getZoneDisplay(ZoneType.Hand);
+                if (hand != null && hand.isVisible() && hand.getHeight() > 1f) {
+                    g.fillRect(new Color(0.16f, 0.18f, 0.22f, 1f),
+                            bottomPlayerPanel.getLeft() + hand.getLeft(),
+                            bottomPlayerPanel.getTop() + hand.getTop(),
+                            hand.getWidth(), hand.getHeight());
+                }
+                resealArenaCards(g, topPlayerPanel);
+                resealArenaCards(g, bottomPlayerPanel);
+                if (hand != null && hand.isVisible()) {
+                    for (final CardAreaPanel cp : hand.getCardPanels()) {
+                        resealArenaCard(g, cp);
+                    }
+                }
+                g.resetAlphaComposite();
             }
             if (Forge.isLandscapeMode()) {
                 if (playerPanelsList.size() > 2) {
@@ -1355,6 +1365,30 @@ public class MatchScreen extends FScreen {
                 y = bottomPlayerPanel.getTop() + bottomPlayerPanel.getField().getHeight();
                 g.drawLine(1, getBorderColor(), x, y, w, y);
             }
+        }
+
+        private void resealArenaCards(final Graphics g, final VPlayerPanel panel) {
+            if (panel == null || panel.getField() == null) {
+                return;
+            }
+            for (final CardAreaPanel cp : panel.getField().getCardPanels()) {
+                resealArenaCard(g, cp);
+            }
+        }
+
+        private void resealArenaCard(final Graphics g, final CardAreaPanel cp) {
+            if (cp == null || !cp.isVisible() || cp.getCard() == null) {
+                return;
+            }
+            final float cw = cp.screenPos.width;
+            final float ch = cp.screenPos.height;
+            if (cw <= 1f || ch <= 1f) {
+                return;
+            }
+            // screenPos was set during the main child pass; convert into scroller space.
+            final float x = cp.screenPos.x - screenPos.x;
+            final float y = cp.screenPos.y - screenPos.y;
+            CardRenderer.drawCard(g, cp.getCard(), x, y, cw, ch, CardStackPosition.Top, false);
         }
 
         protected ScrollBounds layoutAndGetScrollBounds(float visibleWidth, float visibleHeight) {
