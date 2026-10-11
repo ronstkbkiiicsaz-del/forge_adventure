@@ -360,16 +360,23 @@ public class ArenaDuelScreenGlTest {
     private static void ensureCancelChromeVisible(final ArenaDuelScreen arena) {
         if (arena.getBottomPlayerPrompt() != null
                 && arena.getBottomPlayerPrompt().getBtnCancel() != null) {
-            arena.getBottomPlayerPrompt().getBtnCancel().setVisible(true);
-            if (arena.getBottomPlayerPrompt().getBtnCancel().getText() == null
-                    || arena.getBottomPlayerPrompt().getBtnCancel().getText().isEmpty()) {
-                arena.getBottomPlayerPrompt().getBtnCancel().setText("Cancel");
+            // refreshContextLabels keys off enabled + text (classic buttons stay hidden).
+            arena.getBottomPlayerPrompt().getBtnCancel().setEnabled(true);
+            arena.getBottomPlayerPrompt().getBtnCancel().setText("Cancel");
+            if (arena.getBottomPlayerPrompt().getBtnOk() != null) {
+                arena.getBottomPlayerPrompt().getBtnOk().setEnabled(true);
+                if (arena.getBottomPlayerPrompt().getBtnOk().getText() == null
+                        || arena.getBottomPlayerPrompt().getBtnOk().getText().isEmpty()) {
+                    arena.getBottomPlayerPrompt().getBtnOk().setText("OK");
+                }
             }
         }
-        // Context labels sync from the prompt on overlay; force a layout pass.
         arena.revalidate();
         if (arena.arenaCancelControl() != null) {
             arena.arenaCancelControl().setVisible(true);
+        }
+        if (arena.arenaContextControl() != null) {
+            arena.arenaContextControl().setVisible(true);
         }
     }
 

@@ -456,13 +456,16 @@ public class VPlayerPanel extends FContainer {
         final forge.screens.match.ArenaDuelLayout.Rect fieldR = arenaFieldSlot;
         final forge.screens.match.ArenaDuelLayout.Rect handR = arenaHandSlot;
 
-        // Avatar + life (selectPlayer targets).
+        // Avatar + life (selectPlayer targets). Life sits under the avatar so the
+        // total stays readable on the match plate (not buried in avatar art).
         if (av != null && av.w > 1f && av.h > 1f) {
+            final float lifeH = Math.min(Math.max(Utils.scale(18), av.h * 0.28f), Utils.scale(26));
+            final float avatarH = Math.max(1f, av.h - lifeH);
             avatar.setVisible(true);
-            avatar.setBounds(av.x, av.y, av.w, av.h);
-            final float lifeH = Math.min(av.h * 0.35f, Utils.scale(22));
+            avatar.setBounds(av.x, av.y, av.w, avatarH);
             lblLife.setVisible(true);
-            lblLife.setBounds(av.x, av.y + av.h - lifeH, av.w, lifeH);
+            lblLife.setBounds(av.x, av.y + avatarH, av.w, lifeH);
+            updateLife();
         } else {
             avatar.setVisible(false);
             lblLife.setVisible(false);

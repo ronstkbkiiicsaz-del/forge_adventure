@@ -415,13 +415,15 @@ public class ArenaDuelScreen extends MatchScreen {
         final boolean okEnabled = prompt != null && prompt.getBtnOk() != null && prompt.getBtnOk().isEnabled();
         btnContext.setEnabled(okEnabled);
 
-        final boolean cancelVisible = prompt != null && prompt.getBtnCancel() != null
-                && prompt.getBtnCancel().isVisible()
+        // Classic OK/Cancel are force-hidden for Arena layout, so do not trust
+        // isVisible() — the game enables Cancel when mulligan/target/mana/etc. need it.
+        final boolean cancelWanted = prompt != null && prompt.getBtnCancel() != null
+                && prompt.getBtnCancel().isEnabled()
                 && cancel != null && !cancel.isEmpty();
-        btnCancel.setVisible(cancelVisible);
-        if (cancelVisible) {
+        btnCancel.setVisible(cancelWanted);
+        if (cancelWanted) {
             btnCancel.setText(cancel);
-            btnCancel.setEnabled(prompt.getBtnCancel().isEnabled());
+            btnCancel.setEnabled(true);
         }
     }
 
