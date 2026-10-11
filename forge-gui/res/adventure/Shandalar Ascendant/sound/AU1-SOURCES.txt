@@ -1,0 +1,51 @@
+AU1 Ascendant sound map (Kenney CC0). Replace any file under the same name.
+See CREDITS.md and LICENSE-kenney-*.txt in this folder.
+
+Duel:
+  au1_draw.ogg              <- casino-audio card-slide-1
+  au1_mulligan.ogg          <- casino-audio card-slide-3
+  au1_shuffle.ogg           <- casino-audio card-shuffle
+  au1_resolve.ogg           <- casino-audio card-place-2
+  au1_counter.ogg           <- digital-audio phaserDown1
+  au1_attack.ogg            <- impact Generic_light_000
+  au1_block.ogg             <- impact Metal_medium_000
+  au1_combat_damage_*.ogg   <- impact Generic/Metal light/medium/heavy
+  au1_creature_dies.ogg     <- impact Plate_heavy_000
+  au1_exile.ogg             <- digital phaseJump1
+  au1_token.ogg             <- digital pepSound1
+  au1_life_gain/loss.ogg    <- digital highUp / highDown
+  au1_win/lose.ogg          <- music-jingles NES11 / NES15
+  au1_cast_creature_*.ogg   <- impact Soft/Punch
+  au1_cast_instant_*.ogg    <- digital laser1/3/5
+  au1_cast_sorcery_*.ogg    <- digital tone1 / threeTone1 / lowThreeTone
+  au1_cast_artifact.ogg     <- impact Metal_light_000
+  au1_cast_enchantment.ogg  <- digital phaserUp1
+  au1_cast_planeswalker.ogg <- digital powerUp4
+  au1_cast_other.ogg        <- impact Soft_heavy_000
+  au1_land_w/u/b/r/g/c.ogg  <- digital pepSound / lowRandom
+
+Overworld:
+  au1_footstep_*.ogg        <- impact footsteps (grass/concrete/wood/snow)
+  au1_node_depleted.ogg     <- impact Plate_light_000
+  au1_item_pickup.ogg       <- rpg clothBelt
+  au1_door_open.ogg         <- rpg doorOpen_1
+  au1_portal.ogg            <- digital phaseJump3
+  au1_shop_buy/sell.ogg     <- casino chips-handle / chips-collide
+  au1_level_up.ogg          <- digital powerUp3
+  au1_skill_up.ogg          <- digital powerUp8
+  au1_quest_accept.ogg      <- interface select_001
+  au1_quest_complete.ogg    <- interface confirmation_002
+  au1_enemy_notice.ogg      <- impact Bell_heavy_000
+  au1_chest_open.ogg        <- rpg creak1
+  au1_dialog_blip.ogg       <- interface tick_001
+
+UI:
+  au1_ui_hover.ogg          <- ui-audio rollover1
+  au1_ui_confirm.ogg        <- interface confirmation_001
+  au1_pack_rip.ogg          <- casino cards-pack-open-1
+  au1_card_flip.ogg         <- casino card-slide-5
+  au1_rare_reveal.ogg       <- digital powerUp7
+  au1_reward_reveal.ogg     <- digital powerUp1
+  au1_achievement.ogg       <- music-jingles HIT00
+
+Gathering hit/finish clips remain in res/adventure/common/sound/ (existing Kenney RPG/Impact).

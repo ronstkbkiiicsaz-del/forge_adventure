@@ -269,6 +269,33 @@ worth what its rarity and power say, not hundreds of dollars).
   in one town lowers that town's price and not another's; drift back over time; sale share applied; stock world
   unchanged.
 
+
+### EC2. Collect, don't sell: gold from trade, a fortress stall, and collectors (Steve, 2026-10-11; after FT2)
+Principle: the game is about building a collection, so selling cards must not be the easy path to gold.
+- **No card selling in town shops (Ascendant).** Salvage to dust stays available everywhere, so spare cards still
+  feed crafting. Town shops keep selling cards and buying materials and goods.
+- **Gold comes from trade and play:** gathered materials and **refined trade goods** (planks, ingots, potions,
+  charms, crafted gear) sell to shops and to town requests; fights, quests, the League and town requests keep paying
+  gold; fortress production later. Tune gold income in play so early game isn't starved before a stall exists.
+- **Fortress card stall** (an FT2 structure): list cards at a price you choose; they sell slowly over in-game days
+  (SN1 calendar). The chance per day falls as the asking price rises above the card's EC1 value; overpriced cards may
+  never sell; delist any time. Stall slots grow with fortress tier. Works with EC1's life cycle: holding an old staple
+  for a few seasons and listing it later is the long game.
+- **Collectors (town NPCs) trade, never buy.** Now and then a collector in a town wants something specific: a card
+  (by name or "any rare from <set>") **or a high-value crafted item**. In exchange they offer something you can't
+  buy: a cosmetic card style (CS1), a title or trophy, or a card from a **locked set**. Requests rotate per season;
+  the board shows what each collector wants and offers before you commit.
+- **Locked sets.** Old sets that weren't designed for limited play (the earliest expansions and other non-booster
+  oddities; exact list decided with Steve, e.g. Alpha/Beta/Unlimited, Arabian Nights, Antiquities, Legends, The Dark,
+  Fallen Empires) never appear in shops, packs, Standard choices or regular loot, and **can't be picked as a starting
+  set or a season set** (new-game starter list, SN1 shortlist and "choose any" all exclude them). Their cards still
+  play by today's Oracle rules in Forge, so they work fine as individual cards in decks. Their cards come **only** from boss
+  random loot and collector trades, so they stay rare and special. Crafting them with dust is either off or very
+  expensive (decide in playtest).
+- Tests: town shops refuse card sales in Ascendant (stock unchanged); a stall listing at the card's value sells
+  within N days on average and a 3x listing rarely does; a collector trade removes exactly the requested card/item and
+  grants the offer; locked-set cards never come from packs, shops or regular loot but can drop from bosses.
+
 ### L. Tournaments and lifetime stats (depends on K)
 - **Tournament ring**: inns run small events (the existing inn event code: draft, jumpstart, sealed) plus
   constructed events in the run format.

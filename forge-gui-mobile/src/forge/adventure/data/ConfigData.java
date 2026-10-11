@@ -657,6 +657,31 @@ public class ConfigData {
      */
     public boolean mx1CollectionLimitedImport = true;
 
+    // ---- Ascendant sound effects (Package AU1): richer duel/overworld/UI clips. ----
+
+    /**
+     * When true (Ascendant default), enable AU1 sound overhaul: layered duel SFX, overworld
+     * footsteps/gathering cues, UI clicks, and separate UI volume / ambience mute. Stock worlds
+     * and stock {@code res/sound/} files stay unchanged. Old saves omit this key and keep the default.
+     */
+    public boolean au1SoundOverhaul = true;
+    /** CMC at or below this uses the "light" cast weight (default 1-drop / 2-drop). */
+    public int au1CastLightCmcMax = 2;
+    /** CMC at or above this uses the "heavy" cast weight (default 6+). */
+    public int au1CastHeavyCmcMin = 6;
+    /** Combat damage at or below this uses the light impact clip. */
+    public int au1DamageLightMax = 2;
+    /** Combat damage at or above this uses the heavy impact clip. */
+    public int au1DamageHeavyMin = 5;
+    /** Seconds between footstep clips while walking (Ascendant overworld / maps). */
+    public float au1FootstepInterval = 0.35f;
+    /**
+     * Default for "mute biome music" when the player has not set
+     * {@code SettingData.muteOverworldAmbience}. Player setting wins when present.
+     * (Field name kept for save compat; the option mutes overworld biome playlists.)
+     */
+    public boolean au1MuteOverworldAmbienceDefault = false;
+
     // ---- Ascendant seasons (Package SN1): 4-set Standard + in-game calendar. ----
 
     /**
