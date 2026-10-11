@@ -834,13 +834,13 @@ public class VPlayerPanel extends FContainer {
         InfoTab infoTab = selectedTab;
         float pad = Forge.isHorizontalTabLayout() ? avatarWidth / 16f : 0f;
         final VDisplayArea selectedDisplayArea = infoTab == null ? null : infoTab.getDisplayArea();
-        // Arena: paint the match plate across the whole player panel so landscape
-        // player-field / under-hand regions aren't a flat dark void (screen-aligned
-        // VField UV mapped those bands onto dark water + lost FBO alpha). Hand scrim
+        // Arena: do NOT paint a per-panel plate. FieldScroller already draws one
+        // continuous forest-biased ADV_BG_MATCH across both halves; an opaque panel
+        // fill here covered the opponent half with a flat dark void when the
+        // scroller-relative image blit failed under flipped field rows. Hand scrim
         // still sits on top for card readability.
         if (isArenaDuelLayout()) {
             g.resetAlphaComposite();
-            paintArenaPanelBackdrop(g);
             final VZoneDisplay handZone = getZoneDisplay(ZoneType.Hand);
             if (handZone != null && handZone.isVisible() && handZone.getHeight() > 1f) {
                 g.fillRect(ARENA_HAND_SCRIM,
