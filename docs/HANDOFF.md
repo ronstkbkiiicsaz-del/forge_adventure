@@ -1,24 +1,22 @@
 # Shandalar Ascendant: Grok ⇄ Wren handoff
 
-> **WHOSE TURN: WREN**
-> Turn passed by Grok on 2026-10-11, 13:40 Phoenix time
+> **WHOSE TURN: GROK**
+> Turn passed by Wren on 2026-10-11, 16:17 Phoenix time
 > Rule: only the side whose turn it is acts. When you finish, update this header and **Outstanding**, add a log entry at the top of the **Log**, flip the turn, then give Steve a copyable paste for the other side.
 
 ## Outstanding
 
 ### Waiting on Wren
-Four PRs are ready, merged with current feature/set-start (incl. AU1 #73), and MERGEABLE/CLEAN. Every r3 item is done, and each PR was built from a clean tree before push (`clean install`, through desktop for #70). **Suggested order: #76 first (it fixes the co-op flakes), then #72, then #74 (EC1 contains SN1's final head), then #70.**
-
-| PR | Head | r3 summary | Tests |
-|---|---|---|---|
-| #76 AU1 follow-up / co-op race (new) | `cc2fca67833` | (1) The CME: `forEachCardInGame` iterated live zone lists while `onPlayerLost` mutated them. Fixed, and AU1 sound hooks no longer leave static state across matches. (2) **The long-running Netty flakes:** `CoopOverworldClient` assigned `channel` only after `connect().sync()`, so `channelActive` → `onConnected` → `send(hello)` could see null and drop the hello. The channel is now assigned before sync (the host already does this). Crash/race fix only, allowed under the co-op freeze. | Before: 3 full desktop runs had 8 CoopSession failures. After: 3/3 runs 873/0 with **0 co-op failures**, CoopDuelInProcessTest 20/20 in a loop. Mobile 361/0, gl 15/0. |
-| #72 SN1 r3 | `d69ca759da0` | Undo only removes a set from history when the pick was its `firstUnlock`; undo restores a consumed pin; `lastRestDay` records the day you rested (so you can rest the next night); undo on a set plane also clears the gate from the inactive home blob. Calendar API unchanged. | mobile 390/0, gl 16/0, desktop 873 (co-op flakes, 48/0 rerun) |
-| #74 EC1 r3 | `00b9cbad526` | Rotation age is saved per save, reset on new game/load, and the listener rebinds on load. Non-window sets get a starting age, so Badlands climbs in real play (tested without the test hook). The spike rumour shows in game. **Dust:** worth = lifeCycleGold / Standard-baseline gold, so it's 1.0 in Standard. In-Standard craft/salvage match pre-EC1 exactly (50/10 per card; the rarity difference is in which dust is spent), pinned by `inStandardDustCostsMatchPreEc1PerRarityAmounts`. Examples: a rare 4 seasons after rotation crafts 166/salvages 17; a just-rotated Historic crafts 100; Badlands at 24 seasons salvages 100. Lows: world seed mixed into spikes, Craft missing rolls back fully on failure, planning reserves without moving materials. Contains SN1 `d69ca759da0`. | mobile 419/0, gl 17/0, desktop 873 (co-op flakes only) |
-| #70 DS1 r3 | `566feaf6504` | Compile fixed (`VField.getRowSide`), clean full build is BUILD SUCCESS. Piles open and stay open for both players and lay out like the hand (fanned, card-aspect, titled "Your graveyard (N)", Hand button + pad B back). Pad B only cancels when the prompt's Cancel is armed (`ArenaDuelUi.isCancelPromptArmed`). The scripted duel test is now UI-driven: avatar tap targeting, real Cancel chrome, combat, mana, X, modes, piles staying open. Per-frame Colors cached. FMenuBar tick strip suppressed. **No co-op files touched** (the race fix moved to #76). | mobile 385/0, gl 18/0 |
+- Nothing.
 
 ### Waiting on Grok (priority order)
-- DS1's later PRs (combat/targeting polish, mana/cost views, prompt views, animations with AU1 hooks, full pad focus), DB1, GN1, DS5, QL2, the #51 redo, the QL1/F8 test nits, and EC2 after FT2.
-- Later nits: #63 doc line "lists must be truly empty, not a space" plus the tileset test checking PNGs and `.tx` templates; #60 test asserting `playerTitle` sits inside `stats`.
+| PR | Required |
+|---|---|
+| #76 | Keep the `CoopOverworldClient` channel-before-sync fix (correct). **Revert the engine-wide copy in `Game.forEachCardInGame`** (~976-1011): it allocates copies of every zone on every call in all games (replacement/static/trigger hot paths) and still iterates live zones, so it only narrows the race. Instead run `concede()` on the game thread (test + `CoopDuelRuntime` ~1107 if off-thread) or snapshot only in `onPlayerLost`/`getCardsInGame`. `GameForEachCardSnapshotTest` uses empty collections; make it meaningful or drop it. |
+| DS1 follow-up | `ArenaDuelScriptedDuelTest`: mana/X/mode/attack/block flags are set without checking game state (paidMana on avatar tap; castXSpell/choseMode right after selectCard; attack/block via `gc.selectCard` and `forceBlockWindow` devModeSet). Assert real state: lands tapped and opponent life, X value and chosen mode, card attacking/blocking via the UI. |
+| Lows | SN1: paid rests can be chained right after waking (consider once per day after a full day). EC1: an undone set pick still in the saved window snapshot can be marked rotated at the next season change. |
+
+**Queue after those:** DS1's later PRs, then **MC1** (multiplayer Commander AI, roadmap), then **AD1** (in-game Advisor chat, roadmap), DB1, GN1, DS5, QL2, the #51 redo, EC2 after FT2.
 
 ### Waiting on Steve (hands-on)
 - Place the LT1 objects in `starter_town.tmx` in Tiled, on unblocked walkable tiles: Mira, Bren, Sela via `townsfolk.tx` (`townsfolkId=havenbrook_mira` / `_bren` / `_sela`); general store `shop.tx` with `commonShopList=GeneralStore` and uncommon/rare/mythic lists **empty** (truly empty, not a space). Town and NPC names are placeholders, rename freely.
@@ -32,6 +30,14 @@ Four PRs are ready, merged with current feature/set-start (incl. AU1 #73), and M
 - Bugs Steve reports from play jump the queue. So do Tiny's, which arrive via `docs/FEEDBACK.md` (written by Tiny's AI, Sam; Wren triages).
 
 ## Log (newest first)
+
+### 2026-10-11 16:17 · Wren → Grok
+- Merged **#72 SN1 r3**, **#74 EC1 r3**, **#70 DS1 r3** (all approved; 873 desktop + 444 mobile green on the Linux
+  runner, combined with #76 too). Not merged: #76's engine change (see Outstanding).
+- Wren merged: Havenbrook rebuilt from Ninja Adventure tiles (`ascendant/havenbrook.tmx`, per-tile collision in the
+  ninja `.tsx` files; StarterTown POI now points at it), 23 townsfolk sprites (`sprites/townsfolk/`), LLM opponent
+  DEFENSE CHECK + land-guard mulligan, MB5=OK/MB4=Cancel, recipe Bronze Sword -> Dagger, ash vent embers toned down.
+- Steve: Havenbrook is too small for a village; Wren is building a larger town (not for Grok).
 
 ### 2026-10-11 13:40 · Grok → Wren
 - r3 done for #70 DS1, #72 SN1, #74 EC1; new #76 fixes the co-op CME and the Netty hello race behind the long-running co-op flakes. All four ready.
