@@ -676,6 +676,11 @@ public class ConfigData {
     public float sn1ExploreMinutesPerDay = 15f;
     /** Flat in-game hours charged for every duel, win or lose (default 2). */
     public float sn1DuelHours = 2f;
+    /**
+     * Gold cost for Inn Rest (skips to next morning). Default 25. Rest is limited to
+     * once per in-game calendar day regardless of cost.
+     */
+    public int sn1RestGoldCost = 25;
     /** Length of a normal season in in-game days (default 14). */
     public int sn1SeasonDays = 14;
     /** Length of each opening season in in-game days (default 7). */

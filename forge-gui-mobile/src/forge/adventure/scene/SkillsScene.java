@@ -295,26 +295,57 @@ public class SkillsScene extends UIScene {
     }
 
     private void showChooseAnyDialog(StandardWindow window, List<CardEdition> all) {
+        AdventureSeason season = Current.player().getSeason();
         Array<String> names = new Array<>();
         for (CardEdition e : all)
             names.add(e.getName() + " (" + e.getCode() + ")");
         SelectBox<String> box = Controls.newComboBox();
         box.setItems(names);
+        String costLine = season.getPlanarKeys() > 0
+                ? "Spend 1 Planar Key?"
+                : "Spend " + Config.instance().getConfigData().sn1ChooseAnyGoldCost + " gold?";
         Dialog dialog = createGenericDialog("Any set", null,
                 Forge.getLocalizer().getMessage("lblOK"), Forge.getLocalizer().getMessage("lblCancel"),
                 () -> {
                     int i = box.getSelectedIndex();
-                    if (i >= 0 && i < all.size())
-                        applySetPick(window, all.get(i).getCode(), true);
+                    if (i < 0 || i >= all.size()) {
+                        removeDialog();
+                        return;
+                    }
+                    String code = all.get(i).getCode();
                     removeDialog();
+                    // Confirm cost before spending the key / gold.
+                    confirmChooseAny(window, code, costLine);
                 }, this::removeDialog);
-        dialog.getContentTable().add(Controls.newTextraLabel("Choose any set:")).pad(4).row();
+        dialog.getContentTable().add(Controls.newTextraLabel("Choose any set (" + costLine + "):")).pad(4).row();
         dialog.getContentTable().add(box).width(280).pad(4);
         showDialog(dialog);
     }
 
+    private void confirmChooseAny(StandardWindow window, String code, String costLine) {
+        String body = costLine + "\nUnlock " + StandardWindow.setName(code) + "?";
+        showDialog(createGenericDialog("Confirm", body,
+                Forge.getLocalizer().getMessage("lblOK"), Forge.getLocalizer().getMessage("lblCancel"),
+                () -> {
+                    removeDialog();
+                    applySetPick(window, code, true);
+                }, this::removeDialog));
+    }
+
     private void applySetPick(StandardWindow window, String code, boolean chooseAny) {
+        AdventureSeason season = Current.player().getSeason();
+        boolean pendingBefore = season != null && season.isChoicePending();
         String rotated = window.chooseNextSet(code, chooseAny);
+        boolean stillPending = season != null && season.isChoicePending();
+        if (chooseAny && pendingBefore && stillPending) {
+            String err = season.getLastPickError();
+            showDialog(createGenericDialog("Choose any set",
+                    err != null ? err : "Could not unlock that set.",
+                    Forge.getLocalizer().getMessage("lblOK"), null,
+                    SkillsScene.this::removeDialog, null));
+            buildList();
+            return;
+        }
         if (rotated != null) {
             int out = Current.player().countRotatedOut();
             if (out > 0)

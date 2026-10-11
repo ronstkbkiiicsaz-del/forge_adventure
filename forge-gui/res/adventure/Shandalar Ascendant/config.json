@@ -153,6 +153,7 @@
   "sn1WindowSize": 4,
   "sn1ExploreMinutesPerDay": 15,
   "sn1DuelHours": 2,
+  "sn1RestGoldCost": 25,
   "sn1SeasonDays": 14,
   "sn1OpeningSeasonDays": 7,
   "sn1OpeningSeasonCount": 2,

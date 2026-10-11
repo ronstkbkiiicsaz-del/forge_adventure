@@ -93,9 +93,10 @@ public final class StandardWindow {
         return setUnlockedThisWorld;
     }
 
-    /** Called at New Game+: a new world allows one more set unlock. */
+    /** Called at New Game+: a new world allows one more set unlock. Clears a lingering legacy pick. */
     public void startNewWorld() {
         setUnlockedThisWorld = false;
+        choicePending = false;
     }
 
     public void clear() {
@@ -126,8 +127,10 @@ public final class StandardWindow {
     /**
      * Adds a set for a season pick. When {@code pinnedSet} would be the oldest rotated out,
      * rotate the next-oldest instead (pin skip). Returns the set that rotated out, or null.
+     * Callers must clear the pin when {@link #didLastAddConsumePin()} is true.
      */
     public String addSetForSeason(String code, String pinnedSet) {
+        lastAddConsumedPin = false;
         if (code == null || sets.contains(code))
             return null;
         sets.add(code);
@@ -137,9 +140,18 @@ public final class StandardWindow {
         if (sets.size() <= limit)
             return null;
         int rotateIndex = 0;
-        if (pinnedSet != null && pinnedSet.equals(sets.get(0)) && sets.size() > 1)
+        if (pinnedSet != null && pinnedSet.equals(sets.get(0)) && sets.size() > 1) {
             rotateIndex = 1;
+            lastAddConsumedPin = true;
+        }
         return sets.remove(rotateIndex);
+    }
+
+    private boolean lastAddConsumedPin;
+
+    /** True when the most recent {@link #addSetForSeason} skipped the pinned set (pin expires). */
+    public boolean didLastAddConsumePin() {
+        return lastAddConsumedPin;
     }
 
     /** Restore the window set list (SN1 undo). Does not rewrite unlock history. */
@@ -158,6 +170,13 @@ public final class StandardWindow {
     private void recordUnlock(String code) {
         if (code != null && !unlockedHistory.contains(code))
             unlockedHistory.add(code);
+    }
+
+    /** SN1 undo: drop a set from unlock history when the pick is reverted. */
+    public boolean removeFromHistory(String code) {
+        if (code == null)
+            return false;
+        return unlockedHistory.remove(code);
     }
 
     /**

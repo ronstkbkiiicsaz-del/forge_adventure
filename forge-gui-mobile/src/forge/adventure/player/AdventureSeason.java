@@ -2,6 +2,7 @@ package forge.adventure.player;
 
 import forge.adventure.coop.CoopSession;
 import forge.adventure.data.ConfigData;
+import forge.adventure.data.RewardData;
 import forge.adventure.stage.GameHUD;
 import forge.adventure.util.Config;
 import forge.adventure.util.SaveFileData;
@@ -19,13 +20,29 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * SN1: in-game calendar and seasons that drive Shandalar Standard rotation.
  * Ascendant only ({@link Config#ascendant()} + {@link ConfigData#sn1Seasons}).
  * Co-op sessions leave this path alone (host calendar is deferred until co-op thaws).
+ *
+ * <p>Public calendar API for EC1 and other packages (call directly — no reflection):
+ * <ul>
+ *   <li>{@link #getGameDays()} / {@link #calendarDayNumber()} — current in-game day</li>
+ *   <li>{@link #getSeasonIndex()} / {@link #seasonsCompleted()} — seasons finished (0 at NG)</li>
+ *   <li>{@link #addSeasonChangeListener(SeasonChangeListener)} /
+ *       {@link #removeSeasonChangeListener(SeasonChangeListener)}
+ *       — notified when a season ends (pick applied, empty end, or auto-pick)</li>
+ * </ul>
  */
 public final class AdventureSeason {
+
+    /** Fired after a season completes (pick applied, auto-pick, or empty choosable end). */
+    @FunctionalInterface
+    public interface SeasonChangeListener {
+        void onSeasonChanged(AdventureSeason season);
+    }
 
     private double gameDays;
     private double seasonStartDays;
@@ -42,12 +59,28 @@ public final class AdventureSeason {
     private String undoPicked;
     private double undoSeasonStartDays;
     private int undoSeasonsCompleted;
+    private final List<String> undoShortlist = new ArrayList<>();
+    private long undoShortlistSeed;
+    private String undoReleaseOrderPick;
+    private boolean undoChoseAny;
+    private boolean undoPaidWithKey;
+    private int undoGoldPaid;
+    private boolean undoOpenedPlane;
+    private boolean undoGrantedMasteryRewards;
+    private String undoMasteryRewardSet;
     private boolean newestWasMasteredThisSeason;
     private String pinnedSet;
     private int seasonsSincePin = 99;
     private int planarKeys;
     private long shortlistSeed;
     private boolean initialized;
+    /** Calendar day number (1-based) of the last successful Inn Rest; -1 = never. */
+    private int lastRestDay = -1;
+    /** Sets that already granted season-mastery Surge / Planar Key / cosmetic. */
+    private final Set<String> masteryRewardedSets = new HashSet<>();
+    private boolean newestEligibleForMasteryReward = true;
+    private String lastPickError;
+    private final List<SeasonChangeListener> seasonChangeListeners = new CopyOnWriteArrayList<>();
 
     /** Ascendant + sn1Seasons — true even in co-op (display / status). */
     public boolean isConfigured() {
@@ -85,12 +118,19 @@ public final class AdventureSeason {
         return initialized;
     }
 
+    /** Fractional in-game days since New Game (0 at start). EC1 calendar day source. */
     public double getGameDays() {
         return gameDays;
     }
 
+    /** 1-based calendar day number shown on the HUD. */
     public int calendarDayNumber() {
         return Math.max(1, (int) Math.floor(gameDays) + 1);
+    }
+
+    /** Seasons fully completed (0 at New Game). Alias for EC1 "season index". */
+    public int getSeasonIndex() {
+        return seasonsCompleted;
     }
 
     public int seasonsCompleted() {
@@ -121,8 +161,37 @@ public final class AdventureSeason {
         return planarKeys;
     }
 
+    /** Test / debug: grant Planar Keys (boss/achievement sources are a documented gap). */
+    public void addPlanarKeys(int n) {
+        if (n > 0)
+            planarKeys += n;
+    }
+
     public boolean isNewestMasteredThisSeason() {
         return newestWasMasteredThisSeason;
+    }
+
+    /** Last applyPick / rest failure message, or null. */
+    public String getLastPickError() {
+        return lastPickError;
+    }
+
+    public void addSeasonChangeListener(SeasonChangeListener listener) {
+        if (listener != null)
+            seasonChangeListeners.add(listener);
+    }
+
+    public void removeSeasonChangeListener(SeasonChangeListener listener) {
+        seasonChangeListeners.remove(listener);
+    }
+
+    private void fireSeasonChanged() {
+        for (SeasonChangeListener l : seasonChangeListeners) {
+            try {
+                l.onSeasonChanged(this);
+            } catch (Exception ignored) {
+            }
+        }
     }
 
     /** Display name: "The Zendikar season". */
@@ -184,6 +253,7 @@ public final class AdventureSeason {
         seasonStartDays = 0d;
         gameDays = 0d;
         seasonsCompleted = 0;
+        // One random seed at NG; later seasons advance it deterministically (no nanoTime reseed).
         shortlistSeed = System.nanoTime();
         if (window != null && window.isActive()) {
             notifyPlayer("[GOLD]" + seasonDisplayName(window) + " begins.[]");
@@ -226,15 +296,33 @@ public final class AdventureSeason {
         undoSets.clear();
         undoRotated = null;
         undoPicked = null;
+        undoSeasonStartDays = 0d;
+        undoSeasonsCompleted = 0;
+        undoShortlist.clear();
+        undoShortlistSeed = 0L;
+        undoReleaseOrderPick = null;
+        undoChoseAny = false;
+        undoPaidWithKey = false;
+        undoGoldPaid = 0;
+        undoOpenedPlane = false;
+        undoGrantedMasteryRewards = false;
+        undoMasteryRewardSet = null;
         newestWasMasteredThisSeason = false;
         pinnedSet = null;
         seasonsSincePin = 99;
         planarKeys = 0;
         shortlistSeed = 0L;
+        lastRestDay = -1;
+        masteryRewardedSets.clear();
+        newestEligibleForMasteryReward = true;
+        lastPickError = null;
         initialized = false;
     }
 
-    /** Advance calendar from real exploring time (WorldStage / MapStage). */
+    /**
+     * Advance calendar from real exploring time (WorldStage / MapStage).
+     * Callers must pass only moving/exploring time — idle does not count (SN1 spec).
+     */
     public void tickExploring(float realSeconds, StandardWindow window, CardPool collection) {
         if (!isEnabled() || !initialized || realSeconds <= 0f)
             return;
@@ -254,16 +342,56 @@ public final class AdventureSeason {
         afterTimeAdvanced(window, collection);
     }
 
-    /** Inn rest: skip to the next morning (start of the next calendar day). */
-    public void restUntilMorning(StandardWindow window, CardPool collection) {
+    /** Gold cost for Inn Rest (0 = free). */
+    public int restGoldCost() {
+        ConfigData c = cfg();
+        return c == null ? 25 : Math.max(0, c.sn1RestGoldCost);
+    }
+
+    /** True when Rest is available today (not already used this calendar day). */
+    public boolean canRestToday() {
         if (!isEnabled() || !initialized)
-            return;
+            return false;
+        return lastRestDay != calendarDayNumber();
+    }
+
+    /**
+     * Inn rest: pay the tunable gold cost (once per in-game day) and skip to the next morning.
+     * @return true when rest succeeded
+     */
+    public boolean restUntilMorning(StandardWindow window, CardPool collection) {
+        lastPickError = null;
+        if (!isEnabled() || !initialized)
+            return false;
+        if (!canRestToday()) {
+            lastPickError = "Already rested today.";
+            notifyPlayer(lastPickError);
+            return false;
+        }
+        int cost = restGoldCost();
+        if (cost > 0) {
+            try {
+                AdventurePlayer player = AdventurePlayer.current();
+                if (player.getGold() < cost) {
+                    lastPickError = "Need " + cost + " gold to rest (have " + player.getGold() + ").";
+                    notifyPlayer(lastPickError);
+                    return false;
+                }
+                player.takeGold(cost);
+            } catch (Exception e) {
+                lastPickError = "Cannot rest right now.";
+                return false;
+            }
+        }
         double nextMorning = Math.floor(gameDays) + 1d;
         if (nextMorning <= gameDays)
             nextMorning = gameDays + 1d;
         gameDays = nextMorning;
+        lastRestDay = calendarDayNumber();
         afterTimeAdvanced(window, collection);
-        notifyPlayer("You rest until morning. Day " + calendarDayNumber() + ".");
+        notifyPlayer("You rest until morning. Day " + calendarDayNumber() + "."
+                + (cost > 0 ? " (-" + cost + " gold)" : ""));
+        return true;
     }
 
     private void afterTimeAdvanced(StandardWindow window, CardPool collection) {
@@ -277,7 +405,7 @@ public final class AdventureSeason {
 
     /**
      * Mastery of the newest set ends the season early (SN1 replaces one-unlock-per-world).
-     * @return true if a season pick was opened
+     * @return true if a season pick was opened (or the season ended with no sets left)
      */
     public boolean endByMastery(StandardWindow window, CardPool collection) {
         if (!isEnabled() || !initialized || choicePending)
@@ -286,29 +414,66 @@ public final class AdventureSeason {
             return false;
         newestWasMasteredThisSeason = true;
         endSeason(window, true, collection);
-        return choicePending;
+        return true;
     }
 
     private void endSeason(StandardWindow window, boolean byMastery, CardPool collection) {
         if (choicePending)
             return;
+        String newest = window == null ? null : window.newestSet();
+        boolean grantRewards = byMastery && newest != null && !masteryRewardedSets.contains(newest);
         beginSeasonPick(window, byMastery);
+        if (!choicePending) {
+            // Empty choosable — season already closed in beginSeasonPick.
+            if (grantRewards) {
+                try {
+                    if (Config.ascendant())
+                        AdventurePlayer.current().grantMasterySurgePicks();
+                } catch (Exception ignored) {
+                }
+                grantSeasonMasteryRewards(newest);
+            }
+            return;
+        }
         String reason = byMastery ? "Set mastered" : "The season ends";
         notifyPlayer("[GOLD]" + reason + "![]\nOpen the Skills screen to choose the next set.");
-        try {
-            if (byMastery && Config.ascendant())
-                AdventurePlayer.current().grantMasterySurgePicks();
-        } catch (Exception ignored) {
-            // Player / Config may be unavailable in tests
+        if (grantRewards) {
+            try {
+                if (Config.ascendant())
+                    AdventurePlayer.current().grantMasterySurgePicks();
+            } catch (Exception ignored) {
+                // Player / Config may be unavailable in tests
+            }
+            // Keys + cosmetic land when the pick finishes (finishPickBookkeeping).
+            newestEligibleForMasteryReward = true;
+        } else {
+            newestEligibleForMasteryReward = false;
         }
     }
 
     private void beginSeasonPick(StandardWindow window, boolean byMastery) {
-        choicePending = true;
         undoAvailable = false;
         undoSets.clear();
         undoRotated = null;
         undoPicked = null;
+        undoShortlist.clear();
+        List<CardEdition> choosable = window == null ? List.of() : window.choosableSets();
+        if (choosable.isEmpty()) {
+            // No sets left — end the season with no pick and say so.
+            choicePending = false;
+            shortlist.clear();
+            releaseOrderPick = null;
+            graceDeadlineDays = -1d;
+            seasonsCompleted++;
+            seasonsSincePin++;
+            seasonStartDays = gameDays;
+            advanceShortlistSeed();
+            notifyPlayer("The season ends — no sets left to choose. "
+                    + seasonDisplayName(window) + " continues with the current Standard.");
+            fireSeasonChanged();
+            return;
+        }
+        choicePending = true;
         buildShortlist(window);
         ConfigData c = cfg();
         int grace = c == null ? 3 : Math.max(0, c.sn1GracePeriodDays);
@@ -454,23 +619,45 @@ public final class AdventureSeason {
         String pick = releaseOrderPick;
         if (pick == null && !shortlist.isEmpty())
             pick = shortlist.get(0);
-        if (pick == null)
+        if (pick == null) {
+            // Shortlist empty somehow — close with no pick.
+            beginSeasonPick(window, false);
             return;
+        }
         notifyPlayer("No set chosen — the world picks " + StandardWindow.setName(pick) + ".");
         applyPick(window, pick, false);
+        try {
+            RewardData.invalidateCardPool();
+        } catch (Exception ignored) {
+        }
     }
 
     /**
      * Apply a shortlist / any-set pick. {@code chooseAny} spends gold or a Planar Key.
-     * @return rotated-out set code, or null
+     * @return rotated-out set code, or null (also null on failure — see {@link #getLastPickError()})
      */
     public String applyPick(StandardWindow window, String code, boolean chooseAny) {
-        if (!choicePending || window == null || code == null)
+        lastPickError = null;
+        if (!choicePending || window == null || code == null) {
+            lastPickError = "No season pick is waiting.";
             return null;
-        if (window.getSets().contains(code))
+        }
+        if (window.getSets().contains(code)) {
+            lastPickError = StandardWindow.setName(code) + " is already in Standard.";
             return null;
-        if (chooseAny && !payChooseAny())
+        }
+        if (!chooseAny && !shortlist.contains(code)) {
+            lastPickError = StandardWindow.setName(code) + " is not on the shortlist.";
+            notifyPlayer(lastPickError);
             return null;
+        }
+        if (chooseAny && !payChooseAny()) {
+            // payChooseAny sets lastPickError
+            notifyPlayer(lastPickError != null ? lastPickError : "Cannot afford Choose any set.");
+            return null;
+        }
+
+        boolean firstUnlock = !window.isEverUnlocked(code);
 
         undoSets.clear();
         undoSets.addAll(window.getSets());
@@ -478,41 +665,65 @@ public final class AdventureSeason {
         undoRotated = null;
         undoSeasonStartDays = seasonStartDays;
         undoSeasonsCompleted = seasonsCompleted;
+        undoShortlist.clear();
+        undoShortlist.addAll(shortlist);
+        undoShortlistSeed = shortlistSeed;
+        undoReleaseOrderPick = releaseOrderPick;
+        undoChoseAny = chooseAny;
+        // undoGoldPaid / undoPaidWithKey already set inside payChooseAny when chooseAny
+        if (!chooseAny) {
+            undoPaidWithKey = false;
+            undoGoldPaid = 0;
+        }
+        undoOpenedPlane = false;
+        undoGrantedMasteryRewards = false;
+        undoMasteryRewardSet = null;
         undoAvailable = true;
 
         String rotated = window.addSetForSeason(code, pinnedSet);
         undoRotated = rotated;
-        if (rotated != null && rotated.equals(pinnedSet)) {
-            // Pin consumed when it would have left; keep pin mark clear.
+        if (window.didLastAddConsumePin() || (rotated != null && rotated.equals(pinnedSet))) {
+            // Pin expires after it skips (or would have left).
             pinnedSet = null;
             seasonsSincePin = 0;
         }
 
-        finishPickBookkeeping(window, code, rotated);
+        finishPickBookkeeping(window, code, rotated, firstUnlock);
         return rotated;
     }
 
     private boolean payChooseAny() {
+        undoPaidWithKey = false;
+        undoGoldPaid = 0;
         ConfigData c = cfg();
         int goldCost = c == null ? 500 : Math.max(0, c.sn1ChooseAnyGoldCost);
         try {
             AdventurePlayer player = AdventurePlayer.current();
             if (planarKeys > 0) {
                 planarKeys--;
+                undoPaidWithKey = true;
                 return true;
             }
             if (goldCost <= 0)
                 return true;
-            if (player.getGold() < goldCost)
+            if (player.getGold() < goldCost) {
+                lastPickError = "Need " + goldCost + " gold to choose any set (have "
+                        + player.getGold() + ").";
                 return false;
+            }
             player.takeGold(goldCost);
+            undoGoldPaid = goldCost;
             return true;
         } catch (Exception e) {
-            return goldCost <= 0;
+            if (goldCost <= 0)
+                return true;
+            lastPickError = "Cannot spend gold for Choose any set.";
+            return false;
         }
     }
 
-    private void finishPickBookkeeping(StandardWindow window, String code, String rotated) {
+    private void finishPickBookkeeping(StandardWindow window, String code, String rotated,
+                                       boolean firstUnlock) {
         choicePending = false;
         shortlist.clear();
         graceDeadlineDays = -1d;
@@ -521,7 +732,7 @@ public final class AdventureSeason {
         seasonsCompleted++;
         seasonsSincePin++;
         seasonStartDays = gameDays;
-        shortlistSeed = System.nanoTime();
+        advanceShortlistSeed();
 
         String msg = "New set unlocked: " + StandardWindow.setName(code) + ".";
         if (rotated != null)
@@ -529,28 +740,64 @@ public final class AdventureSeason {
         msg += "\n" + seasonDisplayName(window) + " begins.";
         notifyPlayer(msg);
 
-        if (mastered) {
-            ConfigData c = cfg();
-            int keys = c == null ? 1 : Math.max(0, c.sn1SeasonMasteryPlanarKeys);
-            if (keys > 0) {
-                planarKeys += keys;
-                notifyPlayer("Season mastered — gained " + keys + " Planar Key"
-                        + (keys == 1 ? "" : "s") + ".");
+        // Mastery rewards for the season that just ended (newest that was mastered).
+        // Re-picking an already-mastered rotated-out set must not farm Surge / Keys / cosmetic.
+        if (mastered && newestEligibleForMasteryReward) {
+            // The mastered set is the previous newest — window's second-to-last after add,
+            // or the set that was newest before this pick. Track via mastery of prior newest:
+            // rewards were gated at endSeason; mark the set that earned them.
+            String rewarded = undoSets.isEmpty() ? null : undoSets.get(undoSets.size() - 1);
+            if (rewarded != null && !masteryRewardedSets.contains(rewarded)) {
+                grantSeasonMasteryRewards(rewarded);
+                undoGrantedMasteryRewards = true;
+                undoMasteryRewardSet = rewarded;
             }
         }
+        newestEligibleForMasteryReward = true;
 
         try {
-            if (Config.ascendant()) {
+            if (Config.ascendant() && firstUnlock) {
                 ConfigData cfg = cfg();
                 if (cfg == null || cfg.masteryUnlocksSetPlane) {
                     forge.adventure.world.WorldSave save = forge.adventure.world.WorldSave.getCurrentSave();
-                    if (save != null)
+                    if (save != null) {
                         forge.adventure.world.PlanarPortalPlacer.onSetUnlocked(save, code);
+                        undoOpenedPlane = true;
+                    }
                 }
             }
         } catch (Exception ignored) {
             // Plane generation must not break the unlock flow.
         }
+
+        fireSeasonChanged();
+    }
+
+    private void grantSeasonMasteryRewards(String setCode) {
+        if (setCode == null || masteryRewardedSets.contains(setCode))
+            return;
+        masteryRewardedSets.add(setCode);
+        ConfigData c = cfg();
+        int keys = c == null ? 1 : Math.max(0, c.sn1SeasonMasteryPlanarKeys);
+        if (keys > 0) {
+            planarKeys += keys;
+            notifyPlayer("Season mastered — gained " + keys + " Planar Key"
+                    + (keys == 1 ? "" : "s") + ".");
+        }
+        // Spec: cosmetic (card style or title). CS1 card styles are not applied yet —
+        // grant a season title now; card-style season cosmetics remain a documented gap.
+        try {
+            String title = "Season: " + StandardWindow.setName(setCode);
+            AchievementService.get().getProgress().addTitle(title);
+            notifyPlayer("Season title unlocked: " + title + ".");
+        } catch (Exception ignored) {
+        }
+    }
+
+    /** Deterministic seed advance — never nanoTime (undo must not reroll the shortlist). */
+    private void advanceShortlistSeed() {
+        shortlistSeed = shortlistSeed * 0x5DEECE66DL + 0xBL
+                + seasonsCompleted + Double.hashCode(gameDays);
     }
 
     /** Free undo until a pack is opened or a fight is won with the new set. */
@@ -558,19 +805,68 @@ public final class AdventureSeason {
         if (!undoAvailable || window == null || undoSets.isEmpty())
             return null;
         String removed = undoPicked;
+
+        // Revert window sets.
         window.restoreSets(undoSets);
+        if (removed != null)
+            window.removeFromHistory(removed);
+
+        // Refund Choose any cost.
+        if (undoChoseAny) {
+            if (undoPaidWithKey)
+                planarKeys++;
+            if (undoGoldPaid > 0) {
+                try {
+                    AdventurePlayer.current().giveGold(undoGoldPaid);
+                } catch (Exception ignored) {
+                }
+            }
+        }
+
+        // Close / revert opened plane + portal.
+        if (undoOpenedPlane && removed != null) {
+            try {
+                forge.adventure.world.WorldSave save = forge.adventure.world.WorldSave.getCurrentSave();
+                if (save != null)
+                    forge.adventure.world.PlanarPortalPlacer.onSetUnlockUndone(save, removed);
+            } catch (Exception ignored) {
+            }
+        }
+
+        // Revert mastery rewards granted at pick finish (keys + title bookkeeping).
+        if (undoGrantedMasteryRewards && undoMasteryRewardSet != null) {
+            masteryRewardedSets.remove(undoMasteryRewardSet);
+            ConfigData c = cfg();
+            int keys = c == null ? 1 : Math.max(0, c.sn1SeasonMasteryPlanarKeys);
+            planarKeys = Math.max(0, planarKeys - keys);
+            // Title stays (cosmetic unlocks are not re-locked); keys refunded.
+        }
+
         choicePending = true;
         seasonsCompleted = undoSeasonsCompleted;
         seasonStartDays = undoSeasonStartDays;
         seasonsSincePin = Math.max(0, seasonsSincePin - 1);
-        undoAvailable = false;
-        buildShortlist(window);
+        // Restore the exact shortlist — do not rebuild (no reseed / nanoTime).
+        shortlistSeed = undoShortlistSeed;
+        shortlist.clear();
+        shortlist.addAll(undoShortlist);
+        releaseOrderPick = undoReleaseOrderPick;
+        if (shortlist.isEmpty())
+            buildShortlist(window);
         ConfigData c = cfg();
         int grace = c == null ? 3 : Math.max(0, c.sn1GracePeriodDays);
         graceDeadlineDays = grace <= 0 ? -1d : gameDays + grace;
+        undoAvailable = false;
         undoSets.clear();
         undoPicked = null;
         undoRotated = null;
+        undoShortlist.clear();
+        undoChoseAny = false;
+        undoPaidWithKey = false;
+        undoGoldPaid = 0;
+        undoOpenedPlane = false;
+        undoGrantedMasteryRewards = false;
+        undoMasteryRewardSet = null;
         notifyPlayer("Set choice undone" + (removed == null ? "." : ": " + StandardWindow.setName(removed) + "."));
         return removed;
     }
@@ -580,6 +876,13 @@ public final class AdventureSeason {
         undoSets.clear();
         undoPicked = null;
         undoRotated = null;
+        undoShortlist.clear();
+        undoChoseAny = false;
+        undoPaidWithKey = false;
+        undoGoldPaid = 0;
+        undoOpenedPlane = false;
+        undoGrantedMasteryRewards = false;
+        undoMasteryRewardSet = null;
     }
 
     public boolean canPin() {
@@ -629,6 +932,15 @@ public final class AdventureSeason {
         data.store("sn1PlanarKeys", planarKeys);
         data.store("sn1SeasonsSincePin", seasonsSincePin);
         data.store("sn1ShortlistSeed", shortlistSeed);
+        data.store("sn1LastRestDay", lastRestDay);
+        data.store("sn1UndoSeasonStartDays", undoSeasonStartDays);
+        data.store("sn1UndoSeasonsCompleted", undoSeasonsCompleted);
+        data.store("sn1UndoShortlistSeed", undoShortlistSeed);
+        data.store("sn1UndoChoseAny", undoChoseAny);
+        data.store("sn1UndoPaidWithKey", undoPaidWithKey);
+        data.store("sn1UndoGoldPaid", undoGoldPaid);
+        data.store("sn1UndoOpenedPlane", undoOpenedPlane);
+        data.store("sn1UndoGrantedMasteryRewards", undoGrantedMasteryRewards);
         if (releaseOrderPick != null)
             data.store("sn1ReleaseOrderPick", releaseOrderPick);
         if (pinnedSet != null)
@@ -637,8 +949,14 @@ public final class AdventureSeason {
             data.store("sn1UndoPicked", undoPicked);
         if (undoRotated != null)
             data.store("sn1UndoRotated", undoRotated);
+        if (undoReleaseOrderPick != null)
+            data.store("sn1UndoReleaseOrderPick", undoReleaseOrderPick);
+        if (undoMasteryRewardSet != null)
+            data.store("sn1UndoMasteryRewardSet", undoMasteryRewardSet);
         data.storeObject("sn1Shortlist", shortlist.toArray(new String[0]));
         data.storeObject("sn1UndoSets", undoSets.toArray(new String[0]));
+        data.storeObject("sn1UndoShortlist", undoShortlist.toArray(new String[0]));
+        data.storeObject("sn1MasteryRewardedSets", masteryRewardedSets.toArray(new String[0]));
     }
 
     public void load(SaveFileData data, StandardWindow window) {
@@ -663,10 +981,27 @@ public final class AdventureSeason {
         seasonsSincePin = data.containsKey("sn1SeasonsSincePin")
                 ? Math.max(0, data.readInt("sn1SeasonsSincePin")) : 99;
         shortlistSeed = data.containsKey("sn1ShortlistSeed") ? data.readLong("sn1ShortlistSeed") : System.nanoTime();
+        lastRestDay = data.containsKey("sn1LastRestDay") ? data.readInt("sn1LastRestDay") : -1;
+        undoSeasonStartDays = data.containsKey("sn1UndoSeasonStartDays")
+                ? data.readDouble("sn1UndoSeasonStartDays") : 0d;
+        undoSeasonsCompleted = data.containsKey("sn1UndoSeasonsCompleted")
+                ? data.readInt("sn1UndoSeasonsCompleted") : 0;
+        undoShortlistSeed = data.containsKey("sn1UndoShortlistSeed")
+                ? data.readLong("sn1UndoShortlistSeed") : 0L;
+        undoChoseAny = data.containsKey("sn1UndoChoseAny") && data.readBool("sn1UndoChoseAny");
+        undoPaidWithKey = data.containsKey("sn1UndoPaidWithKey") && data.readBool("sn1UndoPaidWithKey");
+        undoGoldPaid = data.containsKey("sn1UndoGoldPaid") ? Math.max(0, data.readInt("sn1UndoGoldPaid")) : 0;
+        undoOpenedPlane = data.containsKey("sn1UndoOpenedPlane") && data.readBool("sn1UndoOpenedPlane");
+        undoGrantedMasteryRewards = data.containsKey("sn1UndoGrantedMasteryRewards")
+                && data.readBool("sn1UndoGrantedMasteryRewards");
         releaseOrderPick = data.containsKey("sn1ReleaseOrderPick") ? data.readString("sn1ReleaseOrderPick") : null;
         pinnedSet = data.containsKey("sn1PinnedSet") ? data.readString("sn1PinnedSet") : null;
         undoPicked = data.containsKey("sn1UndoPicked") ? data.readString("sn1UndoPicked") : null;
         undoRotated = data.containsKey("sn1UndoRotated") ? data.readString("sn1UndoRotated") : null;
+        undoReleaseOrderPick = data.containsKey("sn1UndoReleaseOrderPick")
+                ? data.readString("sn1UndoReleaseOrderPick") : null;
+        undoMasteryRewardSet = data.containsKey("sn1UndoMasteryRewardSet")
+                ? data.readString("sn1UndoMasteryRewardSet") : null;
         shortlist.clear();
         if (data.containsKey("sn1Shortlist")) {
             String[] sl = (String[]) data.readObject("sn1Shortlist");
@@ -678,6 +1013,18 @@ public final class AdventureSeason {
             String[] us = (String[]) data.readObject("sn1UndoSets");
             if (us != null)
                 Collections.addAll(undoSets, us);
+        }
+        undoShortlist.clear();
+        if (data.containsKey("sn1UndoShortlist")) {
+            String[] usl = (String[]) data.readObject("sn1UndoShortlist");
+            if (usl != null)
+                Collections.addAll(undoShortlist, usl);
+        }
+        masteryRewardedSets.clear();
+        if (data.containsKey("sn1MasteryRewardedSets")) {
+            String[] mrs = (String[]) data.readObject("sn1MasteryRewardedSets");
+            if (mrs != null)
+                Collections.addAll(masteryRewardedSets, mrs);
         }
         if (choicePending && shortlist.isEmpty() && window != null)
             buildShortlist(window);

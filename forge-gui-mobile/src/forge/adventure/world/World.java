@@ -162,6 +162,17 @@ public class World implements Disposable, SaveFileContent {
         mapPoiIds.add(poi);
     }
 
+    /**
+     * SN1 undo: remove Planar Gate POIs that target {@code planeId}.
+     * @return number of POIs removed
+     */
+    public int removePointOfInterestByTargetPlane(String planeId) {
+        if (mapPoiIds == null || planeId == null || planeId.isEmpty()) {
+            return 0;
+        }
+        return mapPoiIds.removeByTargetPlane(planeId);
+    }
+
     /** MV2: clear collision/terrain around a world-pixel position (planar gates). */
     public void clearTerrainAroundWorld(float worldX, float worldY, int size) {
         if (data == null || data.tileSize <= 0) {
