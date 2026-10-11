@@ -18,6 +18,7 @@ import forge.deck.DeckRecognizer.Token;
 import forge.deck.DeckRecognizer.TokenType;
 import forge.deck.DeckSection;
 import forge.deck.DeckUrlLoader;
+import forge.game.GameFormat;
 import forge.gui.interfaces.ICheckBox;
 import forge.item.PaperCard;
 import forge.localinstance.properties.ForgeConstants;
@@ -379,6 +380,216 @@ public class MoxfieldMx1Test {
     }
 
     @Test
+    public void moxfieldDeckTextIncludesCommanderSection() {
+        Deck deck = new Deck("EDH");
+        PaperCard commander = magicDb.getCommonCards().getCard("Omnath, Locus of Creation");
+        if (commander == null) {
+            commander = magicDb.getCommonCards().getCard("Atraxa, Praetors' Voice");
+        }
+        Assert.assertNotNull(commander, "Need a legendary creature for Commander section");
+        PaperCard bolt = magicDb.getCommonCards().getCard("Lightning Bolt", "M10", "146");
+        Assert.assertNotNull(bolt);
+        deck.getOrCreate(DeckSection.Commander).add(commander, 1);
+        deck.getMain().add(bolt, 1);
+
+        String text = CollectionExporter.moxfieldDeckText(deck);
+        Assert.assertTrue(text.startsWith("Commander\n") || text.contains("Commander\n"), text);
+        Assert.assertTrue(text.contains(commander.getName()), text);
+        Assert.assertTrue(text.contains("Deck\n"), text);
+        Assert.assertTrue(text.contains("Lightning Bolt"), text);
+    }
+
+    @Test
+    public void importIntoNonEmptyDeckConfirmReplaceMergeAndCancel() {
+        AdventurePlayer player = WorldSave.getCurrentSave().getPlayer();
+        player.getCards().clear();
+        PaperCard bolt = magicDb.getCommonCards().getCard("Lightning Bolt", "M10", "146");
+        PaperCard negate = magicDb.getCommonCards().getCard("Negate", "M20");
+        Assert.assertNotNull(bolt);
+        Assert.assertNotNull(negate);
+        player.addCard(bolt, 4);
+        player.addCard(negate, 2);
+
+        // Replace confirmed: accept returns imported deck (caller replaces editor contents).
+        DeckImportController replace = newController(player.getCards(), true);
+        replace.setImportBehavior(DeckImportController.ImportBehavior.REPLACE_CURRENT);
+        replace.setConfirmResultOverrideForTest(Boolean.TRUE);
+        replace.parseInput("Deck\n2 Lightning Bolt (M10) 146\n");
+        replace.constrainTokensToInventory();
+        Assert.assertTrue(replace.willConfirmImport());
+        Deck replaced = replace.accept("Current");
+        Assert.assertNotNull(replaced);
+        Assert.assertEquals(replaced.getMain().countAll(), 2);
+        Assert.assertFalse(replaced.getMain().contains(negate));
+
+        // Merge confirmed: accept still returns only the import tokens (editor merges).
+        DeckImportController merge = newController(player.getCards(), true);
+        merge.setImportBehavior(DeckImportController.ImportBehavior.MERGE);
+        merge.setConfirmResultOverrideForTest(Boolean.TRUE);
+        merge.parseInput("Deck\n1 Negate\n");
+        merge.constrainTokensToInventory();
+        Deck merged = merge.accept("Current");
+        Assert.assertNotNull(merged);
+        Assert.assertEquals(merged.getMain().count(negate), 1);
+
+        // Cancel: accept returns null and must not apply.
+        DeckImportController cancel = newController(player.getCards(), true);
+        cancel.setImportBehavior(DeckImportController.ImportBehavior.REPLACE_CURRENT);
+        cancel.setConfirmResultOverrideForTest(Boolean.FALSE);
+        cancel.parseInput("Deck\n4 Lightning Bolt (M10) 146\n");
+        cancel.constrainTokensToInventory();
+        Assert.assertNull(cancel.accept("Current"));
+    }
+
+    @Test
+    public void unknownCardsAndDisallowedSectionsAppearInCannotImportList() {
+        AdventurePlayer player = WorldSave.getCurrentSave().getPlayer();
+        player.getCards().clear();
+        PaperCard bolt = magicDb.getCommonCards().getCard("Lightning Bolt", "M10", "146");
+        Assert.assertNotNull(bolt);
+        player.addCard(bolt, 4);
+
+        DeckImportController controller = newController(player.getCards());
+        // Main + Sideboard only — Maybeboard / Companion are unsupported sections.
+        List<Token> tokens = controller.parseInput(
+                "Deck\n2 Lightning Bolt (M10) 146\n1 Not A Real Card Name Zzz\nMaybeboard\n1 Negate\n");
+        tokens = controller.constrainTokensToInventory();
+
+        String cannot = MoxfieldMx1.formatCannotImportList(tokens, controller);
+        Assert.assertFalse(cannot.isBlank(), "cannot-import list should be non-empty");
+        Assert.assertTrue(cannot.toLowerCase(Locale.ROOT).contains("not a real card")
+                        || cannot.toLowerCase(Locale.ROOT).contains("unknown"),
+                "unknown card should appear:\n" + cannot);
+        Assert.assertTrue(cannot.toLowerCase(Locale.ROOT).contains("maybeboard")
+                        || cannot.toLowerCase(Locale.ROOT).contains("section")
+                        || cannot.toLowerCase(Locale.ROOT).contains("unsupported"),
+                "disallowed section should appear:\n" + cannot);
+
+        boolean sawUnknown = false;
+        boolean sawSection = false;
+        for (Token t : tokens) {
+            if (t.getType() == TokenType.UNKNOWN_CARD || t.getType() == TokenType.UNSUPPORTED_CARD) {
+                sawUnknown = true;
+            }
+            if (t.getType() == TokenType.UNSUPPORTED_DECK_SECTION) {
+                sawSection = true;
+            }
+        }
+        Assert.assertTrue(sawUnknown, "expected UNKNOWN_CARD token");
+        Assert.assertTrue(sawSection, "expected UNSUPPORTED_DECK_SECTION token");
+    }
+
+    @Test
+    public void limitedCardSkippedWhenBnRNotIncluded() {
+        AdventurePlayer player = WorldSave.getCurrentSave().getPlayer();
+        player.getCards().clear();
+        PaperCard bolt = magicDb.getCommonCards().getCard("Lightning Bolt", "M10", "146");
+        PaperCard negate = magicDb.getCommonCards().getCard("Negate", "M20");
+        Assert.assertNotNull(bolt);
+        Assert.assertNotNull(negate);
+        player.addCard(bolt, 4);
+        player.addCard(negate, 4);
+
+        GameFormat banBolt = new GameFormat("MX1BanBolt", null, List.of("Lightning Bolt"));
+        DeckImportController controller = newController(player.getCards());
+        controller.setCurrentGameFormat(banBolt);
+        controller.importBannedAndRestrictedCards(false);
+        List<Token> tokens = controller.parseInput("Deck\n2 Lightning Bolt (M10) 146\n1 Negate\n");
+        tokens = controller.constrainTokensToInventory();
+
+        boolean sawLimited = false;
+        for (Token t : tokens) {
+            if (t.getType() == TokenType.LIMITED_CARD && t.getCard() != null
+                    && "Lightning Bolt".equals(t.getCard().getName())) {
+                sawLimited = true;
+            }
+        }
+        Assert.assertTrue(sawLimited, "banned bolt should tokenize as LIMITED_CARD");
+
+        controller.setConfirmResultOverrideForTest(Boolean.TRUE);
+        // Empty current deck → no confirm; build path still skips LIMITED_CARD.
+        Deck accepted = controller.buildDeckFromCurrentTokens("Banned");
+        Assert.assertEquals(accepted.getMain().count(bolt), 0, "LIMITED_CARD must be skipped");
+        Assert.assertEquals(accepted.getMain().count(negate), 1);
+
+        controller.importBannedAndRestrictedCards(true);
+        // Re-parse so forceImportBannedAndRestrictedCards applies.
+        tokens = controller.parseInput("Deck\n2 Lightning Bolt (M10) 146\n1 Negate\n");
+        controller.constrainTokensToInventory();
+        Deck withBnR = controller.buildDeckFromCurrentTokens("Banned");
+        Assert.assertEquals(withBnR.getMain().countAll(), 3,
+                "with BnR included, bolt + negate should import");
+    }
+
+    @Test
+    public void freeBasicLandsNotListedAsMissing() {
+        AdventurePlayer player = WorldSave.getCurrentSave().getPlayer();
+        player.getCards().clear();
+        PaperCard bolt = magicDb.getCommonCards().getCard("Lightning Bolt", "M10", "146");
+        Assert.assertNotNull(bolt);
+        player.addCard(bolt, 1);
+
+        DeckImportController controller = newController(player.getCards());
+        List<Token> tokens = controller.parseInput("Deck\n1 Lightning Bolt (M10) 146\n4 Island\n");
+        tokens = controller.constrainTokensToInventory();
+
+        boolean sawFreeIsland = false;
+        for (Token t : tokens) {
+            if (t.getType() == TokenType.FREE_CARD_NOT_IN_INVENTORY && t.getCard() != null
+                    && "Island".equals(t.getCard().getName())) {
+                sawFreeIsland = true;
+            }
+            Assert.assertNotEquals(t.getType(), TokenType.CARD_NOT_IN_INVENTORY,
+                    "basic lands must not be CARD_NOT_IN_INVENTORY when free-print is set");
+        }
+        Assert.assertTrue(sawFreeIsland, "unowned basics should be FREE_CARD_NOT_IN_INVENTORY");
+        Assert.assertTrue(MoxfieldMx1.missingFromTokens(tokens, player.getCards()).isEmpty(),
+                "free basics must not appear in Missing list");
+
+        Deck accepted = acceptTokens(tokens);
+        Assert.assertTrue(accepted.getMain().countAll() >= 5, accepted.getMain().toString());
+    }
+
+    @Test
+    public void mainAndSideboardShareOneInventoryNoDoubleCount() {
+        AdventurePlayer player = WorldSave.getCurrentSave().getPlayer();
+        player.getCards().clear();
+        PaperCard bolt = magicDb.getCommonCards().getCard("Lightning Bolt", "M10", "146");
+        Assert.assertNotNull(bolt);
+        player.addCard(bolt, 3);
+
+        DeckImportController controller = newController(player.getCards());
+        List<Token> tokens = controller.parseInput(
+                "Deck\n2 Lightning Bolt (M10) 146\nSideboard\n2 Lightning Bolt (M10) 146\n");
+        tokens = controller.constrainTokensToInventory();
+
+        int legal = 0;
+        int missing = 0;
+        for (Token t : tokens) {
+            if (t.getCard() == null || !"Lightning Bolt".equals(t.getCard().getName())) {
+                continue;
+            }
+            if (t.isCardTokenForDeck()) {
+                legal += t.getQuantity();
+            }
+            if (t.getType() == TokenType.CARD_NOT_IN_INVENTORY) {
+                missing += t.getQuantity();
+            }
+        }
+        Assert.assertEquals(legal, 3, "main+sideboard must share the 3 owned copies");
+        Assert.assertEquals(missing, 1, "fourth requested copy is missing");
+
+        List<MoxfieldMx1.MissingCard> gaps = MoxfieldMx1.missingFromTokens(tokens, player.getCards());
+        Assert.assertEquals(gaps.size(), 1);
+        Assert.assertEquals(gaps.get(0).wanted, 4);
+        Assert.assertEquals(gaps.get(0).owned, 3);
+
+        Deck accepted = acceptTokens(tokens);
+        Assert.assertEquals(accepted.getAllCardsInASinglePool().countAll(), 3);
+        Assert.assertEquals(accepted.getMain().countAll() + accepted.getOrCreate(DeckSection.Sideboard).countAll(), 3);
+    }
+
+    @Test
     public void stockWorldKeepsLegacyCsvBehavior() throws Exception {
         Config.installConfigDataForTest(stockConfig);
         Assert.assertFalse(Config.ascendant());
@@ -405,7 +616,11 @@ public class MoxfieldMx1Test {
     // ---- helpers ----
 
     private static DeckImportController newController(ItemPool<PaperCard> inventory) {
-        DeckImportController c = new DeckImportController(stubCheck(false), null, null, false);
+        return newController(inventory, false);
+    }
+
+    private static DeckImportController newController(ItemPool<PaperCard> inventory, boolean currentDeckNotEmpty) {
+        DeckImportController c = new DeckImportController(stubCheck(false), null, null, currentDeckNotEmpty);
         c.setPlayerInventory(inventory);
         c.setImportBehavior(DeckImportController.ImportBehavior.REPLACE_CURRENT);
         c.setFreePrintConverter(pc -> pc != null && pc.isVeryBasicLand() ? pc : null);
@@ -423,6 +638,10 @@ public class MoxfieldMx1Test {
             }
             if (t.getType() == TokenType.DECK_NAME) {
                 deck.setName(t.getText());
+                continue;
+            }
+            // Mirror accept()'s LIMITED_CARD skip when BnR is off (default for helpers).
+            if (t.getType() == TokenType.LIMITED_CARD) {
                 continue;
             }
             DeckSection section = t.getTokenSection() != null ? t.getTokenSection() : DeckSection.Main;

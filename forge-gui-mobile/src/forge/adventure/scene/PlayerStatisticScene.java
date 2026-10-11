@@ -36,6 +36,7 @@ import forge.localinstance.achievements.CardActivationAchievements;
 import forge.localinstance.achievements.PlaneswalkerAchievements;
 import forge.model.FModel;
 import forge.player.GamePlayerUtil;
+import forge.util.Localizer;
 import forge.util.TextUtil;
 import org.apache.commons.lang3.tuple.Pair;
 
@@ -390,10 +391,11 @@ public class PlayerStatisticScene extends UIScene {
         if (howActor instanceof TextraButton) {
             howTo = (TextraButton) howActor;
         } else {
-            howTo = Controls.newTextButton("How-to", () -> showDialog(createGenericDialog(
-                    "Moxfield collection",
+            Localizer loc = Forge.getLocalizer();
+            howTo = Controls.newTextButton(loc.getMessage("lblHowTo"), () -> showDialog(createGenericDialog(
+                    loc.getMessage("lblMoxfieldCollection"),
                     MoxfieldMx1.moxfieldHowToBody(),
-                    Forge.getLocalizer().getMessage("lblOK"), null,
+                    loc.getMessage("lblOK"), null,
                     PlayerStatisticScene.this::removeDialog, null)));
             howTo.setName("mx1ExportHowTo");
             boolean landscape = Forge.isLandscapeMode();

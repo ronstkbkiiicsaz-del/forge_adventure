@@ -7,10 +7,12 @@ import forge.deck.DeckRecognizer.TokenType;
 import forge.deck.DeckUrlLoader;
 import forge.item.PaperCard;
 import forge.util.ItemPool;
+import forge.util.Localizer;
 
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -20,12 +22,27 @@ import java.util.regex.Pattern;
 /**
  * MX1 helpers: Moxfield deck text, Missing-list aggregation, URL detection, Status how-to.
  * Ascendant-only behaviour is gated by callers via {@link Config#ascendant()} and ConfigData.
+ *
+ * <p>URL import accepts public deck pages from Moxfield plus the other providers already
+ * wired in {@link DeckUrlLoader} (Archidekt, TappedOut, MTGGoldfish). There is no automatic
+ * collection sync and no site automation beyond those public read APIs.
  */
 public final class MoxfieldMx1 {
-    private static final Pattern MOXFIELD_URL = Pattern.compile(
-            "(?i)^(?:https?://)?(?:www\\.)?moxfield\\.com/decks/\\S+$");
     private static final Pattern ANY_DECK_URL = Pattern.compile(
             "(?i)^(?:https?://)?(?:www\\.)?(?:moxfield\\.com|archidekt\\.com|tappedout\\.net|mtggoldfish\\.com)/\\S+$");
+
+    /**
+     * Stock "cannot be imported" token types for MX1, excluding
+     * {@link TokenType#CARD_NOT_IN_INVENTORY} (those belong in the Missing list).
+     * Includes disallowed deck sections.
+     */
+    public static final EnumSet<TokenType> CANNOT_IMPORT_TOKENS = EnumSet.of(
+            TokenType.CARD_FROM_NOT_ALLOWED_SET,
+            TokenType.CARD_FROM_INVALID_SET,
+            TokenType.UNKNOWN_CARD,
+            TokenType.UNSUPPORTED_CARD,
+            TokenType.WARNING_MESSAGE,
+            TokenType.UNSUPPORTED_DECK_SECTION);
 
     private MoxfieldMx1() {
     }
@@ -53,7 +70,7 @@ public final class MoxfieldMx1 {
         if (t.indexOf('\n') >= 0 || t.indexOf('\r') >= 0) {
             return false;
         }
-        return ANY_DECK_URL.matcher(t).matches() || MOXFIELD_URL.matcher(t).matches();
+        return ANY_DECK_URL.matcher(t).matches();
     }
 
     /**
@@ -77,22 +94,18 @@ public final class MoxfieldMx1 {
     }
 
     public static String exportStatusLine() {
+        Localizer loc = Localizer.getInstance();
         String when = CollectionExporter.lastExportDisplay();
         if (when == null || when.isBlank()) {
-            return "Collection not exported yet (save the game to refresh exports)";
+            return loc.getMessage("lblCollectionNotExportedYet");
         }
-        return "Collection exported " + when;
+        return loc.getMessage("lblCollectionExported", when);
     }
 
     public static String moxfieldHowToBody() {
         File dir = CollectionExporter.exportDir();
-        return "Moxfield upload (manual — Forge never syncs automatically):\n\n"
-                + "1. Save your game (writes adventure/exports/collection.csv).\n"
-                + "2. In Moxfield: Collection → Import → CSV → choose \"replace\".\n"
-                + "3. Pick this file:\n   " + dir.getAbsolutePath() + File.separator + "collection.csv\n\n"
-                + "Build decks on Moxfield against that collection, then paste the list or a "
-                + "public Moxfield deck URL into Import here. Only cards you own are imported.\n\n"
-                + "Cards Forge cannot map to Scryfall are listed in unmatched.txt and omitted from the CSV.";
+        return Localizer.getInstance().getMessage("lblMoxfieldHowToBody",
+                dir.getAbsolutePath() + File.separator + "collection.csv");
     }
 
     /**
@@ -137,10 +150,41 @@ public final class MoxfieldMx1 {
         if (missing == null || missing.isEmpty()) {
             return "";
         }
+        Localizer loc = Localizer.getInstance();
         StringBuilder sb = new StringBuilder();
-        sb.append("Missing (name, wanted, owned):\n");
+        sb.append(loc.getMessage("lblMissingListHeader")).append('\n');
         for (MissingCard m : missing) {
-            sb.append(String.format(Locale.ROOT, "%s — wanted %d, owned %d%n", m.name, m.wanted, m.owned));
+            sb.append(String.format(Locale.ROOT, "%s — %s%n",
+                    m.name, loc.getMessage("lblMissingWantedOwned", m.wanted, m.owned)));
+        }
+        return sb.toString().trim();
+    }
+
+    /**
+     * Build the stock-style "cannot be imported" body for MX1 (unknown cards, disallowed
+     * sections, warnings). Inventory gaps are omitted — they belong in {@link #formatMissingList}.
+     */
+    public static String formatCannotImportList(List<Token> tokens, DeckImportController controller) {
+        if (tokens == null || tokens.isEmpty() || controller == null) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder();
+        for (Token token : tokens) {
+            if (token == null || !CANNOT_IMPORT_TOKENS.contains(token.getType())) {
+                continue;
+            }
+            if (sb.length() != 0) {
+                sb.append('\n');
+            }
+            String message = controller.getTokenMessage(token);
+            String statusMessage = controller.getTokenStatusMessage(token);
+            if (statusMessage != null && !statusMessage.isBlank()) {
+                sb.append(String.format("%s - (%s)", message, statusMessage));
+            } else if (message != null && !message.isBlank()) {
+                sb.append(message);
+            } else if (statusMessage != null) {
+                sb.append(statusMessage);
+            }
         }
         return sb.toString().trim();
     }

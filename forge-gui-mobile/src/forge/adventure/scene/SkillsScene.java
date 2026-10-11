@@ -26,6 +26,7 @@ import forge.adventure.util.Config;
 import forge.adventure.util.Controls;
 import forge.adventure.util.Current;
 import forge.adventure.util.MoxfieldMx1;
+import forge.util.Localizer;
 
 /**
  * Lists every skill with its level, XP and progress to the next level.
@@ -147,13 +148,14 @@ public class SkillsScene extends UIScene {
         TypingLabel status = label("[BLACK]" + MoxfieldMx1.exportStatusLine());
         status.setWrap(true);
         scrollContainer.add(status).colspan(2).align(Align.left).padLeft(10).growX();
-        TextraButton howTo = Controls.newTextButton("How-to");
+        Localizer loc = Forge.getLocalizer();
+        TextraButton howTo = Controls.newTextButton(loc.getMessage("lblHowTo"));
         howTo.addListener(new ClickListener() {
             @Override
             public void clicked(InputEvent event, float x, float y) {
-                showDialog(createGenericDialog("Moxfield collection",
+                showDialog(createGenericDialog(loc.getMessage("lblMoxfieldCollection"),
                         MoxfieldMx1.moxfieldHowToBody(),
-                        Forge.getLocalizer().getMessage("lblOK"), null,
+                        loc.getMessage("lblOK"), null,
                         SkillsScene.this::removeDialog, null));
             }
         });

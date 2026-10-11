@@ -154,23 +154,66 @@ public final class CollectionExporter {
     }
 
     /**
-     * Moxfield paste format: {@code 1 Name (SET) 123} with a Sideboard section.
-     * Uses Scryfall set codes when available.
+     * Moxfield / Arena paste format: {@code 1 Name (SET) 123}, with Commander, Deck and
+     * Sideboard section headers as needed. Uses Scryfall set codes when available.
      */
     public static String moxfieldDeckText(Deck deck) {
         if (deck == null) {
             return "";
         }
         StringBuilder sb = new StringBuilder();
-        appendMoxfieldSection(sb, deck.getMain());
+        boolean needBlank = false;
+        if (deck.has(DeckSection.Commander) && !deck.get(DeckSection.Commander).isEmpty()) {
+            sb.append("Commander\n");
+            appendMoxfieldSection(sb, deck.get(DeckSection.Commander));
+            needBlank = true;
+        }
+        if (!deck.getMain().isEmpty()) {
+            if (needBlank) {
+                sb.append('\n');
+            }
+            sb.append("Deck\n");
+            appendMoxfieldSection(sb, deck.getMain());
+            needBlank = true;
+        }
         if (deck.has(DeckSection.Sideboard) && !deck.get(DeckSection.Sideboard).isEmpty()) {
-            if (sb.length() > 0) {
+            if (needBlank) {
                 sb.append('\n');
             }
             sb.append("Sideboard\n");
             appendMoxfieldSection(sb, deck.get(DeckSection.Sideboard));
         }
-        return sb.toString().trim() + (sb.length() > 0 ? "\n" : "");
+        String out = sb.toString().trim();
+        return out.isEmpty() ? "" : out + "\n";
+    }
+
+    /**
+     * Open a directory in the OS file manager when running on desktop.
+     * Uses reflection so Android/mobile never links {@code java.awt.Desktop}.
+     * @return true if the folder was opened
+     */
+    public static boolean openDirectory(File dir) {
+        if (dir == null) {
+            return false;
+        }
+        //noinspection ResultOfMethodCallIgnored
+        dir.mkdirs();
+        try {
+            if (forge.gui.GuiBase.getInterface() != null
+                    && !forge.gui.GuiBase.getInterface().isRunningOnDesktop()) {
+                return false;
+            }
+            Class<?> desktopClass = Class.forName("java.awt.Desktop");
+            Object isSupported = desktopClass.getMethod("isDesktopSupported").invoke(null);
+            if (!(isSupported instanceof Boolean) || !((Boolean) isSupported)) {
+                return false;
+            }
+            Object desktop = desktopClass.getMethod("getDesktop").invoke(null);
+            desktopClass.getMethod("open", File.class).invoke(desktop, dir);
+            return true;
+        } catch (Throwable ignored) {
+            return false;
+        }
     }
 
     /** True when the card can be listed in a Moxfield CSV (Scryfall set code + collector number). */

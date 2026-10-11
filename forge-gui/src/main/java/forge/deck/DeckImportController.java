@@ -58,6 +58,11 @@ public class DeckImportController {
      * can handle creation of a usable print.
      */
     private Function<PaperCard, PaperCard> freePrintSupplier;
+    /**
+     * Test-only: when non-null, {@link #accept(String)} uses this instead of
+     * {@link SOptionPane#showConfirmDialog} for the replace/merge/new-deck confirm.
+     */
+    private Boolean confirmResultOverrideForTest;
 
     public DeckImportController(ICheckBox dateTimeCheck0,
                                 IComboBox<String> monthDropdown0, IComboBox<Integer> yearDropdown0,
@@ -145,6 +150,16 @@ public class DeckImportController {
 
     public ImportBehavior getImportBehavior() {
         return importBehavior;
+    }
+
+    /** Test-only override for the replace/merge/new-deck confirm in {@link #accept(String)}. */
+    public void setConfirmResultOverrideForTest(Boolean result) {
+        this.confirmResultOverrideForTest = result;
+    }
+
+    /** True when {@link #accept(String)} will prompt before applying (non-empty current deck). */
+    public boolean willConfirmImport() {
+        return currentDeckNotEmpty;
     }
 
     private void fillDateDropdowns() {
@@ -674,11 +689,29 @@ public class DeckImportController {
                 warning = localizer.getMessage("lblConfirmReplaceDeck", deckName);
                 title = localizer.getMessage("lblNewDeckDialogTitle");
             }
-            if (!SOptionPane.showConfirmDialog(warning, title,
-                    localizer.getMessage("lblYes"), localizer.getMessage("lblNo")))
+            final boolean confirmed;
+            if (confirmResultOverrideForTest != null) {
+                confirmed = confirmResultOverrideForTest;
+            } else {
+                confirmed = SOptionPane.showConfirmDialog(warning, title,
+                        localizer.getMessage("lblYes"), localizer.getMessage("lblNo"));
+            }
+            if (!confirmed)
                 return null;
         }
+        return buildDeckFromCurrentTokens(currentDeckName);
+    }
+
+    /**
+     * Build a deck from the current token list, applying the same
+     * {@code LIMITED_CARD && !includeBnRInDeck} skip as {@link #accept(String)}.
+     * Does not show the replace/merge confirm. Used by tests and MX1 list builders.
+     */
+    public Deck buildDeckFromCurrentTokens(String currentDeckName) {
         final Deck resultDeck = new Deck();
+        if (currentDeckName != null && !currentDeckName.trim().isEmpty()) {
+            resultDeck.setName(currentDeckName.trim());
+        }
         for (final Token t : tokens) {
             final TokenType type = t.getType();
             // only Deck Name, legal card and limited card tokens will be analysed!
@@ -691,7 +724,8 @@ public class DeckImportController {
                 continue;
             }
 
-            final DeckSection deckSection = t.getTokenSection();
+            final DeckSection deckSection = t.getTokenSection() != null
+                    ? t.getTokenSection() : DeckSection.Main;
             final PaperCard crd = t.getCard();
             /* Deck Sections have been already validated for tokens by DeckRecogniser,
              * plus any other adjustment (like accounting for Commander in Sideboard) has been

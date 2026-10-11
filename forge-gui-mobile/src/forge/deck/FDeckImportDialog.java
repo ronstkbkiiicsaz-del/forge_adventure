@@ -65,7 +65,9 @@ public class FDeckImportDialog extends FDialog {
     private final FDeckEditor.DeckEditorConfig editorConfig;
 
     private final static List<String> importOrCancel = List.of(Forge.getLocalizer().getMessage("lblImport"), Forge.getLocalizer().getMessage("lblCancel"));
-    private final static List<String> importOwnedOrCancel = List.of("Import what I own", Forge.getLocalizer().getMessage("lblCancel"));
+    private final static List<String> importOwnedOrCancel = List.of(
+            Forge.getLocalizer().getMessage("lblImportWhatIOwn"),
+            Forge.getLocalizer().getMessage("lblCancel"));
 
     public FDeckImportDialog(final Deck currentDeck, final FDeckEditor.DeckEditorConfig editorConfig) {
         super(Forge.getLocalizer().getMessage("lblImportFromClipboard"), 2);
@@ -80,7 +82,10 @@ public class FDeckImportDialog extends FDialog {
         if (contents == null)
             contents = ""; //prevent NPE
         txtInput.setText(contents);
-        txtDeckUrl.setGhostText("Moxfield deck URL (optional)");
+        // MX1: URL field stays empty (never prefilled from the clipboard). Paste into the
+        // text area or type a public Moxfield / Archidekt / TappedOut / MTGGoldfish URL.
+        txtDeckUrl.setGhostText(Forge.getLocalizer().getMessage("lblMoxfieldDeckUrlGhost"));
+        txtDeckUrl.setText("");
         txtDeckUrl.setVisible(mx1AscendantImport);
 
         GameType gameType = editorConfig.getGameType();
@@ -105,7 +110,7 @@ public class FDeckImportDialog extends FDialog {
             controller.setImportBehavior(createNewDeckControl ? DeckImportController.ImportBehavior.CREATE_NEW : DeckImportController.ImportBehavior.MERGE);
 
         String importLabel = mx1AscendantImport
-                ? "Import what I own"
+                ? Forge.getLocalizer().getMessage("lblImportWhatIOwn")
                 : Forge.getLocalizer().getMessage("lblImport");
         initButton(0, importLabel, e -> FThreads.invokeInBackgroundThread(this::performImport));
         initButton(1, Forge.getLocalizer().getMessage("lblCancel"), e -> hide());
@@ -262,8 +267,11 @@ public class FDeckImportDialog extends FDialog {
         try {
             input = loadInputText();
         } catch (Exception ex) {
-            final String msg = ex.getMessage() == null ? "Could not load deck URL" : ex.getMessage();
-            FThreads.invokeInEdtLater(() -> FOptionPane.showMessageDialog(msg, "Import"));
+            final String msg = ex.getMessage() == null
+                    ? Forge.getLocalizer().getMessage("lblCouldNotLoadDeckUrl")
+                    : ex.getMessage();
+            FThreads.invokeInEdtLater(() -> FOptionPane.showMessageDialog(msg,
+                    Forge.getLocalizer().getMessage("lblImport")));
             return;
         }
 
@@ -275,23 +283,39 @@ public class FDeckImportDialog extends FDialog {
             tokens = controller.optimiseCardArtInTokens();
 
         final List<DeckRecognizer.Token> finalTokens = tokens;
+        Localizer localizer = Forge.getLocalizer();
 
         if (mx1AscendantImport && editorConfig.usePlayerInventory()) {
             List<MoxfieldMx1.MissingCard> missing = MoxfieldMx1.missingFromTokens(finalTokens, editorConfig.getCardPool());
             if (!missing.isEmpty()) {
                 String body = MoxfieldMx1.formatMissingList(missing)
-                        + "\n\nImport the copies you own into this deck?";
+                        + "\n\n" + localizer.getMessage("lblImportOwnedCopiesConfirm");
                 // TODO(MX1/EC1): when EC1 game prices land, show dust cost per missing card and a
                 // "Craft missing" shortcut into Spell Smith / CraftingScene if that hooks cleanly.
-                FThreads.invokeInEdtLater(() -> FOptionPane.showOptionDialog(body, "Missing cards",
-                        FOptionPane.WARNING_ICON, importOwnedOrCancel, 0, result -> {
-                            if (result != null && result == 0) {
-                                FThreads.invokeInBackgroundThread(() -> finishMx1Import(finalTokens));
-                            }
-                        }));
+                if (SOptionPane.showOptionDialog(body, localizer.getMessage("lblMissingCards"),
+                        SOptionPane.WARNING_ICON, importOwnedOrCancel) == 1) {
+                    return;
+                }
+            }
+            String cannotImport = MoxfieldMx1.formatCannotImportList(finalTokens, controller);
+            if (!cannotImport.isEmpty()) {
+                if (SOptionPane.showOptionDialog(
+                        localizer.getMessage("lblFollowingCardsCannotBeImported") + "\n\n" + cannotImport,
+                        localizer.getMessage("lblImportRemainingCards"),
+                        SOptionPane.WARNING_ICON, importOrCancel) == 1) {
+                    return;
+                }
+            }
+            // Keep the stock replace/merge/new-deck confirm (and LIMITED_CARD skip) via accept().
+            final Deck deck = controller.accept(currentDeck.getName());
+            if (deck == null) {
                 return;
             }
-            finishMx1Import(finalTokens);
+            FThreads.invokeInEdtLater(() -> {
+                hide();
+                if (callback != null)
+                    callback.accept(deck);
+            });
             return;
         }
 
@@ -309,7 +333,6 @@ public class FDeckImportDialog extends FDialog {
             }
         }
         if (sb.length() != 0) {
-            Localizer localizer = Forge.getLocalizer();
             if (SOptionPane.showOptionDialog(localizer.getMessage("lblFollowingCardsCannotBeImported") + "\n\n" + sb,
                     localizer.getMessage("lblImportRemainingCards"), SOptionPane.WARNING_ICON, importOrCancel) == 1) {
                 return;
@@ -340,46 +363,5 @@ public class FDeckImportDialog extends FDialog {
             return MoxfieldMx1.resolveImportText(text);
         }
         return text == null ? "" : text;
-    }
-
-    private void finishMx1Import(List<DeckRecognizer.Token> tokens) {
-        final Deck deck = acceptWithoutConfirmDialog(tokens, currentDeck.getName());
-        if (deck == null) {
-            return;
-        }
-        FThreads.invokeInEdtLater(() -> {
-            hide();
-            if (callback != null)
-                callback.accept(deck);
-        });
-    }
-
-    /**
-     * Build a deck from already-constrained tokens without DeckImportController.accept()'s
-     * SOptionPane Merge/Replace confirm (MX1 shows its own Missing confirmation instead).
-     */
-    private static Deck acceptWithoutConfirmDialog(List<DeckRecognizer.Token> tokens, String currentDeckName) {
-        if (tokens == null || tokens.isEmpty()) {
-            return null;
-        }
-        final Deck resultDeck = new Deck();
-        if (currentDeckName != null && !currentDeckName.trim().isEmpty()) {
-            resultDeck.setName(currentDeckName.trim());
-        }
-        boolean any = false;
-        for (final DeckRecognizer.Token t : tokens) {
-            final TokenType type = t.getType();
-            if (!t.isTokenForDeck()) {
-                continue;
-            }
-            if (type == TokenType.DECK_NAME) {
-                resultDeck.setName(t.getText());
-                continue;
-            }
-            DeckSection section = t.getTokenSection() != null ? t.getTokenSection() : DeckSection.Main;
-            resultDeck.getOrCreate(section).add(t.getCard(), t.getQuantity());
-            any = true;
-        }
-        return any ? resultDeck : null;
     }
 }

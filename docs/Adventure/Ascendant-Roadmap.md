@@ -734,13 +734,16 @@ direction, pasting a Moxfield deck link into Forge is one step.
   Moxfield upload.
 
 **Import (only what you own)**
-- The mobile import dialog accepts either pasted text or a **Moxfield deck URL** (reuse `DeckUrlLoader`).
+- The mobile import dialog accepts either pasted text or a **public deck URL** (reuse `DeckUrlLoader`). Moxfield is the
+  primary target; the same field also accepts Archidekt, TappedOut, and MTGGoldfish public pages already wired in the
+  loader. The URL field is not prefilled from the clipboard — paste into the text area or type the URL.
 - Import is **always limited to the collection** in Ascendant: each card line takes copies the player owns that
   aren't already used beyond deck limits, preferring the requested printing, then any owned printing. Basic lands stay
   free as today.
 - Missing copies never sneak in. The dialog shows a **Missing** list (name, wanted, owned) before confirming, with the
-  options "Import what I own" or "Cancel". If EC1 or crafting is in, each missing card shows its dust cost and a
-  **Craft missing** shortcut.
+  options "Import what I own" or "Cancel". Unknown cards, disallowed sections, and other stock "cannot be imported"
+  warnings are shown the same way as the normal importer (alongside Missing when both apply). If EC1 or crafting is in,
+  each missing card shows its dust cost and a **Craft missing** shortcut.
 - Format check against the plane's format (K) happens as in the normal editor.
 
 **Tests**

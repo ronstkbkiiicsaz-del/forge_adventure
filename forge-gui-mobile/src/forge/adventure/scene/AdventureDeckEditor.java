@@ -14,9 +14,7 @@ import forge.adventure.util.AdventureEventController;
 import forge.adventure.util.CollectionExporter;
 import forge.adventure.util.Config;
 import forge.adventure.util.Current;
-import forge.adventure.util.GymUtil;
 import forge.adventure.util.MoxfieldMx1;
-import forge.gui.GuiBase;
 import forge.assets.FImage;
 import forge.assets.FSkinColor;
 import forge.assets.FSkinFont;
@@ -44,7 +42,6 @@ import forge.util.ItemPool;
 import forge.util.Localizer;
 import forge.util.Utils;
 
-import java.awt.Desktop;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -1080,31 +1077,25 @@ public class AdventureDeckEditor extends FDeckEditor {
         if (!MoxfieldMx1.exportActionsEnabled()) {
             return;
         }
-        menu.addItem(new FMenuItem("Copy deck for Moxfield",
+        Localizer localizer = Forge.getLocalizer();
+        menu.addItem(new FMenuItem(localizer.getMessage("lblCopyDeckForMoxfield"),
                 Forge.hdbuttons ? FSkinImage.HDEXPORT : FSkinImage.BLANK, e -> {
             String text = MoxfieldMx1.copyDeckForMoxfield(getDeck());
             Forge.getClipboard().setContents(text);
-            FOptionPane.showMessageDialog("Deck list copied for Moxfield (1 Name (SET) 123).");
+            FOptionPane.showMessageDialog(localizer.getMessage("lblDeckListCopiedForMoxfield"));
         }));
-        menu.addItem(new FMenuItem("Open export folder",
+        menu.addItem(new FMenuItem(localizer.getMessage("lblOpenExportFolder"),
                 Forge.hdbuttons ? FSkinImage.HDIMPORT : FSkinImage.OPEN, e -> openExportFolder()));
     }
 
     private static void openExportFolder() {
         File dir = CollectionExporter.exportDir();
-        //noinspection ResultOfMethodCallIgnored
-        dir.mkdirs();
-        try {
-            if (GuiBase.getInterface() != null && GuiBase.getInterface().isRunningOnDesktop()
-                    && Desktop.isDesktopSupported()) {
-                Desktop.getDesktop().open(dir);
-                return;
-            }
-        } catch (Exception ignored) {
-            // fall through to path dialog
+        if (CollectionExporter.openDirectory(dir)) {
+            return;
         }
         Forge.getClipboard().setContents(dir.getAbsolutePath());
-        FOptionPane.showMessageDialog("Export folder path copied to clipboard:\n" + dir.getAbsolutePath());
+        FOptionPane.showMessageDialog(Forge.getLocalizer().getMessage(
+                "lblExportFolderPathCopied", dir.getAbsolutePath()));
     }
 
     @Override
@@ -1134,39 +1125,9 @@ public class AdventureDeckEditor extends FDeckEditor {
                 FOptionPane.showConfirmDialog(warning, localizer.getMessage("lblInvalidDeck"), false, result -> resolveClose(canCloseCallback, result == true));
                 return;
             }
-
-            // MX1 / K: plane format check as in the normal editor (gyms / League use the same helpers).
-            if (Config.ascendant()) {
-                String planeProblem = planeFormatProblemForEditor(getDeck());
-                if (planeProblem != null) {
-                    String warning = localizer.getMessage("lblAdventureDeckError", planeProblem);
-                    FOptionPane.showConfirmDialog(warning, localizer.getMessage("lblInvalidDeck"), false,
-                            result -> resolveClose(canCloseCallback, result == true));
-                    return;
-                }
-            }
         }
 
         resolveClose(canCloseCallback, true);
-    }
-
-    /** Plane format (K) legality message for the deck currently in the editor. */
-    private static String planeFormatProblemForEditor(Deck d) {
-        AdventurePlayer p = Current.player();
-        if (p == null || d == null) {
-            return null;
-        }
-        String format = p.getRunFormat();
-        if (GymUtil.FORMAT_COMMANDER.equals(format)) {
-            return p.isCommanderDeck(d) ? null : "This plane requires a Commander deck.";
-        }
-        if (GymUtil.FORMAT_HISTORIC.equals(format)) {
-            return p.historicDeckProblem(d);
-        }
-        if (GymUtil.FORMAT_PAUPER.equals(format)) {
-            return p.pauperDeckProblem(d);
-        }
-        return p.standardDeckProblem(d);
     }
 
     private void resolveClose(final Consumer<Boolean> canCloseCallback, boolean result) {
