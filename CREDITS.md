@@ -68,7 +68,8 @@ when an asset is actually used.
   <https://kenney.nl>. CC0 1.0.
 - **Ninja Adventure - Asset Pack** — Pixel-boy and AAA, <https://pixel-boy.itch.io/ninja-adventure-asset-pack>.
   CC0 1.0; attribution not required but given with thanks. Animated characters, animals and monsters, tilesets,
-  effects, items, sounds and music. Kept in `A:\GameAssets\NinjaAdventure`.
+  effects, items, sounds and music. Kept in `A:\GameAssets\NinjaAdventure`; the 16px background tilesets are in
+  `forge-gui/res/adventure/common/maps/tileset/ninja/` (`ninja_*.png` + Tiled `.tsx`, licence file alongside).
 - **Liberated Pixel Cup (LPC) Base Assets** — <https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles>.
   Dual-licensed **CC BY-SA 3.0** and **GPL 3.0**. Authors (per the pack's `CREDITS.TXT`):
   - Lanea Zimmerman (Sharm) — base tileset (also OGA-BY 3.0)
