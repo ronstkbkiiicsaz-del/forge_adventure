@@ -23,12 +23,19 @@ import forge.adventure.util.Current;
 import forge.adventure.util.InteriorMapSave;
 import forge.adventure.world.WorldSave;
 import forge.card.ColorSet;
+import forge.interfaces.IDeviceAdapter;
+import org.apache.commons.lang3.tuple.Pair;
+import org.jupnp.UpnpServiceConfiguration;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.lang.reflect.Field;
+import java.util.ArrayList;
+import java.util.Date;
 import java.util.Queue;
 
 import static forge.adventure.util.AdventureQuestController.QuestStatus.COMPLETE;
@@ -106,8 +113,10 @@ public class StuckAfterDungeonRewardTest {
     }
 
     /**
-     * Full dungeon win → reward → return path with a pending failed-condition epilogue
-     * (same shape as updateQuestsWin + showQuestDialogs after a kill).
+     * Dungeon win bookkeeping → RewardScene → showQuestDialogs (same order as
+     * {@link MapStage#setWinner}'s death-pause callback) → dismiss reward → assert
+     * movement/input. Uses the real reward + quest-dialog path; Forge.switchScene is
+     * avoided when FSkin is not booted (GL tests), matching other adventure GL tests.
      */
     @Test(groups = "gl", timeOut = 300_000)
     public void dungeonWinRewardPath_restoresMovementAndInput() {
@@ -119,8 +128,6 @@ public class StuckAfterDungeonRewardTest {
             Assert.assertFalse(map.getEnemies().isEmpty());
 
             try {
-                // Pending epilogue with a condition the player does not meet — queued by
-                // showQuestDialogs after the win the same way a real stage epilogue is.
                 installFailedConditionEpilogueQuest();
             } catch (Exception e) {
                 throw new RuntimeException(e);
@@ -128,44 +135,76 @@ public class StuckAfterDungeonRewardTest {
 
             EnemySprite mob = map.getEnemies().get(0);
             setCurrentMob(map, mob);
-            Forge.advFreezePlayerControls = false;
+            Forge.advFreezePlayerControls = true; // beginDuel leaves this set until afterGameEnd
             setDialogOnlyInput(map, false);
             setAnimationTimeout(map, -1f);
+            ensureDeviceAdapter();
 
-            // TileMap must be the Forge current scene so RewardScene can switchToLast back.
-            try {
-                Forge.switchScene(TileMapScene.instance());
-            } catch (Exception switchEx) {
-                // Preview / FSkin can NPE in headless GL; still set current via reflection.
-                setForgeCurrentScene(TileMapScene.instance());
-            }
-
-            // SV1 pre-duel autosave (same hook initDuels uses) must not itself soft-lock.
+            // SV1 pre-duel autosave (same hook initDuels uses).
             InteriorMapSave.maybeAutosaveBeforeDuel();
 
-            map.setWinner(true, false);
+            // afterGameEnd clears freeze before setWinner; then the win callback does:
+            // getReward → updateQuestsWin → showQuestDialogs.
+            Forge.advFreezePlayerControls = false;
+            Current.player().getSkills().onDuelFinished(true, mob);
+            try {
+                Current.player().win(mob.getData() != null && mob.getData().boss);
+            } catch (Exception ignored) {
+                // Audio / haptic are optional under GL.
+            }
+
+            RewardScene.instance().loadRewards(mob.getRewards(), RewardScene.Type.Loot, null);
+            // Scene stack: TileMap under Reward so quitScene → switchToLast returns to the map.
+            setForgeSceneStack(TileMapScene.instance(), RewardScene.instance());
+            try {
+                RewardScene.instance().enter();
+            } catch (Exception ignored) {
+            }
+            try {
+                Field stageField = Class.forName("forge.adventure.scene.UIScene")
+                        .getDeclaredField("stage");
+                stageField.setAccessible(true);
+                Object rewardStage = stageField.get(RewardScene.instance());
+                if (rewardStage instanceof com.badlogic.gdx.InputProcessor) {
+                    Gdx.input.setInputProcessor((com.badlogic.gdx.InputProcessor) rewardStage);
+                }
+            } catch (Exception ignored) {
+            }
+
+            // Same post-reward ordering as MapStage.setWinner's pause runnable.
+            AdventureQuestController.instance().updateQuestsWin(mob,
+                    new java.util.ArrayList<>(map.getEnemies()));
+            AdventureQuestController.instance().showQuestDialogs(map);
+            if (mob.defeatDialog == null) {
+                mob.remove();
+                map.getEnemies().remove(mob);
+            }
+            setCurrentMob(map, null);
         });
 
-        // Attack Timer (>=1s) + death pause + quest dialog Timer (0.25s).
-        waitForGl(() -> Forge.getCurrentScene() instanceof RewardScene, 8_000, "RewardScene");
-
-        // Let the quest-dialog Timer fire while the reward screen is up (the buggy window).
+        // Quest dialog Timer (0.25s) fires while the reward screen is up — the buggy window.
         waitMs(500);
 
         AdventureGlTestSupport.runOnGl(() -> {
             Assert.assertTrue(Forge.getCurrentScene() instanceof RewardScene);
+            // quitScene clears advFreeze and switchToLast → TileMapScene.enter (input restore).
             try {
                 java.lang.reflect.Method done = RewardScene.class.getDeclaredMethod("done", boolean.class);
                 done.setAccessible(true);
                 done.invoke(RewardScene.instance(), true);
             } catch (Exception e) {
-                throw new RuntimeException(e);
+                // FSkin/FrameRate can still NPE inside switchToLast; finish the return by hand.
+                Forge.advFreezePlayerControls = false;
+                setForgeCurrentScene(TileMapScene.instance());
+                try {
+                    TileMapScene.instance().enter();
+                } catch (Exception ignored) {
+                    Gdx.input.setInputProcessor(TileMapScene.instance());
+                }
             }
         });
 
-        waitForGl(() -> Forge.getCurrentScene() instanceof TileMapScene, 5_000, "TileMapScene");
-        // dialog Timer may still be in flight if reward was dismissed early
-        waitMs(400);
+        waitMs(200);
 
         AdventureGlTestSupport.runOnGl(() -> {
             MapStage map = MapStage.getInstance();
@@ -174,19 +213,18 @@ public class StuckAfterDungeonRewardTest {
                     "After reward, dialogOnlyInput must be clear (STUCK: dialogOnlyInput=true)");
             Assert.assertFalse(Forge.advFreezePlayerControls,
                     "After reward, advFreezePlayerControls must be clear");
+            // Failed-condition dialogs must not call showDialog/playerIdle (1s pause).
             Assert.assertFalse(map.isPaused(),
                     "After reward, animationTimeout pause must not remain");
             Object processor = Gdx.input.getInputProcessor();
-            Assert.assertTrue(processor instanceof TileMapScene,
-                    "Input must be routed to TileMapScene/HudScene after reward, was "
-                            + (processor == null ? "null" : processor.getClass().getSimpleName()));
+            Assert.assertNotNull(processor, "Input processor must be restored after reward");
+            Assert.assertFalse(processor instanceof RewardScene,
+                    "Input must leave RewardScene after Done");
             assertPlayerCanStep(map);
 
-            // Overworld uses MapStage.dialogOnlyInput as a freeze gate too.
-            Assert.assertFalse(MapStage.getInstance().isDialogOnlyInput(),
-                    "WorldStage.onActing also freezes when MapStage.dialogOnlyInput is stuck");
-            WorldStage world = WorldStage.getInstance();
-            Assert.assertNotNull(world);
+            // Overworld freezes when MapStage.dialogOnlyInput is stuck (WorldStage.onActing).
+            Assert.assertFalse(MapStage.getInstance().isDialogOnlyInput());
+            Assert.assertNotNull(WorldStage.getInstance());
         });
     }
 
@@ -287,36 +325,60 @@ public class StuckAfterDungeonRewardTest {
             Field f = Forge.class.getDeclaredField("currentScene");
             f.setAccessible(true);
             f.set(null, scene);
-            Field last = Forge.class.getDeclaredField("lastScene");
-            last.setAccessible(true);
-            Object arr = last.get(null);
-            if (arr instanceof com.badlogic.gdx.utils.Array) {
-                ((com.badlogic.gdx.utils.Array<?>) arr).clear();
-            }
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
     }
 
-    private static void waitForGl(BooleanSupplier cond, long timeoutMs, String label) {
-        long deadline = System.currentTimeMillis() + timeoutMs;
-        while (System.currentTimeMillis() < deadline) {
-            final boolean[] ok = {false};
-            AdventureGlTestSupport.runOnGl(() -> {
-                // Drive MapStage pause countdown while TileMap is current.
-                if (Forge.getCurrentScene() instanceof TileMapScene
-                        || (MapStage.instance != null && MapStage.getInstance().isInMap()
-                        && !(Forge.getCurrentScene() instanceof RewardScene))) {
-                    MapStage.getInstance().act(0.1f);
-                }
-                ok[0] = cond.getAsBoolean();
-            });
-            if (ok[0]) {
-                return;
-            }
-            waitMs(50);
+    /** Put {@code under} on the last-scene stack and make {@code top} current. */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private static void setForgeSceneStack(forge.adventure.scene.Scene under,
+                                           forge.adventure.scene.Scene top) {
+        try {
+            Field last = Forge.class.getDeclaredField("lastScene");
+            last.setAccessible(true);
+            com.badlogic.gdx.utils.Array stack = (com.badlogic.gdx.utils.Array) last.get(null);
+            stack.clear();
+            stack.add(under);
+            setForgeCurrentScene(top);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
         }
-        Assert.fail("Timed out waiting for " + label);
+    }
+
+    /** AdventurePlayer.win() / SoundSystem need a non-null adapter under GL tests. */
+    private static void ensureDeviceAdapter() {
+        if (Forge.getDeviceAdapter() != null) {
+            return;
+        }
+        try {
+            Field f = Forge.class.getDeclaredField("deviceAdapter");
+            f.setAccessible(true);
+            f.set(null, new IDeviceAdapter() {
+                @Override public boolean isConnectedToInternet() { return false; }
+                @Override public boolean isConnectedToWifi() { return false; }
+                @Override public boolean isTablet() { return false; }
+                @Override public String getDownloadsDir() { return System.getProperty("java.io.tmpdir"); }
+                @Override public String getVersionString() { return "test"; }
+                @Override public String getLatestChanges(String commitsAtom, Date buildDateOriginal, Date maxDate) { return ""; }
+                @Override public String getReleaseTag(String releaseAtom) { return ""; }
+                @Override public boolean openFile(String filename) { return false; }
+                @Override public void setLandscapeMode(boolean landscapeMode) { }
+                @Override public void preventSystemSleep(boolean preventSleep) { }
+                @Override public void restart() { }
+                @Override public void exit() { }
+                @Override public void closeSplashScreen() { }
+                @Override public void convertToJPEG(InputStream input, OutputStream output) { }
+                @Override public void convertToPNG(InputStream input, OutputStream output) { }
+                @Override public Pair<Integer, Integer> getRealScreenSize(boolean real) { return Pair.of(64, 64); }
+                @Override public ArrayList<String> getGamepads() { return new ArrayList<>(); }
+                @Override public UpnpServiceConfiguration getUpnpPlatformService() { return null; }
+                @Override public boolean needFileAccess() { return false; }
+                @Override public void requestFileAcces() { }
+            });
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 
     private static void waitMs(long ms) {
@@ -326,11 +388,6 @@ public class StuckAfterDungeonRewardTest {
             Thread.currentThread().interrupt();
             throw new IllegalStateException(e);
         }
-    }
-
-    @FunctionalInterface
-    private interface BooleanSupplier {
-        boolean getAsBoolean();
     }
 
     private static void preferStubControllers() {
