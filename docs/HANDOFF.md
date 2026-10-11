@@ -1,21 +1,25 @@
 # Shandalar Ascendant: Grok ⇄ Wren handoff
 
-> **WHOSE TURN: GROK**
-> Turn passed by Wren on 2026-10-10, 19:28 Phoenix time
+> **WHOSE TURN: WREN**
+> Turn passed by Grok on 2026-10-10, 19:55 Phoenix time
 > Rule: only the side whose turn it is acts. When you finish, update this header and **Outstanding**, add a log entry at the top of the **Log**, flip the turn, then give Steve a copyable paste for the other side.
 
 ## Outstanding
 
 ### Waiting on Wren
-- Nothing.
+Review and merge. Both are ready (not draft) and mergeable against feature/set-start:
+
+| PR | Head | What's in it | Tests |
+|---|---|---|---|
+| #69 MX1 r2 | `11a03337cc1` | Merged base with all labelled ConfigData/config.json blocks kept. The stock replace/merge/new confirm is back on the MX1 path, and the cannot-import list shows alongside the Missing list. `LIMITED_CARD && !includeBnRInDeck` skip. Commander section in `moxfieldDeckText`. "Open export folder" goes through reflection (no AWT linked on mobile). The K close warning is dropped (out of scope). Strings are localized, URL docs note other sites are accepted, and there's no clipboard prefill. Tests cover confirm paths, cannot-import, BnR, Commander, free basics, and main+sideboard sharing one inventory. Still waiting on EC1: Craft missing and the dust cost. | mobile 344/0, desktop 873 with 2 co-op flakes |
+| #71 QL1/SV1 follow-ups (new) | `0b593fa2240` | QL1 side-quest cache key includes the world/plane id. SV1: the "only on the world map" message is stock-only, the world seed resets when `loadForRestore` falls back to the overworld, and F8 is blocked while a dialog is open. Each has a test. | mobile 332/0, gl 13/0, desktop 873 with 3 co-op flakes, Checkstyle 0 |
+
+Not for review yet: **#70 DS1** (Arena duel screen, PR 1 of the roadmap's delivery plan). Real xvfb renders showed portrait OK but the landscape hand broken (two cut-off header strips instead of a fanned hand), plus an empty landscape backdrop, cards bunched left, and leftover edge widgets. It's in a fix round now, and I'll hand it over when it's clean.
 
 ### Waiting on Grok (priority order)
-| PR | Round | Required |
-|---|---|---|
-| #69 MX1 | r2 | **(Medium)** `FDeckImportDialog.performImport` (~1035-1052) calls `finishMx1Import` straight away when nothing is missing, and `acceptWithoutConfirmDialog` skips the stock "replace current deck?" confirm, so a non-empty deck is silently replaced. The MX1 path also never shows the stock "these cards cannot be imported" list (unknown cards, disallowed sections, warnings are dropped silently). Keep the replace/merge/new confirm and show the not-imported list. **Low/Medium:** apply stock's `LIMITED_CARD && !includeBnRInDeck` skip (`DeckImportController.accept` ~685); `moxfieldDeckText` drops the Commander section (Commander-format planes). **Low:** `java.awt.Desktop` referenced from mobile `AdventureDeckEditor` (Android risk; use reflection or a GuiBase hook); the "MX1 / K" plane-legality warning on editor close is out of scope, move it to its own PR or drop it; URL pattern accepts other sites (fine, but say so in the doc) and the URL field is prefilled from the clipboard; localize the new strings; tests for free basics and main+sideboard sharing one inventory. |
-
-- Small follow-ups (one PR, any time): QL1 side-quest cache key should include the world/plane id (stale targets after a plane change); SV1 `SaveLoadScene` ~275 still shows the "only on the world map" message in Ascendant; reset the world seed when `loadForRestore` falls back to the overworld; block F8 while a dialog is open like F5.
-- Then continue **DS1**, then SN1, **AU1** (sound effects overhaul, new in the roadmap; pairs with DS1's animation PR), EC1, DB1, GN1, DS5, QL2, the #51 redo.
+- Finish **DS1** #70 (landscape fix round, then later DS1 PRs: targeting/combat, mana/cost views, prompt views, animations + AU1 sound, full pad focus).
+- Then SN1, **AU1** (pairs with DS1's animation PR), EC1 (plus MX1's Craft missing), DB1, GN1, DS5, QL2, the #51 redo.
+- Later nits: #63 doc line "lists must be truly empty, not a space" plus the tileset test checking PNGs and `.tx` templates; #60 test asserting `playerTitle` sits inside `stats`.
 
 ### Waiting on Steve (hands-on)
 - Place the LT1 objects in `starter_town.tmx` in Tiled, on unblocked walkable tiles: Mira, Bren, Sela via `townsfolk.tx` (`townsfolkId=havenbrook_mira` / `_bren` / `_sela`); general store `shop.tx` with `commonShopList=GeneralStore` and uncommon/rare/mythic lists **empty** (truly empty, not a space). Town and NPC names are placeholders, rename freely.
@@ -29,6 +33,10 @@
 - Bugs Steve reports from play jump the queue. So do Tiny's, which arrive via `docs/FEEDBACK.md` (written by Tiny's AI, Sam; Wren triages).
 
 ## Log (newest first)
+
+### 2026-10-10 19:55 · Grok → Wren
+- #69 MX1 r2 (`11a03337cc1`) done: every Medium/Low item. Follow-ups are up as #71 (`0b593fa2240`). Both are ready.
+- DS1 #70 is in a landscape-layout fix round after real renders (not for review yet).
 
 ### 2026-10-10 19:28 · Wren → Grok
 - Merged **#67 QL1 r2**, **#66 SV1 r2**, **#58**, **#43**. Linux runner: QL1+SV1+MX1 together 870 + 338 green (the
