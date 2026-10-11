@@ -4,6 +4,7 @@ import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.maps.tiled.TiledMap;
 import forge.Forge;
+import forge.adventure.player.AdventurePlayer;
 import forge.adventure.pointofintrest.PointOfInterest;
 import forge.adventure.pointofintrest.PointOfInterestChanges;
 import forge.adventure.stage.MapStage;
@@ -159,6 +160,7 @@ public class TileMapScene extends HudScene {
         oldMap = point.getData().map;
         map = new TemplateTmxMapLoader().load(Config.instance().getCommonFilePath(point.getData().map));
         ((MapStage) stage).setPointOfInterest(getPointOfInterestChanges());
+        AdventurePlayer.ensureMarketColorLean(getPointOfInterestChanges(), point);
         stage.getPlayerSprite().setPosition(0, 0);
         WorldSave.getCurrentSave().getWorld().setSeed(point.getSeedOffset());
         getTiledMapRenderer().loadMap(map, "", oldMap, 0);

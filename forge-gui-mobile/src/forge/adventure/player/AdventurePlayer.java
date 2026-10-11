@@ -219,6 +219,11 @@ public class AdventurePlayer implements Serializable, SaveFileContent {
     final SignalList onEquipmentChange = new SignalList();
     final SignalList onBlessing = new SignalList();
     private PointOfInterestChanges currentLocationChanges;
+    /**
+     * EC1: shop/map POI whose market is used for price + buy/sell recording while shopping.
+     * Null outside a shop — selling outside town must not move any town's market.
+     */
+    private PointOfInterestChanges activeShopMarket;
 
     public AdventurePlayer() {
         clear();
@@ -2872,14 +2877,38 @@ public class AdventurePlayer implements Serializable, SaveFileContent {
             return 0;
         }
 
-        int basePrice = (int) (CardUtil.getCardPrice(card) * difficultyData.sellFactor);
+        // EC1: fixed sale share of the active shop's local price. Stock keeps difficulty sellFactor.
+        float sellShare = AscendantCardEconomy.enabled()
+                ? AscendantCardEconomy.saleShare()
+                : difficultyData.sellFactor;
+        PointOfInterestChanges market = AscendantCardEconomy.enabled() ? activeShopMarket : currentLocationChanges;
+        int basePrice = (int) (CardUtil.getCardPrice(card, market) * sellShare);
 
         if (card.isFoil()) {
             basePrice += basePrice * 20 / 100;
         }
 
-        float townPriceModifier = currentLocationChanges == null ? 1f : currentLocationChanges.getTownPriceModifier();
-        return (int) (basePrice * (2.0f - townPriceModifier) * skills.sellPriceFactor());
+        float townPriceModifier = market == null ? 1f : market.getTownPriceModifier();
+        float skill = skills.sellPriceFactor();
+        if (AscendantCardEconomy.enabled())
+            skill = Math.min(skill, AscendantCardEconomy.sellSkillCap());
+        return (int) (basePrice * (2.0f - townPriceModifier) * skill);
+    }
+
+    /** Current POI changes (inn / town). Not used for EC1 shop pricing. */
+    public PointOfInterestChanges getCurrentLocationChanges() {
+        return currentLocationChanges;
+    }
+
+    /** Active shop market for EC1 price + record (null outside a shop). */
+    public PointOfInterestChanges getActiveShopMarket() {
+        return activeShopMarket;
+    }
+
+    public void setActiveShopMarket(PointOfInterestChanges market) {
+        this.activeShopMarket = market;
+        if (market != null)
+            AscendantCardEconomy.bindSeasonCalendar(season);
     }
 
     /**
@@ -3160,13 +3189,24 @@ public class AdventurePlayer implements Serializable, SaveFileContent {
         int amountToSell = Math.min(amount, cards.count(card) - vaultedCount(card));
         if (amountToSell <= 0)
             return 0;
-        if(!cards.remove(card, amountToSell))
-            return 0; //Failed to sell?
+        // Progressive local prices (EC1): only the active shop's market moves; outside town = none.
+        PointOfInterestChanges market = AscendantCardEconomy.enabled() ? activeShopMarket : currentLocationChanges;
+        int earned = 0;
+        for (int i = 0; i < amountToSell; i++) {
+            earned += cardSellPrice(card);
+            AscendantCardEconomy.noteSold(market, card, 1);
+        }
+        if (!cards.remove(card, amountToSell)) {
+            // Roll back market notes if the inventory remove failed.
+            for (int i = 0; i < amountToSell; i++)
+                AscendantCardEconomy.noteBought(market, card, 1);
+            return 0;
+        }
         List<PaperCard> removed = new ArrayList<>(amountToSell);
         for (int i = 0; i < amountToSell; i++)
             removed.add(card);
         afterCardsRemoved(removed);
-        return cardSellPrice(card) * amountToSell;
+        return earned;
     }
 
     // ---- Ascendant dust salvage / craft -----------------------------------------------------------
@@ -3178,7 +3218,11 @@ public class AdventurePlayer implements Serializable, SaveFileContent {
         ConfigData config = Config.instance().getConfigData();
         int level = skills.getLevel(PlayerSkills.Skill.SALVAGING);
         float t = (Math.max(1, level) - 1) / 98f;
-        return Math.max(1, Math.round(config.salvageDust + (config.salvageDustMax - config.salvageDust) * t));
+        float base = config.salvageDust + (config.salvageDustMax - config.salvageDust) * t;
+        // EC1: same worth function (rank × rotation) as shop/craft.
+        if (AscendantCardEconomy.enabled())
+            base *= AscendantCardEconomy.salvageWorthFactor(card);
+        return Math.max(1, Math.round(base));
     }
 
     /** Owned copies that can be salvaged: not vaulted, not required by any deck, and have sell value. */
@@ -3261,6 +3305,24 @@ public class AdventurePlayer implements Serializable, SaveFileContent {
         return craftPrinting(card.getName());
     }
 
+    /**
+     * Prefer {@code preferred}'s edition when it is an unlocked (CS0-normal) craftable
+     * printing — used by MX1 Craft missing so source printings from the deck list win.
+     * Falls back to {@link #craftPrinting(String)}.
+     */
+    public PaperCard craftPrintingPreferring(PaperCard preferred) {
+        if (preferred == null)
+            return null;
+        List<String> history = standardWindow.expandedHistoryCodes();
+        if (history != null && history.contains(preferred.getEdition())) {
+            boolean okPrinting = !forge.adventure.util.SourcePrintings.enabled()
+                    || forge.adventure.util.SourcePrintings.isNormalPrinting(preferred);
+            if (okPrinting && dustIndex(preferred.getRarity()) >= 0)
+                return preferred;
+        }
+        return craftPrinting(preferred.getName());
+    }
+
     public PaperCard craftPrinting(String cardName) {
         if (cardName == null || cardName.isEmpty())
             return null;
@@ -3323,7 +3385,7 @@ public class AdventurePlayer implements Serializable, SaveFileContent {
         String name = card.getName();
         if (BanLists.isBanned("standard", name) && BanLists.isBanned("historic", name) && BanLists.isBanned("commander", name))
             return name + " is banned in all formats.";
-        PaperCard printing = craftPrinting(card);
+        PaperCard printing = craftPrintingPreferring(card);
         if (printing == null || dustIndex(printing.getRarity()) < 0)
             return "This card is not in your unlocked craftable pool.";
         return null;
@@ -3333,13 +3395,19 @@ public class AdventurePlayer implements Serializable, SaveFileContent {
     public int craftCost(PaperCard card) {
         if (!Config.ascendant() || card == null)
             return 0;
-        PaperCard printing = craftPrinting(card);
+        PaperCard printing = craftPrintingPreferring(card);
         if (printing == null || dustIndex(printing.getRarity()) < 0)
             return 0;
         ConfigData config = Config.instance().getConfigData();
         float base = config.craftCost;
-        if (!isStandardLegal(printing))
+        // EC1: craft follows life-cycle value; historicCraftFactor keeps the old 2× Historic intent.
+        if (AscendantCardEconomy.enabled()) {
+            base *= AscendantCardEconomy.craftWorthFactor(printing);
+            if (!isStandardLegal(printing))
+                base *= config.historicCraftFactor;
+        } else if (!isStandardLegal(printing)) {
             base *= config.historicCraftFactor;
+        }
         int level = skills.getLevel(PlayerSkills.Skill.SPELLSMITHING);
         float discount = config.craftDiscountMax * (Math.max(1, level) - 1) / 98f;
         return Math.max(1, Math.round(base * (1f - discount)));
@@ -3368,7 +3436,7 @@ public class AdventurePlayer implements Serializable, SaveFileContent {
             notifyCrafting(problem);
             return false;
         }
-        PaperCard printing = craftPrinting(card);
+        PaperCard printing = craftPrintingPreferring(card);
         int cost = craftCost(printing);
         int index = dustIndex(printing.getRarity());
         CardReagentCost reagents = CardReagentCost.forCard(printing);
@@ -4513,5 +4581,35 @@ public class AdventurePlayer implements Serializable, SaveFileContent {
 
     public void loadChanges(PointOfInterestChanges changes) {
         this.currentLocationChanges = changes;
+        AscendantCardEconomy.bindSeasonCalendar(season);
+    }
+
+    /**
+     * EC1: stamp a town's color lean from the biome under a POI (once per changes object).
+     * Safe no-op when EC1 is off, the world is missing, or lean is already set.
+     */
+    public static void ensureMarketColorLean(PointOfInterestChanges changes, forge.adventure.pointofintrest.PointOfInterest poi) {
+        if (!AscendantCardEconomy.enabled() || changes == null || poi == null)
+            return;
+        if (changes.getMarketColorLean() != null && !changes.getMarketColorLean().isEmpty())
+            return;
+        try {
+            forge.adventure.world.World world = WorldSave.getCurrentSave() != null
+                    ? WorldSave.getCurrentSave().getWorld() : null;
+            if (world == null || world.getData() == null)
+                return;
+            int tile = world.getTileSize() > 0 ? world.getTileSize() : 16;
+            int tx = (int) (poi.getPosition().x / tile);
+            int ty = (int) (poi.getPosition().y / tile);
+            int biomeIndex = forge.adventure.world.World.highestBiome(world.getBiome(tx, ty));
+            java.util.List<BiomeData> biomes = world.getData().GetBiomes();
+            if (biomes == null || biomeIndex < 0 || biomeIndex >= biomes.size())
+                return;
+            BiomeData biome = biomes.get(biomeIndex);
+            if (biome != null && biome.name != null)
+                changes.setMarketColorLean(biome.name);
+        } catch (Exception ignored) {
+            // Headless / incomplete world.
+        }
     }
 }
