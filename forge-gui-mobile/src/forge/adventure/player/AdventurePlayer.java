@@ -3263,6 +3263,24 @@ public class AdventurePlayer implements Serializable, SaveFileContent {
         return craftPrinting(card.getName());
     }
 
+    /**
+     * Prefer {@code preferred}'s edition when it is an unlocked (CS0-normal) craftable
+     * printing — used by MX1 Craft missing so source printings from the deck list win.
+     * Falls back to {@link #craftPrinting(String)}.
+     */
+    public PaperCard craftPrintingPreferring(PaperCard preferred) {
+        if (preferred == null)
+            return null;
+        List<String> history = standardWindow.expandedHistoryCodes();
+        if (history != null && history.contains(preferred.getEdition())) {
+            boolean okPrinting = !forge.adventure.util.SourcePrintings.enabled()
+                    || forge.adventure.util.SourcePrintings.isNormalPrinting(preferred);
+            if (okPrinting && dustIndex(preferred.getRarity()) >= 0)
+                return preferred;
+        }
+        return craftPrinting(preferred.getName());
+    }
+
     public PaperCard craftPrinting(String cardName) {
         if (cardName == null || cardName.isEmpty())
             return null;
@@ -3325,7 +3343,7 @@ public class AdventurePlayer implements Serializable, SaveFileContent {
         String name = card.getName();
         if (BanLists.isBanned("standard", name) && BanLists.isBanned("historic", name) && BanLists.isBanned("commander", name))
             return name + " is banned in all formats.";
-        PaperCard printing = craftPrinting(card);
+        PaperCard printing = craftPrintingPreferring(card);
         if (printing == null || dustIndex(printing.getRarity()) < 0)
             return "This card is not in your unlocked craftable pool.";
         return null;
@@ -3335,7 +3353,7 @@ public class AdventurePlayer implements Serializable, SaveFileContent {
     public int craftCost(PaperCard card) {
         if (!Config.ascendant() || card == null)
             return 0;
-        PaperCard printing = craftPrinting(card);
+        PaperCard printing = craftPrintingPreferring(card);
         if (printing == null || dustIndex(printing.getRarity()) < 0)
             return 0;
         ConfigData config = Config.instance().getConfigData();
@@ -3375,7 +3393,7 @@ public class AdventurePlayer implements Serializable, SaveFileContent {
             notifyCrafting(problem);
             return false;
         }
-        PaperCard printing = craftPrinting(card);
+        PaperCard printing = craftPrintingPreferring(card);
         int cost = craftCost(printing);
         int index = dustIndex(printing.getRarity());
         CardReagentCost reagents = CardReagentCost.forCard(printing);

@@ -26,13 +26,21 @@ import forge.adventure.util.AdventureModes;
 import forge.adventure.util.AscendantCardEconomy;
 import forge.adventure.util.CardUtil;
 import forge.adventure.util.Config;
+import forge.adventure.util.Controls;
 import forge.adventure.util.CraftingApi;
 import forge.adventure.util.Current;
+import forge.adventure.util.MoxfieldMx1;
 import forge.adventure.world.WorldSave;
 import forge.card.ColorSet;
+import forge.deck.DeckImportController;
+import forge.deck.DeckRecognizer.Token;
+import forge.deck.DeckSection;
+import forge.game.GameType;
 import forge.gamemodes.limited.DraftRankCache;
+import forge.gui.interfaces.ICheckBox;
 import forge.item.PaperCard;
 import forge.player.GamePlayerUtil;
+import forge.util.Localizer;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -43,6 +51,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 
 /**
@@ -109,10 +118,101 @@ public class CardEconomyEc1GlTest {
             try {
                 captureOrientation(true);
                 captureOrientation(false);
+                captureMissingListCraftMissing();
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
         });
+    }
+
+    /**
+     * Real xvfb render of the MX1 Missing list with per-card dust, total dust, and a
+     * controller-reachable Craft missing action (adventure dialog — FOptionPane overlays
+     * do not draw over adventure scenes).
+     */
+    private static void captureMissingListCraftMissing() throws Exception {
+        applyOrientation(true);
+        int w = 480;
+        int h = 270;
+        AdventurePlayer player = Current.player();
+        Assert.assertNotNull(player);
+        player.getStandardWindow().init(List.of("M10", "M11", "ZEN"));
+        player.getCards().clear();
+        PaperCard bolt = forge.model.FModel.getMagicDb().getCommonCards()
+                .getCard("Lightning Bolt", "M10", "146");
+        Assert.assertNotNull(bolt, "M10 Lightning Bolt");
+        player.addCard(bolt, 2);
+        int unit = Math.max(1, player.craftCost(bolt));
+        player.addDust(AdventurePlayer.DUST_COMMON, unit * 2 + 80);
+        forge.adventure.data.MaterialData ash = forge.adventure.data.MaterialListData.primaryReagent("R", 1);
+        Assert.assertNotNull(ash);
+        player.addMaterial(ash.id, 4);
+
+        DeckImportController controller = new DeckImportController(stubCheck(false), null, null, false);
+        controller.setPlayerInventory(player.getCards());
+        controller.setImportBehavior(DeckImportController.ImportBehavior.REPLACE_CURRENT);
+        controller.setFreePrintConverter(pc -> pc != null && pc.isVeryBasicLand() ? pc : null);
+        controller.setAllowedSections(List.of(DeckSection.Main, DeckSection.Sideboard));
+        controller.setGameFormat(GameType.Adventure);
+        List<Token> tokens = controller.parseInput("Deck\n4 Lightning Bolt (M10) 146\n");
+        tokens = controller.constrainTokensToInventory();
+        List<MoxfieldMx1.MissingCard> missing = MoxfieldMx1.missingFromTokens(tokens, player.getCards());
+        Assert.assertFalse(missing.isEmpty(), "need a Missing gap for the render");
+        CraftingApi.CraftMissingPlan plan = CraftingApi.planCraftMissing(
+                MoxfieldMx1.toCraftRequests(missing));
+        Assert.assertTrue(plan.craftEnabled, "GL render needs affordable Craft missing: " + plan.disabledReason);
+
+        Localizer loc = Forge.getLocalizer();
+        String body = MoxfieldMx1.formatMissingList(missing)
+                + "\n\n" + loc.getMessage("lblImportOwnedCopiesConfirm");
+        Assert.assertTrue(body.toLowerCase(Locale.ROOT).contains("dust"), body);
+        Assert.assertTrue(body.toLowerCase(Locale.ROOT).contains("total"), body);
+
+        GameScene game = GameScene.instance();
+        syncSceneViewports(game, w, h);
+        game.enter();
+        game.act(0.05f);
+        WorldStage stage = WorldStage.getInstance();
+        Assert.assertNotNull(stage.getDialog(), "WorldStage dialog required for Missing list render");
+        com.badlogic.gdx.scenes.scene2d.ui.Dialog d = stage.getDialog();
+        d.getButtonTable().clear();
+        d.getContentTable().clear();
+        d.clearListeners();
+        com.github.tommyettinger.textra.TextraLabel label = Controls.newTextraLabel(body);
+        label.setWrap(true);
+        d.getContentTable().add(label).width(420f);
+        d.getButtonTable().add(Controls.newTextButton(loc.getMessage("lblImportWhatIOwn"),
+                stage::hideDialog)).width(200f).row();
+        TextraButton craftBtn = Controls.newTextButton(loc.getMessage("lblCraftMissing"),
+                stage::hideDialog);
+        d.getButtonTable().add(craftBtn).width(200f).row();
+        d.getButtonTable().add(Controls.newTextButton(loc.getMessage("lblCancel"),
+                stage::hideDialog)).width(200f).row();
+        d.setKeepWithinStage(true);
+        stage.showDialog();
+        game.act(0.05f);
+        renderForScreenshot(game);
+        saveScreenshot("ec1_mx1_missing_craft_missing_landscape.png");
+        Assert.assertTrue(craftBtn.isVisible(), "Craft missing must be visible");
+        stage.hideDialog();
+        try {
+            game.leave();
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static ICheckBox stubCheck(boolean selected) {
+        return new ICheckBox() {
+            private boolean on = selected;
+            @Override public boolean isSelected() { return on; }
+            @Override public void setSelected(boolean b0) { on = b0; }
+            @Override public boolean isEnabled() { return true; }
+            @Override public void setEnabled(boolean b0) { }
+            @Override public boolean isVisible() { return true; }
+            @Override public void setVisible(boolean b0) { }
+            @Override public String getToolTipText() { return null; }
+            @Override public void setToolTipText(String s0) { }
+        };
     }
 
     private static void captureOrientation(boolean landscape) throws Exception {
