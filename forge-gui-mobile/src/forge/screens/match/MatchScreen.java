@@ -1274,33 +1274,40 @@ public class MatchScreen extends FScreen {
 
         @Override
         public void drawOverlay(Graphics g) {
-            // DS1 Arena: seal only the empty centre band between player panels.
-            // Do not paint over field/hand cards (that required the old reseal
-            // double-draw which hid taps / P/T / counters / highlights). Panel
-            // backdrops + scroller drawBackground already cover each half.
-            if (ArenaDuelUi.isActive()
-                    && topPlayerPanel != null && bottomPlayerPanel != null) {
+            // DS1 Arena: heal FBO alpha holes across the whole scroller with the
+            // continuous forest plate. Blend writes only where dst alpha is 0 so
+            // cards / P/T / counters stay put (not a card reseal).
+            if (ArenaDuelUi.isActive()) {
                 final float aw = getWidth();
-                final float gapY = topPlayerPanel.getBottom();
-                final float gapH = bottomPlayerPanel.getTop() - gapY;
-                if (gapH > 1f) {
-                    final FSkinTexture arenaBG = FSkinTexture.ADV_BG_MATCH.getWidth() > 0
-                            ? FSkinTexture.ADV_BG_MATCH : FSkinTexture.BG_MATCH;
-                    // Same continuous forest mapping as drawBackground — seal only the
-                    // empty centre band (no card reseal over field/hand).
-                    final float ah = getHeight();
-                    g.resetAlphaComposite();
-                    g.startClip(0, gapY, aw, gapH);
+                final float ah = getHeight();
+                final FSkinTexture arenaBG = FSkinTexture.ADV_BG_MATCH.getWidth() > 0
+                        ? FSkinTexture.ADV_BG_MATCH : FSkinTexture.BG_MATCH;
+                g.resetAlphaComposite();
+                if (arenaBG.getWidth() > 0) {
+                    g.startClip(0, 0, aw, ah);
                     try {
-                        g.fillRect(ARENA_SEAL_PLATE, 0, gapY, aw, gapH);
-                        if (arenaBG.getWidth() > 0) {
-                            g.drawImage(arenaBG, 0, -ah * 0.08f, aw, ah / 0.42f);
-                        }
+                        g.drawImageIntoAlphaHoles(arenaBG, 0, -ah * 0.08f, aw, ah / 0.42f);
                     } finally {
                         g.endClip();
                     }
-                    g.resetAlphaComposite();
                 }
+                // Centre gap still gets an opaque seal (no cards there).
+                if (topPlayerPanel != null && bottomPlayerPanel != null) {
+                    final float gapY = topPlayerPanel.getBottom();
+                    final float gapH = bottomPlayerPanel.getTop() - gapY;
+                    if (gapH > 1f) {
+                        g.startClip(0, gapY, aw, gapH);
+                        try {
+                            g.fillRect(ARENA_SEAL_PLATE, 0, gapY, aw, gapH);
+                            if (arenaBG.getWidth() > 0) {
+                                g.drawImage(arenaBG, 0, -ah * 0.08f, aw, ah / 0.42f);
+                            }
+                        } finally {
+                            g.endClip();
+                        }
+                    }
+                }
+                g.resetAlphaComposite();
             }
             if (Forge.isLandscapeMode()) {
                 if (playerPanelsList.size() > 2) {
