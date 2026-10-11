@@ -682,6 +682,79 @@ public class ConfigData {
      */
     public boolean au1MuteOverworldAmbienceDefault = false;
 
+    // ---- Ascendant card economy (Package EC1): game prices, not real-world markets. ----
+
+    /**
+     * When true (Ascendant default), card gold prices, sell share, craft/salvage dust scales,
+     * and living town markets use {@link forge.adventure.util.AscendantCardEconomy} instead of
+     * {@code cardprices.txt} / rarity stubs. Stock worlds leave this unused.
+     */
+    public boolean ec1GamePrices = true;
+    /** Base gold value by rarity (before rank / rotation / market). Basics default to 0. */
+    public int ec1BaseCommon = 50;
+    public int ec1BaseUncommon = 150;
+    public int ec1BaseRare = 300;
+    public int ec1BaseMythic = 500;
+    public int ec1BaseSpecial = 400;
+    public int ec1BaseBasicLand = 0;
+    /** Bottom of the band (weakest ranked card in its set). */
+    public float ec1RankMultMin = 0.4f;
+    /**
+     * Top of the band (strongest ranked card). Wide enough that a top common can
+     * outprice a bottom rare: {@code baseCommon × max > baseRare × min}.
+     */
+    public float ec1RankMultMax = 3.5f;
+    /**
+     * Sell payout as a fixed share of the current local price (buy gold value). About 30%.
+     * Replaces difficulty {@code sellFactor} for Ascendant when EC1 is on.
+     */
+    public float ec1SaleShare = 0.30f;
+    /**
+     * Cap on the skill sell-price factor so a pumped market cannot be looped at high skill.
+     * Applied as {@code min(skills.sellPriceFactor(), ec1SellSkillCap)}.
+     */
+    public float ec1SellSkillCap = 1.35f;
+    /** Local market price band around the base (never leave this range). */
+    public float ec1MarketBandMin = 0.5f;
+    public float ec1MarketBandMax = 2.0f;
+    /** Supply pressure added per copy sold in a town. */
+    public float ec1MarketSellDelta = 0.15f;
+    /** Supply pressure removed per copy bought in a town. */
+    public float ec1MarketBuyDelta = 0.15f;
+    /** How strongly supply pressure bends price: price ≈ 1/(1+supply×scale). */
+    public float ec1MarketPressureScale = 1.0f;
+    /** Fraction of remaining market pressure removed per in-game day (drift toward base). */
+    public float ec1MarketDriftPerDay = 0.10f;
+    /** Towns of a color pay/charge this much more for matching-color cards. */
+    public float ec1ColorLeanMult = 1.15f;
+    /**
+     * Extra scale on salvage dust from the shared life-cycle worth multiplier
+     * ({@code lifeCycleGold / standardBaseline}). Craft uses the same worth against
+     * {@link #craftCost}; in-Standard (no spike) worth is 1.0 so dust matches pre-EC1.
+     */
+    public float ec1SalvageWorthFactor = 1.0f;
+    /**
+     * Per-season appreciation after a card rotates out of Standard (rares/mythics use a
+     * higher rate). Tunable life-cycle curve.
+     */
+    public float ec1PostRotationAppreciateCommon = 0.04f;
+    public float ec1PostRotationAppreciateUncommon = 0.06f;
+    public float ec1PostRotationAppreciateRare = 0.12f;
+    public float ec1PostRotationAppreciateMythic = 0.16f;
+    /**
+     * Soft asymptote toward the pedigree ceiling: after this many post-rotation seasons a
+     * pedigree card is near its {@code cardprices.txt} target (never an immediate jump).
+     */
+    public int ec1PedigreeSeasonsToCeiling = 24;
+    /**
+     * Share of the pedigree list price used as the long-term ceiling (1.0 = full list).
+     */
+    public float ec1PedigreeCeilingShare = 1.0f;
+    /** Commons/uncommons that spike each season (town rumour). */
+    public int ec1SeasonSpikeCount = 3;
+    /** Spike demand multiplier on relative worth for rumoured cards. */
+    public float ec1SeasonSpikeMult = 2.5f;
+
     // ---- Ascendant seasons (Package SN1): 4-set Standard + in-game calendar. ----
 
     /**

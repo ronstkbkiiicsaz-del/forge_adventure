@@ -1362,6 +1362,15 @@ public class GameHUD extends Stage {
         notificationPane.getColor().a = 0f;
     }
 
+    /** EC1 / tests: current notification banner text (may be empty). */
+    public String getNotificationText() {
+        try {
+            return notificationText.storedText != null ? notificationText.storedText : "";
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
     /**
      * Dedicated "Host is in…" banner — separate from transient notifications.
      */

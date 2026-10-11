@@ -9,6 +9,7 @@ import forge.adventure.player.AdventurePlayer;
 import forge.adventure.pointofintrest.PointOfInterestChanges;
 import forge.adventure.stage.GameHUD;
 import forge.adventure.util.AdventureEventController;
+import forge.adventure.util.AscendantCardEconomy;
 import forge.adventure.util.Config;
 import forge.adventure.util.Controls;
 import forge.adventure.util.Current;
@@ -169,6 +170,8 @@ public class InnScene extends UIScene {
         super.enter();
         refreshRestButton();
         refreshStatus();
+        // EC1: town rumour for the current season's spiked commons/uncommons.
+        AscendantCardEconomy.showSpikeRumourNotification();
         GameHUD.getInstance().updateBGM();
     }
 

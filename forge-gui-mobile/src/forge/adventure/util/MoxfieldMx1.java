@@ -116,6 +116,7 @@ public final class MoxfieldMx1 {
     public static List<MissingCard> missingFromTokens(List<Token> tokens, ItemPool<PaperCard> inventory) {
         Map<String, Integer> wantedByName = new LinkedHashMap<>();
         Map<String, Boolean> hasGap = new LinkedHashMap<>();
+        Map<String, PaperCard> preferredByName = new LinkedHashMap<>();
         if (tokens != null) {
             for (Token t : tokens) {
                 if (t == null || !t.isCardToken()) {
@@ -132,6 +133,8 @@ public final class MoxfieldMx1 {
                 wantedByName.merge(name, t.getQuantity(), Integer::sum);
                 if (t.getType() == TokenType.CARD_NOT_IN_INVENTORY) {
                     hasGap.put(name, Boolean.TRUE);
+                    // Keep the first requested source printing for Craft missing.
+                    preferredByName.putIfAbsent(name, card);
                 }
             }
         }
@@ -141,23 +144,87 @@ public final class MoxfieldMx1 {
             if (!Boolean.TRUE.equals(hasGap.get(name))) {
                 continue;
             }
-            out.add(new MissingCard(name, e.getValue(), countOwnedByName(inventory, name)));
+            out.add(new MissingCard(name, e.getValue(), countOwnedByName(inventory, name),
+                    preferredByName.get(name)));
         }
         return out;
     }
 
     public static String formatMissingList(List<MissingCard> missing) {
+        return formatMissingList(missing, true);
+    }
+
+    /**
+     * Missing list body. When {@code includeDust} and EC1 crafting is available, each row
+     * includes the dust cost for the gap and a total line is appended.
+     */
+    public static String formatMissingList(List<MissingCard> missing, boolean includeDust) {
         if (missing == null || missing.isEmpty()) {
             return "";
         }
         Localizer loc = Localizer.getInstance();
         StringBuilder sb = new StringBuilder();
         sb.append(loc.getMessage("lblMissingListHeader")).append('\n');
+        boolean showDust = includeDust && Config.ascendant() && AscendantCardEconomy.enabled();
+        CraftingApi.CraftMissingPlan plan = showDust
+                ? CraftingApi.planCraftMissing(toCraftRequests(missing)) : null;
         for (MissingCard m : missing) {
-            sb.append(String.format(Locale.ROOT, "%s — %s%n",
-                    m.name, loc.getMessage("lblMissingWantedOwned", m.wanted, m.owned)));
+            String base = loc.getMessage("lblMissingWantedOwned", m.wanted, m.owned);
+            if (showDust) {
+                int gap = Math.max(0, m.wanted - Math.max(0, m.owned));
+                PaperCard pref = m.preferred;
+                String dust = gap <= 0 ? "—" : formatGapDust(pref, m.name, gap);
+                sb.append(String.format(Locale.ROOT, "%s — %s — %s%n", m.name, base, dust));
+            } else {
+                sb.append(String.format(Locale.ROOT, "%s — %s%n", m.name, base));
+            }
+        }
+        if (showDust && plan != null && plan.totalCopies > 0 && !plan.totalDustLine().isEmpty()) {
+            sb.append('\n').append(loc.getMessage("lblMissingDustTotal", plan.totalDustLine()));
+            if (!plan.craftEnabled && plan.disabledReason != null && !plan.disabledReason.isBlank()) {
+                sb.append('\n').append(loc.getMessage("lblCraftMissingUnavailable", plan.disabledReason));
+            }
         }
         return sb.toString().trim();
+    }
+
+    private static String formatGapDust(PaperCard preferred, String name, int gap) {
+        PaperCard print = CraftingApi.printing(name, preferred);
+        if (print == null)
+            return "—";
+        int unit = CraftingApi.dustCost(print);
+        if (unit <= 0)
+            return "—";
+        return (unit * gap) + " " + print.getRarity().getLongName() + " dust";
+    }
+
+    /** Build {@link CraftingApi.MissingRequest}s with preferred source printings. */
+    public static List<CraftingApi.MissingRequest> toCraftRequests(List<MissingCard> missing) {
+        List<CraftingApi.MissingRequest> out = new ArrayList<>();
+        if (missing == null)
+            return out;
+        for (MissingCard m : missing) {
+            if (m == null)
+                continue;
+            out.add(new CraftingApi.MissingRequest(m.name, m.wanted, m.owned, m.preferred));
+        }
+        return out;
+    }
+
+    /**
+     * True when the parsed token list contains at least one known card token
+     * (legal, free basic, inventory gap, limited, etc.). Unknown-only paste → false.
+     */
+    public static boolean hasKnownCardTokens(List<Token> tokens) {
+        if (tokens == null || tokens.isEmpty()) {
+            return false;
+        }
+        for (Token t : tokens) {
+            if (t != null && t.isCardToken() && t.getCard() != null) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -206,11 +273,18 @@ public final class MoxfieldMx1 {
         public final String name;
         public final int wanted;
         public final int owned;
+        /** First requested source printing from the deck list (may be null). */
+        public final PaperCard preferred;
 
         public MissingCard(String name, int wanted, int owned) {
+            this(name, wanted, owned, null);
+        }
+
+        public MissingCard(String name, int wanted, int owned, PaperCard preferred) {
             this.name = name;
             this.wanted = wanted;
             this.owned = owned;
+            this.preferred = preferred;
         }
     }
 }
