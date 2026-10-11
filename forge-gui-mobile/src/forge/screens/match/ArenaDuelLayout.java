@@ -192,15 +192,17 @@ public final class ArenaDuelLayout {
         m.put("playerHand", new Rect("playerHand",
                 contentX, playerY + fieldH, contentW, handH));
 
-        // Prompt strip: big context button left, take-back beside it, message, pass-until-EOT.
+        // Prompt strip: OK context, Cancel/secondary, take-back, message, pass-until-EOT.
         final float promptY = height - promptH;
-        final float ctxW = Math.min(contentW * 0.22f, promptH * 2.4f);
-        final float takeW = Math.min(contentW * 0.14f, promptH * 1.6f);
-        final float eotW = Math.min(contentW * 0.20f, promptH * 2.2f);
+        final float ctxW = Math.min(contentW * 0.18f, promptH * 2.2f);
+        final float cancelW = Math.min(contentW * 0.18f, promptH * 2.2f);
+        final float takeW = Math.min(contentW * 0.12f, promptH * 1.5f);
+        final float eotW = Math.min(contentW * 0.18f, promptH * 2.0f);
         m.put("contextButton", new Rect("contextButton", 0, promptY, ctxW, promptH));
-        m.put("takeBackSlot", new Rect("takeBackSlot", ctxW, promptY, takeW, promptH));
+        m.put("cancelButton", new Rect("cancelButton", ctxW, promptY, cancelW, promptH));
+        m.put("takeBackSlot", new Rect("takeBackSlot", ctxW + cancelW, promptY, takeW, promptH));
         m.put("promptBar", new Rect("promptBar",
-                ctxW + takeW, promptY, width - ctxW - takeW - eotW, promptH));
+                ctxW + cancelW + takeW, promptY, width - ctxW - cancelW - takeW - eotW, promptH));
         m.put("passUntilEot", new Rect("passUntilEot",
                 width - eotW, promptY, eotW, promptH));
     }
@@ -253,13 +255,15 @@ public final class ArenaDuelLayout {
                 contentX, playerY + fieldH, contentW, handH));
 
         final float promptY = height - promptH;
-        final float ctxW = Math.min(width * 0.28f, promptH * 2.2f);
-        final float takeW = Math.min(width * 0.18f, promptH * 1.5f);
-        final float eotW = Math.min(width * 0.24f, promptH * 2.0f);
+        final float ctxW = Math.min(width * 0.22f, promptH * 2.0f);
+        final float cancelW = Math.min(width * 0.22f, promptH * 2.0f);
+        final float takeW = Math.min(width * 0.14f, promptH * 1.4f);
+        final float eotW = Math.min(width * 0.20f, promptH * 1.8f);
         m.put("contextButton", new Rect("contextButton", 0, promptY, ctxW, promptH));
-        m.put("takeBackSlot", new Rect("takeBackSlot", ctxW, promptY, takeW, promptH));
+        m.put("cancelButton", new Rect("cancelButton", ctxW, promptY, cancelW, promptH));
+        m.put("takeBackSlot", new Rect("takeBackSlot", ctxW + cancelW, promptY, takeW, promptH));
         m.put("promptBar", new Rect("promptBar",
-                ctxW + takeW, promptY, width - ctxW - takeW - eotW, promptH));
+                ctxW + cancelW + takeW, promptY, width - ctxW - cancelW - takeW - eotW, promptH));
         m.put("passUntilEot", new Rect("passUntilEot",
                 width - eotW, promptY, eotW, promptH));
     }

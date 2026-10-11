@@ -38,7 +38,8 @@ public class ArenaDuelLayoutTest {
             for (final String name : new String[] {
                     "phaseRail", "menuBar", "opponentAvatar", "opponentField", "opponentPiles",
                     "stackColumn", "combatLane", "playerField", "playerHand", "playerAvatar",
-                    "playerPiles", "contextButton", "takeBackSlot", "promptBar", "passUntilEot"
+                    "playerPiles", "contextButton", "cancelButton", "takeBackSlot", "promptBar",
+                    "passUntilEot"
             }) {
                 Assert.assertNotNull(r.get(name), name + " missing in "
                         + (landscape ? "landscape" : "portrait"));
@@ -223,6 +224,7 @@ public class ArenaDuelLayoutTest {
         Assert.assertEquals(d.ds1StackFraction, 0.48f, 0.0001f);
         Assert.assertEquals(d.ds1DragSlopPx, 9f, 0.0001f);
         Assert.assertEquals(ModernDuelScreen.DRAG_SLOP_PX, 9f, 0.0001f);
+        // Unused ds1* tunables were removed (side strip / sick dim / hand fan overlap).
     }
 
     @Test
@@ -252,6 +254,40 @@ public class ArenaDuelLayoutTest {
         Assert.assertEquals(ArenaBattlefieldArrange.sideStripFraction(0.5f), 0.35f, 0.0001f);
         Assert.assertEquals(ArenaBattlefieldArrange.sickDimFactor(0f), 0.72f, 0.0001f);
         Assert.assertTrue(ArenaBattlefieldArrange.sickDimFactor(0.5f) < 1f);
+    }
+
+    @Test
+    public void cancelButtonSitsBesideContextWithoutOverlap() {
+        final ArenaDuelLayout.Result r = ArenaDuelLayout.compute(1280f, 720f, true);
+        final ArenaDuelLayout.Rect ctx = r.get("contextButton");
+        final ArenaDuelLayout.Rect cancel = r.get("cancelButton");
+        Assert.assertNotNull(cancel);
+        Assert.assertTrue(cancel.x >= ctx.x + ctx.w - 0.5f);
+        Assert.assertNull(ArenaDuelLayout.firstOverlap(r.leafRegions()));
+    }
+
+    @Test
+    public void padChoosesArenaContextWhenNoHandOrMana() {
+        Assert.assertEquals(ModernDuelPad.chooseXTarget(false, false, true),
+                ModernDuelPad.Focus.CONTEXT);
+        Assert.assertEquals(ModernDuelPad.chooseXTarget(false, false, false),
+                ModernDuelPad.Focus.PHASE);
+        Assert.assertEquals(ModernDuelPad.cycleArenaChrome(ModernDuelPad.Focus.CONTEXT, 1),
+                ModernDuelPad.Focus.CANCEL);
+        Assert.assertEquals(ModernDuelPad.cycleArenaChrome(ModernDuelPad.Focus.CANCEL, 1),
+                ModernDuelPad.Focus.PHASE);
+    }
+
+    @Test
+    public void useArenaLayoutNeverForNetPlayGateHelper() {
+        // Pure resolve still allows Always; useArenaLayout adds the net-play refuse.
+        Assert.assertTrue(ModernDuelScreen.resolve("Always", false));
+        ModernDuelScreen.invalidate();
+        final ConfigData on = new ConfigData();
+        on.ds1ArenaDuelScreen = true;
+        Config.installConfigDataForTest(on);
+        // Without Always pref / adventure, enabled is false → layout off.
+        Assert.assertFalse(ModernDuelScreen.useArenaLayout());
     }
 
     private static void assertNoLeafOverlap(final ArenaDuelLayout.Result result, final String label) {

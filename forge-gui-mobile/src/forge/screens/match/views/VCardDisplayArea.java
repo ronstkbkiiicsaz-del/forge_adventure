@@ -242,8 +242,7 @@ public abstract class VCardDisplayArea extends VDisplayArea implements ActivateH
         // DS1 Arena: fan the local player's hand across the hand band.
         if (this instanceof VZoneDisplay zone
                 && zone.getZoneType() == ZoneType.Hand
-                && MatchController.getView() != null
-                && MatchController.getView().isArenaDuelScreen()) {
+                && forge.screens.match.ArenaDuelUi.isActive()) {
             return layoutArenaHandFan(visibleWidth, visibleHeight);
         }
 
@@ -255,8 +254,7 @@ public abstract class VCardDisplayArea extends VDisplayArea implements ActivateH
         // Arena field rows: with a small board the cards naturally sit left in a
         // wide lane. Center the group so the lane doesn't look empty on the right.
         final boolean arenaField = this instanceof VField.FieldRow
-                && MatchController.getView() != null
-                && MatchController.getView().isArenaDuelScreen();
+                && forge.screens.match.ArenaDuelUi.isActive();
         if (arenaField) {
             float totalW = 0f;
             for (CardAreaPanel cardPanel : new ArrayList<>(cardPanels.get())) {

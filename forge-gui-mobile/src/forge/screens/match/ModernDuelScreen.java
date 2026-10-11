@@ -19,6 +19,7 @@ package forge.screens.match;
 
 import forge.Forge;
 import forge.adventure.util.Config;
+import forge.gui.GuiBase;
 import forge.localinstance.properties.ForgePreferences.FPref;
 import forge.model.FModel;
 
@@ -91,11 +92,20 @@ public final class ModernDuelScreen {
      * Whether to construct {@link ArenaDuelScreen} (layout skeleton). Requires
      * {@link #enabled()} and Ascendant {@code ds1ArenaDuelScreen} (default true).
      * When false but {@link #enabled()} is true, classic MatchScreen keeps the
-     * gesture layer only.
+     * gesture layer only. Co-op / net play never opens Arena — frozen co-op path
+     * keeps classic MatchScreen + prior modern-drag behaviour.
      */
     public static boolean useArenaLayout() {
         if (!enabled()) {
             return false;
+        }
+        // Co-op is frozen: Arena must not replace the classic net duel view.
+        try {
+            if (GuiBase.isNetPlay(MatchController.instance)) {
+                return false;
+            }
+        } catch (final RuntimeException ignored) {
+            // MatchController may be unavailable early
         }
         try {
             if (Config.instance() != null && Config.instance().getConfigData() != null) {

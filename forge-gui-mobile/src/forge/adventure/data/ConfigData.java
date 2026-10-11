@@ -650,17 +650,8 @@ public class ConfigData {
     /** Share of the centre lane width used by the stack column. */
     public float ds1StackFraction = 0.48f;
 
-    /** Share of battlefield width for OTHER permanents (side strip). */
-    public float ds1OtherSideFraction = 0.22f;
-
-    /** Dim factor for summoning-sick creatures on the Arena field (1 = full brightness). */
-    public float ds1SummoningSickDim = 0.72f;
-
     /** Drag slop in pixels before a hand/battlefield press becomes a drag (~Neo Forge 9px). */
     public float ds1DragSlopPx = 9f;
-
-    /** Hand fan overlap 0..1 (higher = tighter fan). */
-    public float ds1HandFanOverlap = 0.55f;
 
     // ---- Ascendant MX1: Moxfield round trip (export / collection-limited import). ----
 

@@ -89,17 +89,27 @@ public class ArenaDuelScreenGlTest {
         AdventureGlTestSupport.runOnGl(() -> {
             Assert.assertTrue(MatchController.getView() instanceof ArenaDuelScreen,
                     "expected ArenaDuelScreen, got " + MatchController.getView());
+            final ArenaDuelScreen arena = (ArenaDuelScreen) MatchController.getView();
             setViewport(true);
-            MatchController.getView().setSize(1280, 720);
-            MatchController.getView().revalidate();
+            arena.setSize(1280, 720);
+            arena.revalidate();
+            // Targeting / stack prompts expose Cancel; avatars must be laid out.
+            ensureCancelChromeVisible(arena);
+            Assert.assertNotNull(arena.getLastLayout());
+            Assert.assertNotNull(arena.getLastLayout().get("playerAvatar"));
+            Assert.assertNotNull(arena.getBottomPlayerPanel());
+            Assert.assertTrue(arena.getBottomPlayerPanel().getAvatar().isVisible(),
+                    "player avatar must be visible in Arena layout");
             captureScreen(outDir.resolve("ds1-arena-duel-landscape.png"), 1280, 720);
             return null;
         });
 
         AdventureGlTestSupport.runOnGl(() -> {
+            final ArenaDuelScreen arena = (ArenaDuelScreen) MatchController.getView();
             setViewport(false);
-            MatchController.getView().setSize(720, 1280);
-            MatchController.getView().revalidate();
+            arena.setSize(720, 1280);
+            arena.revalidate();
+            ensureCancelChromeVisible(arena);
             captureScreen(outDir.resolve("ds1-arena-duel-portrait.png"), 720, 1280);
             return null;
         });

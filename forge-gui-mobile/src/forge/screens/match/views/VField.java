@@ -42,11 +42,7 @@ public class VField extends FContainer {
     }
 
     private static boolean arenaLayoutActive() {
-        if (Forge.getCurrentScreen() instanceof forge.screens.match.ArenaDuelScreen) {
-            return true;
-        }
-        final MatchScreen view = MatchController.getView();
-        return view != null && view.isArenaDuelScreen();
+        return forge.screens.match.ArenaDuelUi.isActive();
     }
 
     public boolean isFlipped() {

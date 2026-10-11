@@ -5,6 +5,8 @@ import org.apache.commons.lang3.StringUtils;
 
 import com.badlogic.gdx.utils.Align;
 
+import com.badlogic.gdx.graphics.Color;
+
 import forge.Graphics;
 import forge.assets.FSkinColor;
 import forge.assets.FSkinColor.Colors;
@@ -27,6 +29,7 @@ public class VPrompt extends FContainer {
     public static final float BTN_WIDTH = HEIGHT * 1.5f;
     public static final float PADDING = Utils.scale(2);
     public static final FSkinFont FONT = FSkinFont.get(14);
+    private static final Color ARENA_PROMPT_BED = new Color(0.08f, 0.09f, 0.12f, 1f);
     public static FSkinColor getBackColor() {
         if (Forge.isMobileAdventureMode)
             return FSkinColor.get(Colors.ADV_CLR_THEME2);
@@ -197,12 +200,10 @@ public class VPrompt extends FContainer {
     protected void drawBackground(Graphics g) {
         // Arena replaces OK/Cancel with context / pass-until-EOT labels. Keep an
         // opaque prompt bed (no translucent fillRect — that breaks FBO alpha).
-        if (forge.screens.match.MatchController.getView() != null
-                && forge.screens.match.MatchController.getView().isArenaDuelScreen()
+        if (forge.screens.match.ArenaDuelUi.isActive()
                 && !btnOk.isVisible() && !btnCancel.isVisible()) {
             g.resetAlphaComposite();
-            g.fillRect(new com.badlogic.gdx.graphics.Color(0.08f, 0.09f, 0.12f, 1f),
-                    0, 0, getWidth(), getHeight());
+            g.fillRect(ARENA_PROMPT_BED, 0, 0, getWidth(), getHeight());
             return;
         }
         g.fillRect(getBackColor(), 0, 0, getWidth(), getHeight());

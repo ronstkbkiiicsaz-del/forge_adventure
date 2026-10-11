@@ -135,11 +135,7 @@ public class VStack extends FDropDown {
     }
 
     private static boolean arenaOwnsStackUi() {
-        if (Forge.getCurrentScreen() instanceof forge.screens.match.ArenaDuelScreen) {
-            return true;
-        }
-        final MatchScreen view = MatchController.getView();
-        return view != null && view.isArenaDuelScreen();
+        return forge.screens.match.ArenaDuelUi.isActive();
     }
 
     @Override

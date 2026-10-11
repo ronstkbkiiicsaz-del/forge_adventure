@@ -31,8 +31,11 @@ import forge.assets.FSkinFont;
 import forge.assets.FSkinTexture;
 import forge.gamemodes.match.YieldController;
 import forge.interfaces.IGameController;
+import forge.localinstance.properties.ForgePreferences.FPref;
 import forge.menu.FMenuBar;
+import forge.model.FModel;
 import forge.screens.match.views.VArenaStackColumn;
+import forge.screens.match.views.VPhaseIndicator;
 import forge.screens.match.views.VPlayerPanel;
 import forge.screens.match.views.VPrompt;
 import forge.toolbox.FDisplayObject;
@@ -49,21 +52,34 @@ import forge.util.Utils;
  * {@link ModernDuelController}.
  */
 public class ArenaDuelScreen extends MatchScreen {
+    private static final Color CENTRE_STROKE = new Color(0.75f, 0.70f, 0.40f, 1f);
+    private static final Color BACKDROP_PLATE = new Color(0.10f, 0.16f, 0.12f, 1f);
+
     private final VArenaStackColumn stackColumn;
     private final FLabel btnContext;
+    private final FLabel btnCancel;
     private final FLabel btnPassUntilEot;
     private ArenaDuelLayout.Result lastLayout;
+    private int lastStackSize = -1;
 
     public ArenaDuelScreen(final List<VPlayerPanel> playerPanels0) {
         super(playerPanels0);
         stackColumn = add(new VArenaStackColumn());
         btnContext = add(new FLabel.Builder()
-                .text("Pass")
+                .text("OK")
                 .font(FSkinFont.get(16))
                 .align(Align.center)
                 .opaque(true)
                 .textColor(FSkinColor.getStandardColor(230, 230, 235))
                 .command(this::onContext)
+                .build());
+        btnCancel = add(new FLabel.Builder()
+                .text("Cancel")
+                .font(FSkinFont.get(16))
+                .align(Align.center)
+                .opaque(true)
+                .textColor(FSkinColor.getStandardColor(230, 230, 235))
+                .command(this::onCancel)
                 .build());
         btnPassUntilEot = add(new FLabel.Builder()
                 .text(ArenaContextActions.passUntilEotLabel())
@@ -137,22 +153,17 @@ public class ArenaDuelScreen extends MatchScreen {
         if (stackR != null) {
             stackColumn.setBounds(stackR.x, stackR.y, stackR.w, stackR.h);
             stackColumn.setVisible(true);
-            stackColumn.refresh();
+            refreshStackIfChanged(true);
         }
 
-        final ArenaDuelLayout.Rect ctx = lastLayout.get("contextButton");
-        final ArenaDuelLayout.Rect eot = lastLayout.get("passUntilEot");
+        layoutPromptButtons();
+        layoutPhaseRail();
+
+        // Classic VPrompt hosts message + DS4 Take back. Context / Cancel / Pass-until-EOT
+        // replace the stock OK/Cancel buttons so they don't render as a tiny clipped row.
+        final VPrompt bottom = getBottomPlayerPrompt();
         final ArenaDuelLayout.Rect prompt = lastLayout.get("promptBar");
         final ArenaDuelLayout.Rect take = lastLayout.get("takeBackSlot");
-        if (ctx != null) {
-            btnContext.setBounds(ctx.x, ctx.y, ctx.w, ctx.h);
-        }
-        if (eot != null) {
-            btnPassUntilEot.setBounds(eot.x, eot.y, eot.w, eot.h);
-        }
-        // Classic VPrompt hosts message + DS4 Take back. Context / Pass-until-EOT replace
-        // the stock OK/Cancel buttons so they don't render as a tiny clipped widget row.
-        final VPrompt bottom = getBottomPlayerPrompt();
         if (bottom != null && prompt != null && take != null) {
             final float x = take.x;
             final float w = (prompt.x + prompt.w) - take.x;
@@ -164,9 +175,14 @@ public class ArenaDuelScreen extends MatchScreen {
                 bottom.getBtnCancel().setVisible(false);
             }
         }
+        // Always mode / two-human local: keep the second human's prompt visible when present.
         final VPrompt top = getTopPlayerPrompt();
         if (top != null) {
-            top.setVisible(false); // Arena is single-human layout for PR1
+            final boolean showTop = isAlwaysModernMode();
+            top.setVisible(showTop);
+            if (showTop && menu != null) {
+                top.setBounds(0, menu.h, width, Math.min(VPrompt.HEIGHT, promptH));
+            }
         }
 
         // Menu bar fills the Arena menuBand (not the classic rotated side strip).
@@ -186,7 +202,69 @@ public class ArenaDuelScreen extends MatchScreen {
             getStack().hide();
         }
 
-        refreshContextLabel();
+        refreshContextLabels();
+    }
+
+    private void layoutPromptButtons() {
+        if (lastLayout == null) {
+            return;
+        }
+        final ArenaDuelLayout.Rect ctx = lastLayout.get("contextButton");
+        final ArenaDuelLayout.Rect cancel = lastLayout.get("cancelButton");
+        final ArenaDuelLayout.Rect eot = lastLayout.get("passUntilEot");
+        if (ctx != null) {
+            btnContext.setBounds(ctx.x, ctx.y, ctx.w, ctx.h);
+            btnContext.setVisible(true);
+        }
+        if (cancel != null) {
+            btnCancel.setBounds(cancel.x, cancel.y, cancel.w, cancel.h);
+        }
+        if (eot != null) {
+            btnPassUntilEot.setBounds(eot.x, eot.y, eot.w, eot.h);
+            btnPassUntilEot.setVisible(true);
+        }
+    }
+
+    /**
+     * Host both players' phase indicators in the Arena phaseRail band (screen space).
+     */
+    private void layoutPhaseRail() {
+        if (lastLayout == null) {
+            return;
+        }
+        final ArenaDuelLayout.Rect rail = lastLayout.get("phaseRail");
+        final VPlayerPanel top = getTopPlayerPanel();
+        final VPlayerPanel bottom = getBottomPlayerPanel();
+        if (rail == null || top == null || bottom == null) {
+            return;
+        }
+        hostPhaseInRail(top.getPhaseIndicator(), rail, true);
+        hostPhaseInRail(bottom.getPhaseIndicator(), rail, false);
+    }
+
+    private void hostPhaseInRail(final VPhaseIndicator phase, final ArenaDuelLayout.Rect rail,
+            final boolean opponentHalf) {
+        if (phase == null) {
+            return;
+        }
+        if (phase.getParent() != this) {
+            if (phase.getParent() instanceof forge.toolbox.FContainer) {
+                ((forge.toolbox.FContainer) phase.getParent()).remove(phase);
+            }
+            add(phase);
+        }
+        phase.setVisible(true);
+        final boolean landscape = Forge.isLandscapeMode();
+        if (landscape) {
+            final float half = rail.h / 2f;
+            final float y = opponentHalf ? rail.y : rail.y + half;
+            phase.setBounds(rail.x, y, rail.w, half);
+        } else {
+            final float half = rail.w / 2f;
+            final float x = opponentHalf ? rail.x : rail.x + half;
+            phase.setBounds(x, rail.y, half, rail.h);
+        }
+        phase.revalidate();
     }
 
     @Override
@@ -217,6 +295,36 @@ public class ArenaDuelScreen extends MatchScreen {
             scroller.remove(bottom);
             scroller.add(bottom);
         }
+
+        // Panel-local slots: convert screen-space Arena rects into panel space.
+        applyPanelSlots(top, opp,
+                lastLayout.get("opponentAvatar"), lastLayout.get("opponentPiles"),
+                lastLayout.get("opponentField"), null);
+        applyPanelSlots(bottom, player,
+                lastLayout.get("playerAvatar"), lastLayout.get("playerPiles"),
+                lastLayout.get("playerField"), lastLayout.get("playerHand"));
+    }
+
+    private static void applyPanelSlots(final VPlayerPanel panel, final ArenaDuelLayout.Rect area,
+            final ArenaDuelLayout.Rect avatar, final ArenaDuelLayout.Rect piles,
+            final ArenaDuelLayout.Rect field, final ArenaDuelLayout.Rect hand) {
+        if (panel == null || area == null) {
+            return;
+        }
+        panel.applyArenaSlots(
+                toLocal(avatar, area),
+                toLocal(piles, area),
+                toLocal(field, area),
+                hand == null ? null : toLocal(hand, area));
+    }
+
+    private static ArenaDuelLayout.Rect toLocal(final ArenaDuelLayout.Rect screen,
+            final ArenaDuelLayout.Rect area) {
+        if (screen == null) {
+            return null;
+        }
+        return new ArenaDuelLayout.Rect(screen.name,
+                screen.x - area.x, screen.y - area.y, screen.w, screen.h);
     }
 
     @Override
@@ -230,7 +338,7 @@ public class ArenaDuelScreen extends MatchScreen {
         final float h = getHeight();
         g.resetAlphaComposite();
         // Full-bleed opaque plate (in-bounds). Panel plates reinforce each half.
-        g.fillRect(new Color(0.10f, 0.16f, 0.12f, 1f), 0, 0, w, h);
+        g.fillRect(BACKDROP_PLATE, 0, 0, w, h);
         final FSkinTexture matchBG = resolveMatchBackground();
         if (matchBG.getWidth() > 0) {
             g.drawImage(matchBG, 0, 0, w, h);
@@ -263,35 +371,50 @@ public class ArenaDuelScreen extends MatchScreen {
         if (lastLayout != null) {
             final ArenaDuelLayout.Rect centre = lastLayout.get("centreLane");
             if (centre != null) {
-                g.drawRect(Utils.scale(1), new Color(0.75f, 0.70f, 0.40f, 1f),
-                        centre.x, centre.y, centre.w, centre.h);
+                g.drawRect(Utils.scale(1), CENTRE_STROKE, centre.x, centre.y, centre.w, centre.h);
             }
         }
-        refreshContextLabel();
-        if (stackColumn != null && stackColumn.isVisible()) {
+        refreshContextLabels();
+        refreshStackIfChanged(false);
+    }
+
+    private void refreshStackIfChanged(final boolean force) {
+        if (stackColumn == null || !stackColumn.isVisible()) {
+            return;
+        }
+        int size = 0;
+        if (MatchController.instance != null
+                && MatchController.instance.getGameView() != null
+                && MatchController.instance.getGameView().getStack() != null) {
+            size = MatchController.instance.getGameView().getStack().size();
+        }
+        if (force || size != lastStackSize) {
+            lastStackSize = size;
             stackColumn.refresh();
         }
     }
 
-    private void refreshContextLabel() {
+    private void refreshContextLabels() {
         if (btnContext == null) {
             return;
         }
         final VPrompt prompt = getActivePrompt();
         final String ok = prompt == null || prompt.getBtnOk() == null ? null : prompt.getBtnOk().getText();
-        final boolean stackNonEmpty = MatchController.instance != null
-                && MatchController.instance.getGameView() != null
-                && MatchController.instance.getGameView().getStack() != null
-                && !MatchController.instance.getGameView().getStack().isEmpty();
-        final boolean atk = MatchController.instance != null
-                && MatchController.instance.isCombatDeclareAttackersInput();
-        final boolean blk = MatchController.instance != null
-                && MatchController.instance.isCombatDeclareBlockersInput();
-        final ArenaContextActions.ContextKind kind =
-                ArenaContextActions.resolve(ok, stackNonEmpty, atk, blk);
-        btnContext.setText(ArenaContextActions.label(kind));
-        final boolean enabled = prompt != null && prompt.getBtnOk() != null && prompt.getBtnOk().isEnabled();
-        btnContext.setEnabled(enabled);
+        final String cancel = prompt == null || prompt.getBtnCancel() == null
+                ? null : prompt.getBtnCancel().getText();
+        // Use the prompt's own localized labels — do not force Resolve/Pass.
+        btnContext.setText(ok == null || ok.isEmpty() ? "OK" : ok);
+        final boolean okEnabled = prompt != null && prompt.getBtnOk() != null && prompt.getBtnOk().isEnabled();
+        btnContext.setEnabled(okEnabled);
+
+        final boolean cancelVisible = prompt != null && prompt.getBtnCancel() != null
+                && prompt.getBtnCancel().isVisible()
+                && cancel != null && !cancel.isEmpty();
+        btnCancel.setVisible(cancelVisible);
+        if (cancelVisible) {
+            btnCancel.setText(cancel);
+            btnCancel.setEnabled(prompt.getBtnCancel().isEnabled());
+        }
     }
 
     private void onContext(final FEvent e) {
@@ -299,6 +422,14 @@ public class ArenaDuelScreen extends MatchScreen {
                 ? null : MatchController.instance.getGameController();
         if (gc != null) {
             gc.selectButtonOk();
+        }
+    }
+
+    private void onCancel(final FEvent e) {
+        final IGameController gc = MatchController.instance == null
+                ? null : MatchController.instance.getGameController();
+        if (gc != null) {
+            gc.selectButtonCancel();
         }
     }
 
@@ -310,9 +441,21 @@ public class ArenaDuelScreen extends MatchScreen {
         }
     }
 
-    /** Controller: map focus across Arena-only chrome (context / pass-until-EOT). */
+    private static boolean isAlwaysModernMode() {
+        if (FModel.getPreferences() == null) {
+            return false;
+        }
+        final String mode = FModel.getPreferences().getPref(FPref.UI_MODERN_DUEL_SCREEN);
+        return ModernDuelScreen.MODE_ALWAYS.equalsIgnoreCase(mode == null ? "" : mode.trim());
+    }
+
+    /** Controller: map focus across Arena-only chrome (context / cancel / pass-until-EOT). */
     public FDisplayObject arenaContextControl() {
         return btnContext;
+    }
+
+    public FDisplayObject arenaCancelControl() {
+        return btnCancel;
     }
 
     public FDisplayObject arenaPassUntilEotControl() {

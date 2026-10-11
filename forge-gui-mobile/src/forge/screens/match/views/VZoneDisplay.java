@@ -220,10 +220,7 @@ public class VZoneDisplay extends VCardDisplayArea {
     }
 
     private static boolean isArenaDuelScreen() {
-        if (Forge.getCurrentScreen() instanceof forge.screens.match.ArenaDuelScreen) {
-            return true;
-        }
-        return MatchController.getView() != null && MatchController.getView().isArenaDuelScreen();
+        return forge.screens.match.ArenaDuelUi.isActive();
     }
 
     @Override

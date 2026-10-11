@@ -18,18 +18,32 @@
 package forge.screens.match.views;
 
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.utils.Align;
 
+import forge.Forge;
 import forge.Graphics;
 import forge.assets.FSkinFont;
+import forge.assets.FSkinImage;
 import forge.card.CardRenderer;
 import forge.card.CardRenderer.CardStackPosition;
 import forge.card.CardZoom;
 import forge.game.card.CardView;
+import forge.game.player.PlayerView;
 import forge.game.spellability.StackItemView;
+import forge.game.zone.ZoneType;
+import forge.gamemodes.match.YieldUpdate;
+import forge.interfaces.IGameController;
+import forge.menu.FCheckBoxMenuItem;
+import forge.menu.FMenuItem;
+import forge.menu.FPopupMenu;
+import forge.player.AutoYieldStore.TriggerDecision;
 import forge.screens.match.ArenaStackColumnLayout;
 import forge.screens.match.MatchController;
 import forge.toolbox.FContainer;
@@ -40,20 +54,33 @@ import forge.util.collect.FCollectionView;
 /**
  * DS1 always-visible centre stack column (top item largest). Complements the
  * classic {@link VStack} dropdown; prompts without a custom view still fall
- * back to Forge dialogs.
+ * back to Forge dialogs. Tap opens the same auto-yield / always yes-no / yield
+ * menus as {@link VStack}.
  */
 public class VArenaStackColumn extends FContainer {
     private static final FSkinFont LABEL_FONT = FSkinFont.get(11);
+    private static final Color FRAME = new Color(0.85f, 0.75f, 0.35f, 1f);
+    private static final Color PLACEHOLDER = new Color(0.15f, 0.18f, 0.22f, 0.95f);
+
     private final List<StackCard> cards = new ArrayList<>();
+    private StackItemView activeStackInstance;
+    private Map<PlayerView, CardView> playersWithValidTargets;
+    private int lastLaidOutSize = -1;
 
     public void refresh() {
         clear();
         cards.clear();
         if (MatchController.instance == null || MatchController.instance.getGameView() == null) {
+            lastLaidOutSize = 0;
+            restoreOldZones();
+            activeStackInstance = null;
             return;
         }
         final FCollectionView<StackItemView> stack = MatchController.instance.getGameView().getStack();
         if (stack == null || stack.isEmpty()) {
+            lastLaidOutSize = 0;
+            restoreOldZones();
+            activeStackInstance = null;
             return;
         }
         final List<StackItemView> items = new ArrayList<>();
@@ -71,6 +98,47 @@ public class VArenaStackColumn extends FContainer {
             card.setBounds(pose.x, pose.y, pose.w, pose.h);
             cards.add(card);
         }
+        lastLaidOutSize = items.size();
+        if (activeStackInstance == null || !items.contains(activeStackInstance)) {
+            activeStackInstance = items.get(0);
+            restoreOldZones();
+            revealTargetZones();
+        }
+    }
+
+    /** Size of the last built column; used by ArenaDuelScreen to skip per-frame rebuilds. */
+    public int getLaidOutSize() {
+        return lastLaidOutSize;
+    }
+
+    private void revealTargetZones() {
+        if (activeStackInstance == null) {
+            return;
+        }
+        final PlayerView player = MatchController.instance.getCurrentPlayer();
+        final Set<ZoneType> zones = new HashSet<>();
+        playersWithValidTargets = new HashMap<>();
+        final FCollectionView<CardView> targetCards = activeStackInstance.getTargetCards();
+        if (targetCards != null) {
+            for (final CardView c : targetCards) {
+                if (c.getZone() != null) {
+                    zones.add(c.getZone());
+                    playersWithValidTargets.put(c.getController(), c);
+                }
+            }
+        }
+        if (zones.isEmpty() || playersWithValidTargets.isEmpty()) {
+            return;
+        }
+        MatchController.instance.openZones(player, zones, playersWithValidTargets);
+    }
+
+    private void restoreOldZones() {
+        if (playersWithValidTargets == null) {
+            return;
+        }
+        MatchController.instance.restoreOldZones(playersWithValidTargets);
+        playersWithValidTargets = null;
     }
 
     @Override
@@ -86,10 +154,10 @@ public class VArenaStackColumn extends FContainer {
         // Frame only — no fill. The FieldScroller centre-gap seal paints the match
         // backdrop behind this column; a solid plate read as a black void in landscape.
         g.resetAlphaComposite();
-        g.drawRect(Utils.scale(1), new Color(0.85f, 0.75f, 0.35f, 1f), 0, 0, getWidth(), getHeight());
+        g.drawRect(Utils.scale(1), FRAME, 0, 0, getWidth(), getHeight());
     }
 
-    private static final class StackCard extends FDisplayObject {
+    private final class StackCard extends FDisplayObject {
         private final StackItemView item;
 
         StackCard(final StackItemView item) {
@@ -102,7 +170,7 @@ public class VArenaStackColumn extends FContainer {
             if (source != null) {
                 CardRenderer.drawCard(g, source, 0, 0, getWidth(), getHeight(), CardStackPosition.Top, false);
             } else {
-                g.fillRect(new Color(0.15f, 0.18f, 0.22f, 0.95f), 0, 0, getWidth(), getHeight());
+                g.fillRect(PLACEHOLDER, 0, 0, getWidth(), getHeight());
             }
             final String text = item.getText() == null ? "" : item.getText();
             final String shortText = text.length() > 48 ? text.substring(0, 45) + "…" : text;
@@ -114,10 +182,74 @@ public class VArenaStackColumn extends FContainer {
 
         @Override
         public boolean tap(final float x, final float y, final int count) {
+            if (activeStackInstance != item) {
+                activeStackInstance = item;
+                restoreOldZones();
+                revealTargetZones();
+                return true;
+            }
+            final IGameController controller = MatchController.instance.getGameController();
+            final PlayerView player = MatchController.instance.getCurrentPlayer();
+            final CardView sourceCard = item.getSourceCard();
+            // Tap on the left art band → zoom; elsewhere → classic VStack menus.
+            final boolean onArt = x < getWidth() * 0.42f;
+            if (onArt && sourceCard != null) {
+                CardZoom.show(sourceCard);
+                return true;
+            }
+            if (player == null) {
+                if (sourceCard != null) {
+                    CardZoom.show(sourceCard);
+                }
+                return true;
+            }
+            final FPopupMenu menu = new FPopupMenu() {
+                @Override
+                protected void buildMenu() {
+                    if (item.isAbility()) {
+                        final String key = item.getKey();
+                        final boolean autoYield = controller.shouldAutoYield(key);
+                        addItem(new FCheckBoxMenuItem(Forge.getLocalizer().getMessage("cbpAutoYieldMode"), autoYield,
+                                e -> {
+                                    boolean abilityScope = controller.getYieldController().isAbilityScope();
+                                    controller.setShouldAutoYield(key, !autoYield, abilityScope);
+                                }));
+                        if (item.isOptionalTrigger() && item.getActivatingPlayer().equals(player)) {
+                            if (!key.isEmpty()) {
+                                final boolean abilityScope = controller.getYieldController().isAbilityScope();
+                                addItem(new FCheckBoxMenuItem(Forge.getLocalizer().getMessage("lblAlwaysYes"),
+                                        controller.getTriggerDecision(key) == TriggerDecision.ACCEPT,
+                                        e -> controller.setTriggerDecision(key,
+                                                controller.getTriggerDecision(key) == TriggerDecision.ACCEPT
+                                                        ? TriggerDecision.ASK : TriggerDecision.ACCEPT,
+                                                abilityScope)));
+                                addItem(new FCheckBoxMenuItem(Forge.getLocalizer().getMessage("lblAlwaysNo"),
+                                        controller.getTriggerDecision(key) == TriggerDecision.DECLINE,
+                                        e -> controller.setTriggerDecision(key,
+                                                controller.getTriggerDecision(key) == TriggerDecision.DECLINE
+                                                        ? TriggerDecision.ASK : TriggerDecision.DECLINE,
+                                                abilityScope)));
+                            }
+                        }
+                    }
+                    addItem(new FMenuItem(Forge.getLocalizer().getMessage("lblYieldToStack"),
+                            Forge.hdbuttons ? FSkinImage.HDYIELD : FSkinImage.WARNING,
+                            e -> controller.sendYieldUpdate(new YieldUpdate.StackYield(player, true, true))));
+                    addItem(new FMenuItem(Forge.getLocalizer().getMessage("lblYieldToEntireStack"),
+                            Forge.hdbuttons ? FSkinImage.HDYIELD : FSkinImage.WARNING,
+                            e -> controller.sendYieldUpdate(new YieldUpdate.StackYield(player, true, false))));
+                    addItem(new FMenuItem(Forge.getLocalizer().getMessage("lblZoomOrDetails"),
+                            e -> CardZoom.show(item.getSourceCard())));
+                }
+            };
+            menu.show(this, x, y);
+            return true;
+        }
+
+        @Override
+        public boolean longPress(final float x, final float y) {
             final CardView source = item.getSourceCard();
             if (source != null) {
-                // Tap opens zoom (peek). Right-click stays no-op here (DS3: CardZoom
-                // only on card panels). Activation still goes through prompts / OK.
                 CardZoom.show(source);
             }
             return true;

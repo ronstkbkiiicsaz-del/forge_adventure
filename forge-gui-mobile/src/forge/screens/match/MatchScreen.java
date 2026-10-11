@@ -1174,8 +1174,7 @@ public class MatchScreen extends FScreen {
             // DS1 Arena: always paint a full-bleed match backdrop inside the scroller
             // (before the classic UI_MATCH_IMAGE_VISIBLE early-return). Classic midField
             // geometry leaves wide landscape lanes empty otherwise.
-            final boolean arenaDuel = (Forge.getCurrentScreen() instanceof ArenaDuelScreen)
-                    || (MatchController.getView() != null && MatchController.getView().isArenaDuelScreen());
+            final boolean arenaDuel = ArenaDuelUi.isActive();
             if (arenaDuel) {
                 FSkinTexture arenaBG = Forge.isMobileAdventureMode ? currentBG : FSkinTexture.BG_MATCH;
                 if (!Forge.isMobileAdventureMode && daytime != null) {
@@ -1268,51 +1267,35 @@ public class MatchScreen extends FScreen {
         //auto adjust zoom for local multiplayer landscape mode
         List<VPlayerPanel> losers = new ArrayList<>();
 
+        private static final Color ARENA_SEAL_PLATE = new Color(0.10f, 0.16f, 0.12f, 1f);
+
         @Override
         public void drawOverlay(Graphics g) {
-            // DS1 Arena: re-seal the centre band between panels with a stretched match
-            // plate (same treatment as each VPlayerPanel backdrop) so landscape doesn't
-            // leave a flat void between the two halves. Stack column draws above.
-            final boolean arenaSeal = (Forge.getCurrentScreen() instanceof ArenaDuelScreen)
-                    || (MatchController.getView() != null && MatchController.getView().isArenaDuelScreen());
-            if (arenaSeal
+            // DS1 Arena: seal only the empty centre band between player panels.
+            // Do not paint over field/hand cards (that required the old reseal
+            // double-draw which hid taps / P/T / counters / highlights). Panel
+            // backdrops + scroller drawBackground already cover each half.
+            if (ArenaDuelUi.isActive()
                     && topPlayerPanel != null && bottomPlayerPanel != null) {
-                // Full-scroller opaque plate after children. Panel/row clips can zero FBO
-                // alpha in the other half; this pass restores one continuous backdrop, then
-                // re-paints battlefield + hand cards on top using screenPos from the main pass.
                 final float aw = getWidth();
-                final float ah = getHeight();
-                final FSkinTexture arenaBG = FSkinTexture.ADV_BG_MATCH.getWidth() > 0
-                        ? FSkinTexture.ADV_BG_MATCH : FSkinTexture.BG_MATCH;
-                g.resetAlphaComposite();
-                // Map the upper half of ADV_BG_MATCH (sky/trees) across the whole
-                // scroller so the local field is not the plate's dark water band.
-                // Safe here: scroller-local overlay blit, not a flipped child panel.
-                g.fillRect(new Color(0.10f, 0.16f, 0.12f, 1f), 0, 0, aw, ah);
-                if (arenaBG.getWidth() > 0) {
-                    g.startClip(0, 0, aw, ah);
+                final float gapY = topPlayerPanel.getBottom();
+                final float gapH = bottomPlayerPanel.getTop() - gapY;
+                if (gapH > 1f) {
+                    final FSkinTexture arenaBG = FSkinTexture.ADV_BG_MATCH.getWidth() > 0
+                            ? FSkinTexture.ADV_BG_MATCH : FSkinTexture.BG_MATCH;
+                    g.resetAlphaComposite();
+                    g.startClip(0, gapY, aw, gapH);
                     try {
-                        g.drawImage(arenaBG, 0, 0, aw, ah / 0.50f);
+                        g.fillRect(ARENA_SEAL_PLATE, 0, gapY, aw, gapH);
+                        if (arenaBG.getWidth() > 0) {
+                            final float ah = getHeight();
+                            g.drawImage(arenaBG, 0, 0, aw, ah / 0.50f);
+                        }
                     } finally {
                         g.endClip();
                     }
+                    g.resetAlphaComposite();
                 }
-                final forge.screens.match.views.VZoneDisplay hand =
-                        bottomPlayerPanel.getZoneDisplay(ZoneType.Hand);
-                if (hand != null && hand.isVisible() && hand.getHeight() > 1f) {
-                    g.fillRect(new Color(0.16f, 0.18f, 0.22f, 1f),
-                            bottomPlayerPanel.getLeft() + hand.getLeft(),
-                            bottomPlayerPanel.getTop() + hand.getTop(),
-                            hand.getWidth(), hand.getHeight());
-                }
-                resealArenaCards(g, topPlayerPanel);
-                resealArenaCards(g, bottomPlayerPanel);
-                if (hand != null && hand.isVisible()) {
-                    for (final CardAreaPanel cp : hand.getCardPanels()) {
-                        resealArenaCard(g, cp);
-                    }
-                }
-                g.resetAlphaComposite();
             }
             if (Forge.isLandscapeMode()) {
                 if (playerPanelsList.size() > 2) {
@@ -1373,30 +1356,6 @@ public class MatchScreen extends FScreen {
                 y = bottomPlayerPanel.getTop() + bottomPlayerPanel.getField().getHeight();
                 g.drawLine(1, getBorderColor(), x, y, w, y);
             }
-        }
-
-        private void resealArenaCards(final Graphics g, final VPlayerPanel panel) {
-            if (panel == null || panel.getField() == null) {
-                return;
-            }
-            for (final CardAreaPanel cp : panel.getField().getCardPanels()) {
-                resealArenaCard(g, cp);
-            }
-        }
-
-        private void resealArenaCard(final Graphics g, final CardAreaPanel cp) {
-            if (cp == null || !cp.isVisible() || cp.getCard() == null) {
-                return;
-            }
-            final float cw = cp.screenPos.width;
-            final float ch = cp.screenPos.height;
-            if (cw <= 1f || ch <= 1f) {
-                return;
-            }
-            // screenPos was set during the main child pass; convert into scroller space.
-            final float x = cp.screenPos.x - screenPos.x;
-            final float y = cp.screenPos.y - screenPos.y;
-            CardRenderer.drawCard(g, cp.getCard(), x, y, cw, ch, CardStackPosition.Top, false);
         }
 
         protected ScrollBounds layoutAndGetScrollBounds(float visibleWidth, float visibleHeight) {
