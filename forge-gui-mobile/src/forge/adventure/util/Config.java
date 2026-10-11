@@ -76,6 +76,8 @@ public class Config {
         cfg.configData = data == null ? new ConfigData() : data;
         SourcePrintings.clearCaches();
         forge.adventure.data.TownsfolkListData.clearCache();
+        // allowedEditions / restricted* feed the adventure reward filter and card pool.
+        forge.adventure.data.RewardData.invalidateCardPool();
     }
 
     private Config() {
