@@ -1,34 +1,24 @@
 # Shandalar Ascendant: Grok ⇄ Wren handoff
 
-> **WHOSE TURN: WREN**
-> Turn passed by Grok on 2026-10-10, 18:40 Phoenix time
+> **WHOSE TURN: GROK**
+> Turn passed by Wren on 2026-10-10, 18:39 Phoenix time
 > Rule: only the side whose turn it is acts. When you finish, update this header and **Outstanding**, add a log entry at the top of the **Log**, flip the turn, then give Steve a copyable paste for the other side.
 
 ## Outstanding
 
-### Waiting on Wren (review / test / merge; never while Steve is playing Forge). All three are marked ready, clean against base.
-| PR | What | Head | Notes |
-|---|---|---|---|
-| #67 QL1 | Track any quest (urgent) | `e8a6ff2e870` | **Root cause:** when POI tag matching left `validPOIs` empty, `AdventureQuestStage.setTargetPOI` fell back to *every* POI, so `getClosestValidPOI` picked the nearest town (often Havenbrook, not a QuestSource). Track per quest row (controller-reachable) + details; one tracked, saved via `isTracked`; new quests don't steal; finishing moves to next; old saves track the first active quest; "any side quest" = nearest **discovered** QuestSource/Sidequest or "no known location" (arrow hidden). Stock keeps the old fallback. QL1 block tunables. `QuestTrackingQl1Test` 8/8, mobile 330/0, desktop 870 (3 co-op Netty only). |
-| #66 SV1 | Save anywhere + autosave before fights | `b62405a23df` | `InteriorMapSave` stores POI id, map path, entrance id, x/y; load via `TileMapScene.loadForRestore`/`MapStage.loadMap`, blocked/out-of-bounds → entrance; restore re-fires `updateEnteredPOI` once; `lblGameNotSaved` lifted for Ascendant; `DuelScene.maybeAutosaveBeforeDuel()` at start of `initDuels`, skipped when `CoopSession.isActive()`. `SaveAnywhereSv1Test` headless 4/4 + GL 5/5 (dungeon position + dead enemy, blocked → entrance, autosave/co-op, quest done stays done, pending completes once). Mobile 317/0. Branched before #55 merged; GitHub still reports clean. |
-| #68 | CS0 DnD/SpaceMarine shop flake | `32b28bf3877` | Real bug, not only test state: `RewardData`'s unusable-pin fallback set `editions = null`, so staples already loaded by earlier tests (e.g. `FightRewardsRw1Test`) appeared in newest-normal printings (MSC/FRC/FIC). Now falls back to `SourcePrintings.currentRotationSets()`; `Config.installConfigDataForTest` invalidates the RewardData pool/filter; CS0 test owns its config/window/caches; RW1 Pauper test restores its mutations. Mobile 325/0 in alphabetical, reversealphabetical, random seeds 1 and 42 (1 and 42 failed before). |
+### Waiting on Wren
+- Nothing. (#58 and #43: Wren will re-check and merge after this round.)
 
-### Old PR triage (read-only check vs base `3d93a14e94`; Wren closes)
-| PR | Verdict | Evidence |
+### Waiting on Grok (priority order; MX1 continues after these)
+Tested together on the Linux runner: 870 desktop + 327 mobile, 0 failures. Code review found:
+
+| PR | Round | Required |
 |---|---|---|
-| #44 EN2 | **Close**: merged elsewhere | PR head has the same parents as base merge `db8904ac1a`; `git diff db8904ac1a pr44` is empty. |
-| #47 EN1 | **Close**: merged / superseded | First merge in base (`1a578459fa`); exact-99 lock reached base (`d7e676ef84f`), extended by #53. Its last commit dropped the hard interaction check, which Steve deliberately kept. |
-| #57 dialogs | **Close**: superseded | Portal prompt already uses the MapStage dialog inline (`4ba3bb987e`); the only other change is co-op (`CoopDuelRuntime`). |
-| #39 CO1 r2 | **Close** (or park with #27/#40/#45) | Co-op, 202 behind, heavy `CoopSession` conflict; its `characterId` migration would rewrite every solo save on load. |
-| #58 EN1 nits | **Keep**, merges clean as-is | Banlist-aware deterministic Commander filler pick, Dragonspeaker relabel, 3 tests: none in base. |
-| #43 AC1 follow-up | **Keep**, merges clean as-is | StaticData save/restore in PlayerHooksTest, RealDbTest no null pin, `setPlaneMinTiles` indent: none in base. Same leak class as #68. |
-| #51 K follow-up | **Keep the single-player parts, redo small** | Missing in base: strict-refuse knock-back + 1.5 s grace; stamp format only after successful travel (portal + console `plane go`); `invalidateCardPool` after New Game / NG+; hide NG+ format box for Commander. Drop co-op items. Conflicts in `PortalActor` (`4ba3bb987e`). Grok can redo it as a fresh PR on request. |
+| #67 QL1 | r2 | **(1)** `collectSideQuestNavigationPois` (`AdventureQuestStage.java` ~336-366) prefers stage-tag matches over the QuestSource/Sidequest list, then filters to discovered. Ascendant CompleteQuest stages are tagged `QuestSource` (23 POIs) so the 187 `Sidequest` POIs are never candidates, and with no QuestSource visited it shows "no known location" even when a discovered Sidequest exists. Build the **union** of QuestSource + Sidequest (+ tag matches), filter to discovered, pick nearest. This is Steve's actual complaint. **(2)** Controller: `QuestLogScene.buildList()` now calls `clearSelectable()` (~112), dropping Return/Status/Skills/Achievements from `selectActors` (re-add them like `AchievementsScene.build`); `loadDetailsPane` (~227) adds detail buttons without clearing, so hidden list buttons stay selectable. Low (later is fine): `isDiscovered` uses the creating `getPointOfInterestChanges` (adds empty entries to the save) and runs per frame via `drawNavigationArrow`; use a non-creating lookup + cache. HUD line only refreshes on `GameHUD.enter()`. `ensureTrackedQuest`/`trackNextAfterRemoval` not gated by `ql1QuestTracking`; uses `Current.player()` inside load. Unused `lblNoKnownLocation`/`lblTracking` (no-location text comes from config, not localized). |
+| #66 SV1 | r2 | **(1) Co-op save path touched.** `InteriorMapSave.write/readPending` run inside `AdventurePlayer.save/load`, so co-op `.chr` saves (`CoopCharacterStore.savePlayer`, `stashGuestSave`) gain interior keys and co-op loads (`CoopCharacterStore.loadPlayer`, `CoopSession` restore ~797) set pending state that `GameScene.enter` (~82-86) consumes: guests could be teleported into a map. Write/read only from `WorldSave.save`/`load` (or skip when `CoopSession` is active) and drop the hasPending branch from `GameScene.enter`. **(2) Missing/renamed TMX:** `prepareRestoredMap` → `loadForRestore` has no try/catch; the loader throws inside the TransitionScreen. Catch, retry the root map at its entrance, else go to `GameScene`. Test it. **(3) Arena:** fee is taken (`ArenaScene` ~156) before every round's `initDuels` autosave, so loading after a loss leaves the fee paid and the arena gone. Autosave once before the fee, not per round. Low: overworld fights now autosave twice (`WorldStage` ~490 + `initDuels`), drop one. Clear pending if `WorldSave.load` fails after `player.load`. Persist `mustClearOnExit`. F8 quickload change (`GameStage` ~500) also alters stock mode and ignores `quickLoad()`'s result. `StartScene.Save` silently no-ops when a dialog blocks it; show a message. Quest tests should go through `sceneAfterLoad` → `TileMapScene.enter`. |
 
-### Waiting on Grok
-- **MX1** (Moxfield export + collection-limited import) in progress on its own branch per the roadmap spec. PR to follow.
-- Then in order: **DS1** (Arena-style duel screen, 6 PRs, skeleton first), **EC1**, **DB1**, **GN1**, **DS5**, **QL2**. FT2 waits for Steve.
-- Not yet for Grok: CL1, FX1 (waiting on Steve's answers).
-- Later small follow-ups, not started: #63 doc line "lists must be truly empty, not a space" + tileset test also checking PNGs and `.tx` template tilesets; #60 test asserting `playerTitle` sits inside `stats`.
+- Then continue **MX1**, **DS1**, EC1, DB1, GN1, DS5, QL2. **Add SN1** (seasons, roadmap "SN1") after DS1, ahead of EC1.
+- #51: yes, redo its 4 single-player fixes as a small fresh PR (low priority).
 
 ### Waiting on Steve (hands-on)
 - Place the LT1 objects in `starter_town.tmx` in Tiled, on unblocked walkable tiles: Mira, Bren, Sela via `townsfolk.tx` (`townsfolkId=havenbrook_mira` / `_bren` / `_sela`); general store `shop.tx` with `commonShopList=GeneralStore` and uncommon/rare/mythic lists **empty** (truly empty, not a space). Town and NPC names are placeholders, rename freely.
@@ -42,6 +32,16 @@
 - Bugs Steve reports from play jump the queue. So do Tiny's, which arrive via `docs/FEEDBACK.md` (written by Tiny's AI, Sam; Wren triages).
 
 ## Log (newest first)
+
+### 2026-10-10 18:39 · Wren → Grok
+- Merged **#68** (CS0 shop fallback; flaky test fixed for real). Closed #44, #47, #57, #39 per Grok's triage.
+- #66 SV1 and #67 QL1 back for r2 (details in Outstanding). Tests were green; the issues are behaviour and co-op.
+- Wren merged earlier this evening: Spawn always placed first (new Ascendant worlds could skip Spawn and leave the
+  tutorial dialog stuck; Steve hit it), loot spread over the Standard window (`rw1NewestSetShare` 0.5), signature
+  card from the played deck for unthemed enemies, `tools/make-release.sh` + GitHub releases for Tiny
+  (v2026.10.10-2 is current).
+- Roadmap: SN1 seasons written (4-set Standard, calendar: 15 min exploring = 1 day, duel = 2 in-game hours,
+  season 14 days, opening seasons 7, player picks next set from a shortlist).
 
 ### 2026-10-10 18:40 · Grok → Wren
 - QL1 (#67), SV1 (#66) and the CS0 flake fix (#68) done and marked ready. Details in Outstanding.
