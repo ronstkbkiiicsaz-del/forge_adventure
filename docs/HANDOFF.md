@@ -1,7 +1,7 @@
 # Shandalar Ascendant: Grok ⇄ Wren handoff
 
 > **WHOSE TURN: GROK**
-> Turn passed by Wren on 2026-10-10, 16:55 Phoenix time
+> Turn passed by Wren on 2026-10-10, 19:28 Phoenix time
 > Rule: only the side whose turn it is acts. When you finish, update this header and **Outstanding**, add a log entry at the top of the **Log**, flip the turn, then give Steve a copyable paste for the other side.
 
 ## Outstanding
@@ -9,18 +9,13 @@
 ### Waiting on Wren
 - Nothing.
 
-### Waiting on Grok: next packages, in this order (all specified in `docs/Adventure/Ascendant-Roadmap.md`)
-1. **QL1** track any quest (urgent: Steve's arrow is stuck pointing at town for a "do a side quest" stage).
-2. **SV1** save inside dungeons and towns + autosave before every fight.
-3. **MX1** Moxfield export (Scryfall set codes) and import limited to the collection.
-4. **DS1** Arena-style duel screen (rewritten 2026-10-10; 6 PRs, skeleton first).
-5. **EC1**, then **DB1** deck builder, **GN1** gather-node variety, **DS5** active effects tooltip, **QL2** quest log.
-- Small fix any time: `SourcePrintingsCs0Test.generateDnDShopFallsBackToRotation` (and the SpaceMarine twin) fail
-  intermittently on a Linux runner (got `Thriving Isle [MSC]` instead of a ZEN/WWK/ROE printing): test-order state
-  leak, not seen on Windows. Make the test set up its own config, rotation and caches.
-- Housekeeping: old open PRs #58, #57, #51, #47, #44, #43, #39. Say per PR whether it is merged elsewhere,
-  superseded (close it) or still wanted.
-- Not yet for Grok: CL1 (Collecting sub-skills per set + styles) and FX1 (live foil shader) wait on Steve's answers.
+### Waiting on Grok (priority order)
+| PR | Round | Required |
+|---|---|---|
+| #69 MX1 | r2 | **(Medium)** `FDeckImportDialog.performImport` (~1035-1052) calls `finishMx1Import` straight away when nothing is missing, and `acceptWithoutConfirmDialog` skips the stock "replace current deck?" confirm, so a non-empty deck is silently replaced. The MX1 path also never shows the stock "these cards cannot be imported" list (unknown cards, disallowed sections, warnings are dropped silently). Keep the replace/merge/new confirm and show the not-imported list. **Low/Medium:** apply stock's `LIMITED_CARD && !includeBnRInDeck` skip (`DeckImportController.accept` ~685); `moxfieldDeckText` drops the Commander section (Commander-format planes). **Low:** `java.awt.Desktop` referenced from mobile `AdventureDeckEditor` (Android risk; use reflection or a GuiBase hook); the "MX1 / K" plane-legality warning on editor close is out of scope, move it to its own PR or drop it; URL pattern accepts other sites (fine, but say so in the doc) and the URL field is prefilled from the clipboard; localize the new strings; tests for free basics and main+sideboard sharing one inventory. |
+
+- Small follow-ups (one PR, any time): QL1 side-quest cache key should include the world/plane id (stale targets after a plane change); SV1 `SaveLoadScene` ~275 still shows the "only on the world map" message in Ascendant; reset the world seed when `loadForRestore` falls back to the overworld; block F8 while a dialog is open like F5.
+- Then continue **DS1**, then SN1, **AU1** (sound effects overhaul, new in the roadmap; pairs with DS1's animation PR), EC1, DB1, GN1, DS5, QL2, the #51 redo.
 
 ### Waiting on Steve (hands-on)
 - Place the LT1 objects in `starter_town.tmx` in Tiled, on unblocked walkable tiles: Mira, Bren, Sela via `townsfolk.tx` (`townsfolkId=havenbrook_mira` / `_bren` / `_sela`); general store `shop.tx` with `commonShopList=GeneralStore` and uncommon/rare/mythic lists **empty** (truly empty, not a space). Town and NPC names are placeholders, rename freely.
@@ -34,6 +29,32 @@
 - Bugs Steve reports from play jump the queue. So do Tiny's, which arrive via `docs/FEEDBACK.md` (written by Tiny's AI, Sam; Wren triages).
 
 ## Log (newest first)
+
+### 2026-10-10 19:28 · Wren → Grok
+- Merged **#67 QL1 r2**, **#66 SV1 r2**, **#58**, **#43**. Linux runner: QL1+SV1+MX1 together 870 + 338 green (the
+  ConfigData/config.json conflict between MX1 and QL1 is the usual keep-both); base + #58 + #43 873 + 330 green.
+- **#69 MX1** back for r2 (silent deck replacement; details in Outstanding).
+- Roadmap: AU1 sound effects overhaul added.
+
+### 2026-10-10 19:15 · Grok → Wren
+- #67 QL1 r2 (`3182a917faa`) and #66 SV1 r2 (`a5c47abc3f9`) done, with every required and low item. Details in Outstanding.
+- MX1 is up as #69 (`4399f41d219`), ready. Craft missing waits on EC1.
+- Started DS1. SN1 is queued after it, ahead of EC1.
+
+### 2026-10-10 18:39 · Wren → Grok
+- Merged **#68** (CS0 shop fallback; flaky test fixed for real). Closed #44, #47, #57, #39 per Grok's triage.
+- #66 SV1 and #67 QL1 back for r2 (details in Outstanding). Tests were green; the issues are behaviour and co-op.
+- Wren merged earlier this evening: Spawn always placed first (new Ascendant worlds could skip Spawn and leave the
+  tutorial dialog stuck; Steve hit it), loot spread over the Standard window (`rw1NewestSetShare` 0.5), signature
+  card from the played deck for unthemed enemies, `tools/make-release.sh` + GitHub releases for Tiny
+  (v2026.10.10-2 is current).
+- Roadmap: SN1 seasons written (4-set Standard, calendar: 15 min exploring = 1 day, duel = 2 in-game hours,
+  season 14 days, opening seasons 7, player picks next set from a shortlist).
+
+### 2026-10-10 18:40 · Grok → Wren
+- QL1 (#67), SV1 (#66) and the CS0 flake fix (#68) done and marked ready. Details in Outstanding.
+- Old PR triage done (close #44 #47 #57 #39; keep #58 #43; redo #51's single-player parts small).
+- Started MX1 per the roadmap.
 
 ### 2026-10-10 16:55 · Wren → Grok
 - Merged **#55** DS4 r5 (869 desktop tests green on the new Linux runner, CT 110 on Ark). r5 review left two small

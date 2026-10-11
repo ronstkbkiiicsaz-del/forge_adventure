@@ -300,17 +300,53 @@ public class MapViewScene extends UIScene {
         miniMapPlayer.setPosition(avatarX, avatarY);
         miniMapPlayer.layout();
         scroll.scrollTo(avatarX, avatarY, miniMapPlayer.getWidth(), miniMapPlayer.getHeight(), true, true);
-        for (AdventureQuestData adq : Current.player().getQuests()) {
-            PointOfInterest poi = adq.getTargetPOI();
-            if (poi != null) {
-                if (positions.contains(poi.getPosition()))
-                    continue; //don't map duplicate position to prevent stacking
-                TypingLabel label = Controls.newTypingLabel("[+GPS][%?BLACKEN] " + adq.name);
+        // QL1: map marker follows the tracked quest only (arrow + HUD line do the same).
+        AdventureQuestData tracked = forge.adventure.util.AdventureQuestController.getTrackedQuest();
+        if (tracked != null) {
+            forge.adventure.util.QuestNavigationTarget nav = tracked.resolveNavigationTarget(
+                    WorldStage.getInstance().getPlayerSprite().getCenter());
+            if (nav != null && nav.hasPoi()) {
+                PointOfInterest poi = nav.poi;
+                if (!positions.contains(poi.getPosition())) {
+                    TypingLabel label = Controls.newTypingLabel("[+GPS][%?BLACKEN] " + tracked.name);
+                    labels.add(label);
+                    table.addActor(label);
+                    label.setPosition(getMapX(poi.getPosition().x) - label.getWidth() / 2,
+                            getMapY(poi.getPosition().y) - label.getHeight() / 2);
+                    label.skipToTheEnd();
+                    positions.add(poi.getPosition());
+                }
+            } else if (nav != null && nav.noKnownLocation) {
+                TypingLabel label = Controls.newTypingLabel("[+GPS][%?BLACKEN] " + nav.hudLine);
                 labels.add(label);
                 table.addActor(label);
-                label.setPosition(getMapX(poi.getPosition().x) - label.getWidth() / 2, getMapY(poi.getPosition().y) - label.getHeight() / 2);
+                label.setPosition(avatarX, avatarY + miniMapPlayer.getHeight());
                 label.skipToTheEnd();
-                positions.add(poi.getPosition());
+            } else {
+                PointOfInterest poi = tracked.getTargetPOI();
+                if (poi != null && !positions.contains(poi.getPosition())) {
+                    TypingLabel label = Controls.newTypingLabel("[+GPS][%?BLACKEN] " + tracked.name);
+                    labels.add(label);
+                    table.addActor(label);
+                    label.setPosition(getMapX(poi.getPosition().x) - label.getWidth() / 2,
+                            getMapY(poi.getPosition().y) - label.getHeight() / 2);
+                    label.skipToTheEnd();
+                    positions.add(poi.getPosition());
+                }
+            }
+        } else if (!forge.adventure.util.Config.ql1QuestTracking()) {
+            for (AdventureQuestData adq : Current.player().getQuests()) {
+                PointOfInterest poi = adq.getTargetPOI();
+                if (poi != null) {
+                    if (positions.contains(poi.getPosition()))
+                        continue; //don't map duplicate position to prevent stacking
+                    TypingLabel label = Controls.newTypingLabel("[+GPS][%?BLACKEN] " + adq.name);
+                    labels.add(label);
+                    table.addActor(label);
+                    label.setPosition(getMapX(poi.getPosition().x) - label.getWidth() / 2, getMapY(poi.getPosition().y) - label.getHeight() / 2);
+                    label.skipToTheEnd();
+                    positions.add(poi.getPosition());
+                }
             }
         }
         for (PointOfInterest poi : bookmark) {

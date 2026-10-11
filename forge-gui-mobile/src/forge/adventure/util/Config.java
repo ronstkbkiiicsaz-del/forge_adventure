@@ -76,6 +76,8 @@ public class Config {
         cfg.configData = data == null ? new ConfigData() : data;
         SourcePrintings.clearCaches();
         forge.adventure.data.TownsfolkListData.clearCache();
+        // allowedEditions / restricted* feed the adventure reward filter and card pool.
+        forge.adventure.data.RewardData.invalidateCardPool();
     }
 
     private Config() {
@@ -174,6 +176,11 @@ public class Config {
     /** True when the current world uses the Shandalar Ascendant rules (skills, rotation, vaults, sealed start...). */
     public static boolean ascendant() {
         return instance().configData != null && instance().configData.ascendantRules;
+    }
+
+    /** QL1: Ascendant quest-tracking behaviour (Track button, discovered side-quest targets). */
+    public static boolean ql1QuestTracking() {
+        return ascendant() && instance().configData != null && instance().configData.ql1QuestTracking;
     }
 
     // Push the plane's allowed/restricted editions and restricted token pairs into TokenDb.
