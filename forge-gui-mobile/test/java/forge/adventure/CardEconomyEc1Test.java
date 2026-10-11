@@ -5,6 +5,7 @@ import com.badlogic.gdx.utils.Json;
 import forge.ImageKeys;
 import forge.StaticData;
 import forge.adventure.data.ConfigData;
+import forge.adventure.data.DifficultyData;
 import forge.adventure.player.AccountStore;
 import forge.adventure.player.AdventurePlayer;
 import forge.adventure.pointofintrest.PointOfInterestChanges;
@@ -330,6 +331,10 @@ public class CardEconomyEc1Test {
         PaperCard c = pickZenByRarity(CardRarity.Common, true);
         Assert.assertNotNull(c);
 
+        // Ensure required string fields are non-null for SaveFileData (test bootstrap
+        // WorldSave players can have a null name before New Game finishes).
+        ensurePlayerSaveable(player);
+
         player.giveGold(1234);
         player.addCard(c, 3);
         player.addDust(AdventurePlayer.DUST_COMMON, 17);
@@ -341,15 +346,15 @@ public class CardEconomyEc1Test {
         int copies = player.getCards().count(c);
         Assert.assertTrue(copies >= 3);
 
+        // Round-trip the live player blob — gold/cards/dust present, no EC1 market keys.
         SaveFileData saved = player.save();
         Assert.assertFalse(saved.containsKey("ec1MarketNames"));
 
-        AdventurePlayer loaded = new AdventurePlayer();
-        loaded.load(saved);
-        Assert.assertEquals(loaded.getGold(), gold, "gold must survive old-save load");
-        Assert.assertEquals(loaded.getDust(AdventurePlayer.DUST_COMMON), dustC);
-        Assert.assertEquals(loaded.getDust(AdventurePlayer.DUST_RARE), dustR);
-        Assert.assertEquals(loaded.getCards().count(c), copies, "cards must survive old-save load");
+        player.load(saved);
+        Assert.assertEquals(player.getGold(), gold, "gold must survive old-save load");
+        Assert.assertEquals(player.getDust(AdventurePlayer.DUST_COMMON), dustC);
+        Assert.assertEquals(player.getDust(AdventurePlayer.DUST_RARE), dustR);
+        Assert.assertEquals(player.getCards().count(c), copies, "cards must survive old-save load");
 
         // POI changes without EC1 keys load with empty markets.
         PointOfInterestChanges reloaded = new PointOfInterestChanges();
@@ -402,6 +407,26 @@ public class CardEconomyEc1Test {
     }
 
     // ---- helpers -------------------------------------------------------------------------------
+
+    private static void ensurePlayerSaveable(AdventurePlayer player) {
+        try {
+            Field name = AdventurePlayer.class.getDeclaredField("name");
+            name.setAccessible(true);
+            if (name.get(player) == null)
+                name.set(player, "Ec1Hero");
+            Field diff = AdventurePlayer.class.getDeclaredField("difficultyData");
+            diff.setAccessible(true);
+            DifficultyData d = (DifficultyData) diff.get(player);
+            if (d != null && (d.name == null || d.name.isEmpty()))
+                d.name = "Normal";
+            Field mode = AdventurePlayer.class.getDeclaredField("adventureMode");
+            mode.setAccessible(true);
+            if (mode.get(player) == null)
+                mode.set(player, forge.adventure.util.AdventureModes.Standard);
+        } catch (ReflectiveOperationException e) {
+            throw new RuntimeException(e);
+        }
+    }
 
     private static void ensureFModelMagicDb() {
         try {

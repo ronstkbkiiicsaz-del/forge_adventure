@@ -651,8 +651,13 @@ public class ConfigData {
      * Draft-rank multiplier band. Top-ranked cards in a set approach {@link #ec1RankMultMax};
      * bottom-ranked approach {@link #ec1RankMultMin}. Unranked cards use 1.0.
      */
-    public float ec1RankMultMin = 0.5f;
-    public float ec1RankMultMax = 3.0f;
+    /** Bottom of the band (weakest ranked card in its set). */
+    public float ec1RankMultMin = 0.4f;
+    /**
+     * Top of the band (strongest ranked card). Wide enough that a top common can
+     * outprice a bottom rare: {@code baseCommon × max > baseRare × min}.
+     */
+    public float ec1RankMultMax = 3.5f;
     /** Multiplier while the card is legal in the current Standard window. */
     public float ec1StandardMult = 1.25f;
     /** Multiplier for Historic-only (rotated) cards. */
