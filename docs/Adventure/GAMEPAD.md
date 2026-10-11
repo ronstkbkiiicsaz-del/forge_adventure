@@ -68,12 +68,14 @@ Controls:
   - Button Back - Show Menu Tabs
   - Desktop keyboard (DS3): **right-click** a duel card opens CardZoom (picture + oracle text; Space/Tab toggles). Right-click does nothing on buttons, avatars, stack items, or deck-editor rows. **M** toggles hover preview on/off; **Shift+M** toggles hover-preview details (plain M only — not Ctrl/Alt+M). HUD note shows state (e.g. "Hover preview: off") and prefs persist locally — never toggled by right-click. Controller and touch are unchanged.
 
-- Match/Battle — modern duel screen (Auto = Adventure duels in Shandalar Ascendant only; or Settings → Modern duel screen = Always)
+- Match/Battle — modern / Arena duel screen (DS1; Auto = Adventure duels in Shandalar Ascendant only; or Settings → Modern duel screen = Always)
 
-  Stock bindings above still apply when you are not in a modern pad mode. Modern modes use **X** as the mode key (unused in stock match) and **B** to back out of any modern mode. **A** on a **castable** hand card **picks it up** (view-based castability — lands you can still play, or CMC ≤ mana in pool **plus untapped lands**; the engine still validates). A second **A** on the **same** hand card or while aimed at the board **casts**; a second **A** on a **different** hand card **reorders**. **A** picks up your creature while **InputAttack** / **InputBlock** is up for attack/block aiming. Otherwise **A** is stock tap/activate (mana, abilities, loyalty, uncastable hand).
+  Ascendant opens the **Arena skeleton** (`ArenaDuelScreen`): opponent top, you bottom, centre stack column, fanned hand, phase rail, big **Pass / Attack / Done / Resolve** context button, **Pass until EOT**, and DS4 Take back beside the prompt. Prompts without a custom view still use Forge dialogs. Stock bindings above still apply when you are not in a modern pad mode. Modern modes use **X** as the mode key (unused in stock match) and **B** to back out of any modern mode. **A** on a **castable** hand card **picks it up** (view-based castability — lands you can still play, or CMC ≤ mana in pool **plus untapped lands**; the engine still validates). A second **A** on the **same** hand card or while aimed at the board **casts**; a second **A** on a **different** hand card **reorders**. **A** picks up your creature while **InputAttack** / **InputBlock** is up for attack/block aiming. Otherwise **A** is stock tap/activate (mana, abilities, loyalty, uncastable hand).
 
   | Action | Binding |
   | --- | --- |
+  | Context button (Pass / Attack / Done / Resolve) | **Left Trigger** / prompt OK (same `selectButtonOk` seam); touch/click the big context button |
+  | Pass until end of turn | Touch/click **Pass until EOT**; or existing End Turn yield binding |
   | Cast / play from hand | **A** to pick up a castable hand card, aim with **DPAD**, **A** again to cast (or **A** again on the same card to confirm). Touch: drag onto the board. |
   | Attack / block (two-press aim) | **A** to pick up your creature during InputAttack/InputBlock, aim with **DPAD**, **A** to drop on the target |
   | Stock tap / activate (no drag / not castable) | **A** (unchanged — pays mana, abilities, loyalty; uncastable hand cards) |
