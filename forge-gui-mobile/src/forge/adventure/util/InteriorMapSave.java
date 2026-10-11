@@ -14,6 +14,10 @@ import forge.adventure.world.WorldSave;
  * SV1: Ascendant save/load of the player's position inside a POI map (dungeon/town),
  * plus the shared pre-duel autosave hook.
  *
+ * <p>Interior keys are written only into the WorldSave player blob (see
+ * {@link WorldSave#save} / {@link WorldSave#load}), never into co-op {@code .chr}
+ * files that call {@link forge.adventure.player.AdventurePlayer#save()} directly.
+ *
  * <p>Old saves without the interior keys load on the world map as before.
  * Stock modes never write or restore these fields.
  */
@@ -23,12 +27,14 @@ public final class InteriorMapSave {
     public static final String KEY_ENTRANCE_ID = "interiorEntranceId";
     public static final String KEY_POS_X = "interiorPosX";
     public static final String KEY_POS_Y = "interiorPosY";
+    public static final String KEY_MUST_CLEAR = "interiorMustClearOnExit";
 
     private static String pendingPoiId;
     private static String pendingMapPath;
     private static int pendingEntranceId;
     private static float pendingPosX;
     private static float pendingPosY;
+    private static boolean pendingMustClear;
     private static boolean pending;
 
     private InteriorMapSave() {
@@ -63,12 +69,15 @@ public final class InteriorMapSave {
         return map == null || !map.isDialogOnlyInput();
     }
 
-    /** Persist interior location into the player {@link SaveFileData} when in a map. */
+    /**
+     * Persist interior location into the WorldSave player blob when in a map.
+     * Must only be called from {@link WorldSave#save}, never from co-op {@code .chr} paths.
+     */
     public static void write(SaveFileData data) {
         if (data == null || !saveAnywhereEnabled()) {
             return;
         }
-        // Use the live instance only — never construct MapStage from a headless player.save().
+        // Use the live instance only — never construct MapStage from a headless save.
         MapStage map = MapStage.instance;
         if (map == null || !map.isInMap()) {
             return;
@@ -90,9 +99,13 @@ public final class InteriorMapSave {
         data.store(KEY_ENTRANCE_ID, map.getLastSpawnTargetId());
         data.store(KEY_POS_X, player.getX());
         data.store(KEY_POS_Y, player.getY());
+        data.store(KEY_MUST_CLEAR, map.isMustClearOnExit());
     }
 
-    /** Read interior keys after player load; missing keys mean world-map spawn. */
+    /**
+     * Read interior keys from a WorldSave player blob after a successful load.
+     * Missing keys mean world-map spawn. Must only be called from {@link WorldSave#load}.
+     */
     public static void readPending(SaveFileData data) {
         clearPending();
         if (data == null || !data.containsKey(KEY_POI_ID)) {
@@ -107,6 +120,7 @@ public final class InteriorMapSave {
         pendingEntranceId = data.containsKey(KEY_ENTRANCE_ID) ? data.readInt(KEY_ENTRANCE_ID) : 0;
         pendingPosX = data.containsKey(KEY_POS_X) ? data.readFloat(KEY_POS_X) : Float.NaN;
         pendingPosY = data.containsKey(KEY_POS_Y) ? data.readFloat(KEY_POS_Y) : Float.NaN;
+        pendingMustClear = data.containsKey(KEY_MUST_CLEAR) && data.readBool(KEY_MUST_CLEAR);
         pending = true;
     }
 
@@ -117,6 +131,7 @@ public final class InteriorMapSave {
         pendingEntranceId = 0;
         pendingPosX = Float.NaN;
         pendingPosY = Float.NaN;
+        pendingMustClear = false;
     }
 
     public static boolean hasPending() {
@@ -139,6 +154,9 @@ public final class InteriorMapSave {
      * Does not switch scenes — caller should {@code Forge.switchScene} the result of
      * {@link #sceneAfterLoad()}. Quest ENTERPOI fires once from {@link TileMapScene#enter()}.
      *
+     * <p>If the saved TMX is missing or fails to load, retries the POI's root map at its
+     * entrance. If that also fails, clears pending and returns false (overworld).
+     *
      * @return true when the map was prepared
      */
     public static boolean prepareRestoredMap() {
@@ -155,12 +173,33 @@ public final class InteriorMapSave {
         int entranceId = pendingEntranceId;
         float posX = pendingPosX;
         float posY = pendingPosY;
+        boolean mustClear = pendingMustClear;
         clearPending();
 
         TileMapScene scene = TileMapScene.instance();
-        scene.loadForRestore(poi, mapPath, entranceId);
-        MapStage.getInstance().tryRestorePlayerPosition(posX, posY);
-        return true;
+        try {
+            scene.loadForRestore(poi, mapPath, entranceId);
+            MapStage stage = MapStage.getInstance();
+            stage.setMustClearOnExit(mustClear);
+            stage.tryRestorePlayerPosition(posX, posY);
+            return true;
+        } catch (Exception e) {
+            System.err.println("SV1: failed to restore map \"" + mapPath + "\": " + e.getMessage());
+            try {
+                String rootMap = poi.getData().map;
+                scene.loadForRestore(poi, rootMap, 0);
+                MapStage.getInstance().setMustClearOnExit(mustClear);
+                // Leave the player at the root entrance (do not apply the saved position).
+                return true;
+            } catch (Exception e2) {
+                System.err.println("SV1: root map also failed: " + e2.getMessage());
+                try {
+                    MapStage.getInstance().clearIsInMap();
+                } catch (Exception ignored) {
+                }
+                return false;
+            }
+        }
     }
 
     /**

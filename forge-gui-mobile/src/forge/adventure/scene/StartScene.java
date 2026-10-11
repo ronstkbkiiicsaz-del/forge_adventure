@@ -104,6 +104,12 @@ public class StartScene extends UIScene {
             if (!forge.adventure.util.InteriorMapSave.saveAnywhereEnabled()) {
                 Dialog noSave = createGenericDialog("", Forge.getLocalizer().getMessage("lblGameNotSaved"), Forge.getLocalizer().getMessage("lblOK"),null, null, null);
                 showDialog(noSave);
+            } else {
+                Dialog noSave = createGenericDialog("", Forge.getLocalizer().getMessageorUseDefault(
+                        "lblCannotSaveDuringDialog",
+                        "Cannot save while a dialog is open."),
+                        Forge.getLocalizer().getMessage("lblOK"), null, null, null);
+                showDialog(noSave);
             }
             return true;
         }

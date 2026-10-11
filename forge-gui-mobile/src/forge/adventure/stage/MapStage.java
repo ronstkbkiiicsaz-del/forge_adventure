@@ -2051,4 +2051,14 @@ public class MapStage extends GameStage {
     public void clearOnExit() {
         mustClearOnExit = true;
     }
+
+    /** SV1: whether this map should reset deleted objects when the player exits. */
+    public boolean isMustClearOnExit() {
+        return mustClearOnExit;
+    }
+
+    /** SV1: restore {@link #mustClearOnExit} from a save. */
+    public void setMustClearOnExit(boolean value) {
+        mustClearOnExit = value;
+    }
 }

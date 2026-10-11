@@ -74,14 +74,9 @@ public class GameScene extends HudScene {
         MapStage.getInstance().clearIsInMap();
         Forge.clearTransitionScreen();
         Forge.clearCurrentScreen();
-        // SV1: when a load restored an interior map, enter that scene instead of the overworld.
-        if (forge.adventure.util.InteriorMapSave.hasPending()
-                && forge.adventure.util.InteriorMapSave.prepareRestoredMap()) {
-            Forge.switchScene(TileMapScene.instance());
-            return;
-        }
         super.enter();
         // Avoid auto-entering a POI from overworld collision on load (can soft-lock).
+        // Interior restore goes through InteriorMapSave.sceneAfterLoad() after WorldSave.load.
         // WorldStage.getInstance().handlePointsOfInterestCollision();
     }
 

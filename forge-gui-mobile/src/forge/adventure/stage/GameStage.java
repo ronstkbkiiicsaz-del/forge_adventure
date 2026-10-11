@@ -496,10 +496,15 @@ public abstract class GameStage extends Stage {
         }
         if (keycode == Input.Keys.F8)//todo config
         {
-            if (!TileMapScene.instance().currentMap().isInMap()
-                    || forge.adventure.util.InteriorMapSave.saveAnywhereEnabled()) {
-                WorldSave.getCurrentSave().quickLoad();
-                Forge.switchScene(forge.adventure.util.InteriorMapSave.sceneAfterLoad());
+            // Ascendant SV1: quickload restores interior via sceneAfterLoad. Stock: world map only.
+            if (forge.adventure.util.InteriorMapSave.saveAnywhereEnabled()) {
+                if (WorldSave.getCurrentSave().quickLoad()) {
+                    Forge.switchScene(forge.adventure.util.InteriorMapSave.sceneAfterLoad());
+                }
+            } else if (!TileMapScene.instance().currentMap().isInMap()) {
+                if (WorldSave.getCurrentSave().quickLoad()) {
+                    enter();
+                }
             }
         }
         if (keycode == Input.Keys.F11) {

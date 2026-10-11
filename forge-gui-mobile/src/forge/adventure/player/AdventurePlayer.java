@@ -1529,7 +1529,6 @@ public class AdventurePlayer implements Serializable, SaveFileContent {
             adventurePlaySeconds = Math.max(0d, data.readFloat("adventurePlaySeconds"));
         worldPosX = data.readFloat("worldPosX");
         worldPosY = data.readFloat("worldPosY");
-        forge.adventure.util.InteriorMapSave.readPending(data);
 
         if (data.containsKey("blessing")) {
             EffectData temp = (EffectData) data.readObject("blessing");
@@ -2029,7 +2028,6 @@ public class AdventurePlayer implements Serializable, SaveFileContent {
 
         data.store("worldPosX", worldPosX);
         data.store("worldPosY", worldPosY);
-        forge.adventure.util.InteriorMapSave.write(data);
         data.store("gold", gold);
         data.store("life", life);
         data.store("maxLife", maxLife);

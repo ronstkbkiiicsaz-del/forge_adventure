@@ -4,18 +4,22 @@ import com.badlogic.gdx.controllers.Controllers;
 import com.badlogic.gdx.math.Rectangle;
 import forge.adventure.character.EnemySprite;
 import forge.adventure.character.PlayerSprite;
+import forge.adventure.coop.CoopCharacterStore;
 import forge.adventure.coop.CoopSession;
 import forge.adventure.coop.CoopSessionRole;
 import forge.adventure.data.AdventureQuestData;
 import forge.adventure.data.AdventureQuestStage;
 import forge.adventure.data.ConfigData;
 import forge.adventure.data.PointOfInterestData;
+import forge.adventure.player.AdventurePlayer;
 import forge.adventure.pointofintrest.PointOfInterest;
 import forge.adventure.scene.DuelScene;
+import forge.adventure.scene.Scene;
 import forge.adventure.scene.TileMapScene;
 import forge.adventure.stage.MapStage;
 import forge.adventure.util.AdventureQuestController;
 import forge.adventure.util.Config;
+import forge.adventure.util.Current;
 import forge.adventure.util.InteriorMapSave;
 import forge.adventure.util.SaveFileData;
 import forge.adventure.world.WorldSave;
@@ -26,14 +30,18 @@ import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 import java.io.File;
+import java.io.FileOutputStream;
+import java.io.ObjectOutputStream;
 import java.lang.reflect.Field;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collections;
 import java.util.List;
+import java.util.zip.DeflaterOutputStream;
 
 /**
- * SV1: save inside maps, restore position, pre-duel autosave, quest-safe ENTERPOI.
+ * SV1: save inside maps, restore position, pre-duel autosave, quest-safe ENTERPOI,
+ * co-op .chr isolation, missing-TMX fallback, arena fee autosave.
  * Real save/load behaviour — no source greps. GL tests use {@link AdventureGlTestSupport}
  * and the Surefire {@code forge.test.userDir} isolation.
  */
@@ -41,6 +49,7 @@ public class SaveAnywhereSv1Test {
 
     private static final int SLOT = 91;
     private static final long WORLD_SEED = 0x515AFE01L;
+    private static final String COOP_CHR_NAME = "Sv1CoopChr";
 
     @BeforeMethod
     public void setUp() {
@@ -55,6 +64,13 @@ public class SaveAnywhereSv1Test {
         resetCoopSession();
         deleteSlot(SLOT);
         deleteSlot(WorldSave.AUTO_SAVE_SLOT);
+        try {
+            File chr = CoopCharacterStore.characterFile(COOP_CHR_NAME);
+            if (chr.isFile()) {
+                Assert.assertTrue(chr.delete());
+            }
+        } catch (Exception ignored) {
+        }
     }
 
     @Test
@@ -75,6 +91,7 @@ public class SaveAnywhereSv1Test {
         data.store(InteriorMapSave.KEY_ENTRANCE_ID, 3);
         data.store(InteriorMapSave.KEY_POS_X, 120.5f);
         data.store(InteriorMapSave.KEY_POS_Y, 80.25f);
+        data.store(InteriorMapSave.KEY_MUST_CLEAR, true);
 
         InteriorMapSave.readPending(data);
         Assert.assertTrue(InteriorMapSave.hasPending());
@@ -112,6 +129,45 @@ public class SaveAnywhereSv1Test {
                 "Autosave must not run during an active co-op session");
     }
 
+    /**
+     * Co-op {@code .chr} uses {@link AdventurePlayer#save()} / {@code load()} only —
+     * interior keys must not appear, and load must not leave restore pending.
+     */
+    @Test
+    public void coopChrRoundTripHasNoInteriorKeysAndLeavesNothingPending() throws Exception {
+        assumeAscendantConfig();
+        AdventurePlayer player = WorldSave.getCurrentSave().getPlayer();
+        String originalName = player.getName();
+        try {
+            // Rename briefly so the .chr path is isolated under the test user dir.
+            Field nameField = AdventurePlayer.class.getDeclaredField("name");
+            nameField.setAccessible(true);
+            nameField.set(player, COOP_CHR_NAME);
+
+            CoopCharacterStore.savePlayer(player);
+            SaveFileData raw = CoopCharacterStore.readRaw(COOP_CHR_NAME);
+            Assert.assertNotNull(raw);
+            Assert.assertFalse(raw.containsKey(InteriorMapSave.KEY_POI_ID),
+                    "co-op .chr must not carry WorldSave interior keys");
+
+            // Even a hand-crafted .chr with interior keys must not set pending via loadPlayer.
+            raw.store(InteriorMapSave.KEY_POI_ID, "should-not-pend");
+            raw.store(InteriorMapSave.KEY_MAP_PATH, "../common/maps/map/cave/cave_bear.tmx");
+            writeRawChr(COOP_CHR_NAME, raw);
+            InteriorMapSave.clearPending();
+            Assert.assertTrue(CoopCharacterStore.loadPlayer(player, COOP_CHR_NAME));
+            Assert.assertFalse(InteriorMapSave.hasPending(),
+                    "CoopCharacterStore.loadPlayer must not set interior restore pending");
+        } finally {
+            try {
+                Field nameField = AdventurePlayer.class.getDeclaredField("name");
+                nameField.setAccessible(true);
+                nameField.set(player, originalName);
+            } catch (Exception ignored) {
+            }
+        }
+    }
+
     @Test(groups = "gl", timeOut = 300_000)
     public void saveLoadInsideDungeonKeepsPositionAndDeletedEnemy() {
         AdventureGlTestSupport.runOnGl(() -> {
@@ -126,6 +182,7 @@ public class SaveAnywhereSv1Test {
             map.getChanges().deleteObject(victimId);
             victim.remove();
             map.getEnemies().remove(victim);
+            map.setMustClearOnExit(true);
 
             PlayerSprite player = map.getPlayerSprite();
             float savedX = player.getX() + 8f;
@@ -137,16 +194,20 @@ public class SaveAnywhereSv1Test {
 
             Assert.assertTrue(WorldSave.getCurrentSave().save("sv1-dungeon", SLOT));
             MapStage.getInstance().clearIsInMap();
+            MapStage.getInstance().setMustClearOnExit(false);
             InteriorMapSave.clearPending();
 
             Assert.assertTrue(WorldSave.load(SLOT));
-            Assert.assertTrue(InteriorMapSave.hasPending(), "Interior fields must be pending after load");
-            Assert.assertTrue(InteriorMapSave.prepareRestoredMap());
+            Assert.assertTrue(InteriorMapSave.hasPending(), "Interior fields must be pending after WorldSave.load");
+            Scene scene = InteriorMapSave.sceneAfterLoad();
+            Assert.assertTrue(scene instanceof TileMapScene);
+            scene.enter();
             MapStage restored = MapStage.getInstance();
             Assert.assertTrue(restored.isInMap());
             Assert.assertEquals(TileMapScene.instance().rootPoint.getID(), dungeon.getID());
             Assert.assertEquals(restored.getPlayerSprite().getX(), savedX, 0.01f);
             Assert.assertEquals(restored.getPlayerSprite().getY(), savedY, 0.01f);
+            Assert.assertTrue(restored.isMustClearOnExit(), "mustClearOnExit must persist");
             Assert.assertTrue(restored.getChanges().isObjectDeleted(victimId),
                     "Killed enemy must stay deleted via PointOfInterestChanges");
             Assert.assertNull(restored.getEnemyByID(victimId),
@@ -172,6 +233,32 @@ public class SaveAnywhereSv1Test {
                     "Blocked position must be rejected");
             Assert.assertEquals(player.getX(), entranceX, 0.01f);
             Assert.assertEquals(player.getY(), entranceY, 0.01f);
+        });
+    }
+
+    @Test(groups = "gl", timeOut = 300_000)
+    public void missingTmxFallsBackToRootMapEntrance() {
+        AdventureGlTestSupport.runOnGl(() -> {
+            PointOfInterest dungeon = generateWorldAndPickDungeon();
+            TileMapScene.instance().load(dungeon);
+            Assert.assertTrue(MapStage.getInstance().isInMap());
+
+            SaveFileData fake = new SaveFileData();
+            fake.store(InteriorMapSave.KEY_POI_ID, dungeon.getID());
+            fake.store(InteriorMapSave.KEY_MAP_PATH, "../common/maps/map/does_not_exist_sv1.tmx");
+            fake.store(InteriorMapSave.KEY_ENTRANCE_ID, 0);
+            fake.store(InteriorMapSave.KEY_POS_X, 9999f);
+            fake.store(InteriorMapSave.KEY_POS_Y, 9999f);
+            InteriorMapSave.readPending(fake);
+
+            Assert.assertTrue(InteriorMapSave.prepareRestoredMap(),
+                    "Missing TMX should fall back to the POI root map");
+            Assert.assertFalse(InteriorMapSave.hasPending(), "pending must be cleared after restore attempt");
+            Assert.assertTrue(MapStage.getInstance().isInMap());
+            Assert.assertEquals(TileMapScene.instance().rootPoint.getID(), dungeon.getID());
+            String loaded = MapStage.getInstance().getLoadedMapPath();
+            Assert.assertEquals(loaded, dungeon.getData().map,
+                    "Fallback must load the POI root map, not the missing path");
         });
     }
 
@@ -206,6 +293,46 @@ public class SaveAnywhereSv1Test {
         });
     }
 
+    /**
+     * Arena: fee is taken before rounds; autosave once before the fee, never per round via initDuels.
+     */
+    @Test(groups = "gl", timeOut = 300_000)
+    public void arenaAutosavesBeforeFeeNotPerRound() {
+        AdventureGlTestSupport.runOnGl(() -> {
+            PointOfInterest dungeon = generateWorldAndPickDungeon();
+            TileMapScene.instance().load(dungeon);
+            Assert.assertFalse(MapStage.getInstance().getEnemies().isEmpty());
+
+            File auto = new File(WorldSave.getSaveFile(WorldSave.AUTO_SAVE_SLOT));
+            if (auto.isFile()) {
+                Assert.assertTrue(auto.delete());
+            }
+
+            PlayerSprite player = MapStage.getInstance().getPlayerSprite();
+            EnemySprite enemy = MapStage.getInstance().getEnemies().get(0);
+
+            // Per-round path: isArena=true must not write the auto slot.
+            DuelScene.instance().initDuels(player, enemy, true, null);
+            Assert.assertFalse(auto.isFile(), "Arena rounds must not autosave via initDuels");
+
+            // startArena order: autosave, then take fee. Load must restore pre-fee gold.
+            int goldBefore = Current.player().getGold();
+            if (goldBefore < 5) {
+                Current.player().addGold(50);
+                goldBefore = Current.player().getGold();
+            }
+            InteriorMapSave.maybeAutosaveBeforeDuel();
+            Assert.assertTrue(auto.isFile(), "Arena entry must autosave before the fee");
+            Current.player().takeGold(5);
+            Assert.assertEquals(Current.player().getGold(), goldBefore - 5);
+
+            InteriorMapSave.clearPending();
+            Assert.assertTrue(WorldSave.load(WorldSave.AUTO_SAVE_SLOT));
+            Assert.assertEquals(Current.player().getGold(), goldBefore,
+                    "Loading the pre-fee autosave must restore gold");
+        });
+    }
+
     @Test(groups = "gl", timeOut = 300_000)
     public void loadInsideQuestDungeonDoesNotDoubleCompleteTravelStage() {
         AdventureGlTestSupport.runOnGl(() -> {
@@ -225,7 +352,7 @@ public class SaveAnywhereSv1Test {
             WorldSave.getCurrentSave().getPlayer().addQuest(quest, false);
 
             TileMapScene.instance().load(dungeon);
-            AdventureQuestController.instance().updateEnteredPOI(dungeon);
+            TileMapScene.instance().enter();
             Assert.assertEquals(stage.getStatus(), AdventureQuestController.QuestStatus.COMPLETE);
 
             Assert.assertTrue(WorldSave.getCurrentSave().save("sv1-quest", SLOT));
@@ -233,8 +360,9 @@ public class SaveAnywhereSv1Test {
             InteriorMapSave.clearPending();
 
             Assert.assertTrue(WorldSave.load(SLOT));
-            Assert.assertTrue(InteriorMapSave.prepareRestoredMap());
-            AdventureQuestController.instance().updateEnteredPOI(TileMapScene.instance().rootPoint);
+            Scene scene = InteriorMapSave.sceneAfterLoad();
+            Assert.assertTrue(scene instanceof TileMapScene);
+            scene.enter();
 
             AdventureQuestData loaded = findQuest("SV1 Quest Safety");
             Assert.assertNotNull(loaded, "Quest must survive save/load");
@@ -262,6 +390,7 @@ public class SaveAnywhereSv1Test {
             quest.stages = new AdventureQuestStage[]{stage};
             WorldSave.getCurrentSave().getPlayer().addQuest(quest, false);
 
+            // Save inside without firing ENTERPOI yet.
             TileMapScene.instance().load(dungeon);
             Assert.assertEquals(stage.getStatus(), AdventureQuestController.QuestStatus.ACTIVE);
             Assert.assertTrue(WorldSave.getCurrentSave().save("sv1-pending-quest", SLOT));
@@ -269,14 +398,15 @@ public class SaveAnywhereSv1Test {
             InteriorMapSave.clearPending();
 
             Assert.assertTrue(WorldSave.load(SLOT));
-            Assert.assertTrue(InteriorMapSave.prepareRestoredMap());
-            AdventureQuestController.instance().updateEnteredPOI(TileMapScene.instance().rootPoint);
+            Scene scene = InteriorMapSave.sceneAfterLoad();
+            Assert.assertTrue(scene instanceof TileMapScene);
+            scene.enter();
 
             AdventureQuestData loaded = findQuest("SV1 Pending Travel");
             Assert.assertNotNull(loaded);
             Assert.assertEquals(loaded.stages[0].getStatus(),
                     AdventureQuestController.QuestStatus.COMPLETE,
-                    "Pending reach stage must complete on restored map-entered event");
+                    "Pending reach stage must complete on TileMapScene.enter after restore");
         });
     }
 
@@ -366,6 +496,20 @@ public class SaveAnywhereSv1Test {
             state.setAccessible(true);
             state.set(session, CoopSession.State.IDLE);
         } catch (Exception ignored) {
+        }
+    }
+
+    private static void writeRawChr(String name, SaveFileData data) throws Exception {
+        File file = CoopCharacterStore.characterFile(name);
+        File parent = file.getParentFile();
+        if (parent != null) {
+            //noinspection ResultOfMethodCallIgnored
+            parent.mkdirs();
+        }
+        try (FileOutputStream fos = new FileOutputStream(file);
+             DeflaterOutputStream def = new DeflaterOutputStream(fos);
+             ObjectOutputStream oos = new ObjectOutputStream(def)) {
+            oos.writeObject(data);
         }
     }
 
