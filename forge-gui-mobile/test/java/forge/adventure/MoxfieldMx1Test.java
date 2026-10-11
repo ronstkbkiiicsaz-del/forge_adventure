@@ -450,9 +450,9 @@ public class MoxfieldMx1Test {
         player.addCard(bolt, 4);
 
         DeckImportController controller = newController(player.getCards());
-        // Main + Sideboard only — Maybeboard / Companion are unsupported sections.
+        // Main + Sideboard only — Commander is a known section but disallowed here.
         List<Token> tokens = controller.parseInput(
-                "Deck\n2 Lightning Bolt (M10) 146\n1 Not A Real Card Name Zzz\nMaybeboard\n1 Negate\n");
+                "Deck\n2 Lightning Bolt (M10) 146\n1 Not A Real Card Name Zzz\nCommander\n1 Omnath, Locus of Creation\n");
         tokens = controller.constrainTokensToInventory();
 
         String cannot = MoxfieldMx1.formatCannotImportList(tokens, controller);
@@ -460,7 +460,7 @@ public class MoxfieldMx1Test {
         Assert.assertTrue(cannot.toLowerCase(Locale.ROOT).contains("not a real card")
                         || cannot.toLowerCase(Locale.ROOT).contains("unknown"),
                 "unknown card should appear:\n" + cannot);
-        Assert.assertTrue(cannot.toLowerCase(Locale.ROOT).contains("maybeboard")
+        Assert.assertTrue(cannot.toLowerCase(Locale.ROOT).contains("commander")
                         || cannot.toLowerCase(Locale.ROOT).contains("section")
                         || cannot.toLowerCase(Locale.ROOT).contains("unsupported"),
                 "disallowed section should appear:\n" + cannot);
