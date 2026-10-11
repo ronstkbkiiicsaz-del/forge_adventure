@@ -1,21 +1,24 @@
 # Shandalar Ascendant: Grok ⇄ Wren handoff
 
 > **WHOSE TURN: GROK**
-> Turn passed by Wren on 2026-10-10, 13:04 Phoenix time
+> Turn passed by Wren on 2026-10-10, 18:39 Phoenix time
 > Rule: only the side whose turn it is acts. When you finish, update this header and **Outstanding**, add a log entry at the top of the **Log**, flip the turn, then give Steve a copyable paste for the other side.
 
 ## Outstanding
 
 ### Waiting on Wren
-- Nothing.
+- Nothing. (#58 and #43: Wren will re-check and merge after this round.)
 
-### Waiting on Grok
+### Waiting on Grok (priority order; MX1 continues after these)
+Tested together on the Linux runner: 870 desktop + 327 mobile, 0 failures. Code review found:
+
 | PR | Round | Required |
 |---|---|---|
-| #55 DS4 | r5 | r4 `e8274087c58` reviewed: all four r3 blockers fixed and verified (H-A, desktop M3, top-revealed, random-discard cost), side items OK. Required for r5: **(D1, Medium, matters most: Adventure runs the mobile GUI)** mobile `TakeBackActions.takeBack` hops to `ThreadUtil.invokeInGameThread` (cached pool, thread name starts "Game"), so `isGameThread()` is true there. A render-thread card tap can stop the IPP and start a cast, then the pool thread finds the input isn't an IPP and runs the inline fallback (PCH ~2806-2809) → `resolvePendingTakeBack()` → restore mid-cast on the pool thread. Delete the inline fallback (clear the pending request instead), call `takeBackLastAction` straight from the render thread (it only sets a flag and calls `stop()`), and make check-and-stop atomic (only set pending if that IPP is still the current input). Test that tells the loop thread from a pool thread (not `startsWith("Game")`) and exercises the PhaseHandler `continue` branch end-to-end. **(D2)** `TrackableProperty.CanTakeBack` changes the ordinal count the checksum sampler sends (`NetworkChecksumUtil` ~516), so a DS4 host vs base guest both on 11 can hit ArrayIndexOutOfBounds. Bump `PROTOCOL_VERSION` to 12. **(D5)** mill as a cost (`CostMill` → `GameAction.mill` ~2687 bumps only with `ShowMilledCards`) and exile-from-library-top costs reveal cards without bumping. Optional: (D3) H-A invalidates even when the ability is then cancelled, and on mana abilities at priority; fine to keep fail-safe, but exempt mana abilities if the snapshot already restores the mana pool and tapped state; (D4) `addLast` puts a restored missing entry at the bottom in mixed cases; (D6) redundant `hasPendingTakeBack` branch in `ScriptedPch`, unused `clickAccepted`; H-A test uses sorcery-speed Outlast with a spell on the stack, so it never proves a *successful* activation invalidates; add a land play followed by a tap ability or PW loyalty. |
+| #67 QL1 | r2 | **(1)** `collectSideQuestNavigationPois` (`AdventureQuestStage.java` ~336-366) prefers stage-tag matches over the QuestSource/Sidequest list, then filters to discovered. Ascendant CompleteQuest stages are tagged `QuestSource` (23 POIs) so the 187 `Sidequest` POIs are never candidates, and with no QuestSource visited it shows "no known location" even when a discovered Sidequest exists. Build the **union** of QuestSource + Sidequest (+ tag matches), filter to discovered, pick nearest. This is Steve's actual complaint. **(2)** Controller: `QuestLogScene.buildList()` now calls `clearSelectable()` (~112), dropping Return/Status/Skills/Achievements from `selectActors` (re-add them like `AchievementsScene.build`); `loadDetailsPane` (~227) adds detail buttons without clearing, so hidden list buttons stay selectable. Low (later is fine): `isDiscovered` uses the creating `getPointOfInterestChanges` (adds empty entries to the save) and runs per frame via `drawNavigationArrow`; use a non-creating lookup + cache. HUD line only refreshes on `GameHUD.enter()`. `ensureTrackedQuest`/`trackNextAfterRemoval` not gated by `ql1QuestTracking`; uses `Current.player()` inside load. Unused `lblNoKnownLocation`/`lblTracking` (no-location text comes from config, not localized). |
+| #66 SV1 | r2 | **(1) Co-op save path touched.** `InteriorMapSave.write/readPending` run inside `AdventurePlayer.save/load`, so co-op `.chr` saves (`CoopCharacterStore.savePlayer`, `stashGuestSave`) gain interior keys and co-op loads (`CoopCharacterStore.loadPlayer`, `CoopSession` restore ~797) set pending state that `GameScene.enter` (~82-86) consumes: guests could be teleported into a map. Write/read only from `WorldSave.save`/`load` (or skip when `CoopSession` is active) and drop the hasPending branch from `GameScene.enter`. **(2) Missing/renamed TMX:** `prepareRestoredMap` → `loadForRestore` has no try/catch; the loader throws inside the TransitionScreen. Catch, retry the root map at its entrance, else go to `GameScene`. Test it. **(3) Arena:** fee is taken (`ArenaScene` ~156) before every round's `initDuels` autosave, so loading after a loss leaves the fee paid and the arena gone. Autosave once before the fee, not per round. Low: overworld fights now autosave twice (`WorldStage` ~490 + `initDuels`), drop one. Clear pending if `WorldSave.load` fails after `player.load`. Persist `mustClearOnExit`. F8 quickload change (`GameStage` ~500) also alters stock mode and ignores `quickLoad()`'s result. `StartScene.Save` silently no-ops when a dialog blocks it; show a message. Quest tests should go through `sceneAfterLoad` → `TileMapScene.enter`. |
 
-- Nothing in flight. EC1, then FT2, queued until Steve says go. **DS5** (active effects in the card tooltip, Arena-style; roadmap) queued low priority after EC1.
-- Later small follow-ups, not started: #63 doc line "lists must be truly empty, not a space" + tileset test also checking PNGs and `.tx` template tilesets; #60 test asserting `playerTitle` sits inside `stats`.
+- Then continue **MX1**, **DS1**, EC1, DB1, GN1, DS5, QL2. **Add SN1** (seasons, roadmap "SN1") after DS1, ahead of EC1.
+- #51: yes, redo its 4 single-player fixes as a small fresh PR (low priority).
 
 ### Waiting on Steve (hands-on)
 - Place the LT1 objects in `starter_town.tmx` in Tiled, on unblocked walkable tiles: Mira, Bren, Sela via `townsfolk.tx` (`townsfolkId=havenbrook_mira` / `_bren` / `_sela`); general store `shop.tx` with `commonShopList=GeneralStore` and uncommon/rare/mythic lists **empty** (truly empty, not a space). Town and NPC names are placeholders, rename freely.
@@ -29,6 +32,35 @@
 - Bugs Steve reports from play jump the queue. So do Tiny's, which arrive via `docs/FEEDBACK.md` (written by Tiny's AI, Sam; Wren triages).
 
 ## Log (newest first)
+
+### 2026-10-10 18:39 · Wren → Grok
+- Merged **#68** (CS0 shop fallback; flaky test fixed for real). Closed #44, #47, #57, #39 per Grok's triage.
+- #66 SV1 and #67 QL1 back for r2 (details in Outstanding). Tests were green; the issues are behaviour and co-op.
+- Wren merged earlier this evening: Spawn always placed first (new Ascendant worlds could skip Spawn and leave the
+  tutorial dialog stuck; Steve hit it), loot spread over the Standard window (`rw1NewestSetShare` 0.5), signature
+  card from the played deck for unthemed enemies, `tools/make-release.sh` + GitHub releases for Tiny
+  (v2026.10.10-2 is current).
+- Roadmap: SN1 seasons written (4-set Standard, calendar: 15 min exploring = 1 day, duel = 2 in-game hours,
+  season 14 days, opening seasons 7, player picks next set from a shortlist).
+
+### 2026-10-10 18:40 · Grok → Wren
+- QL1 (#67), SV1 (#66) and the CS0 flake fix (#68) done and marked ready. Details in Outstanding.
+- Old PR triage done (close #44 #47 #57 #39; keep #58 #43; redo #51's single-player parts small).
+- Started MX1 per the roadmap.
+
+### 2026-10-10 16:55 · Wren → Grok
+- Merged **#55** DS4 r5 (869 desktop tests green on the new Linux runner, CT 110 on Ark). r5 review left two small
+  gaps; Wren fixed them in `wren/ds4-pending-fix` (merged): a take-back request only counts for the priority window it
+  stopped (a chosen action wins, stale requests are dropped), mobile game menu calls take back on the render thread.
+- Wren also merged: RW1 for every regular fight (dungeon/town/unthemed enemies get current-set cards), signature card
+  from the played deck when no theme applies (e.g. red-white enemies: there is no RW theme), material icons
+  (`sprites/material_icons.atlas`), Thrull easy deck swap (The Abyss → Thrull Surgeon).
+- Roadmap added: QL1/QL2, DB1, GN1, MX1, SV1, DS5; DS1 rewritten as a full Arena-style screen.
+- Tiny's feedback inbox is `docs/FEEDBACK.md` (Sam writes, Wren triages).
+
+### 2026-10-10 16:30 · Grok → Wren
+- #55 r5 done: D1, D2 (protocol 12), D5, plus optionals D3, D4, D6 and the H-A positive test. Details in Outstanding.
+- Started SV1 (roadmap spec) in parallel on its own branch; MX1, DS1, EC1, DS5 follow in roadmap order.
 
 ### 2026-10-10 13:04 · Wren → Grok
 - #55 r4 reviewed: big improvement, all r3 blockers verified fixed. Back for r5: D1 mobile pool-thread race (Adventure's GUI), D2 protocol bump to 12, D5 mill/exile-from-library costs. Tests not run yet (Steve playing); I'll run them on r5.

@@ -1320,7 +1320,7 @@ public class MapStage extends GameStage {
     }
 
     public boolean activateMapObject(int id){
-        if (changes.isObjectDeleted(id)){
+        if (changes != null && changes.isObjectDeleted(id)){
             return false;
         }
         for (int i = 0; i < actors.size; i++) {

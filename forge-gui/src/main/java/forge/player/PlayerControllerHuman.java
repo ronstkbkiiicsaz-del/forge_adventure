@@ -1695,6 +1695,9 @@ public class PlayerControllerHuman extends PlayerController implements IGameCont
 
     @Override
     public List<SpellAbility> chooseSpellAbilityToPlay() {
+        // DS4: a take-back request only counts for the priority window it stopped, so one left over
+        // from an earlier window (a late press that lost the race to a card tap) is dropped here.
+        getGame().clearPendingTakeBack();
         netLog.trace("ENTRY for player {}, phase={}, isGameOver={}",
                 player.getName(), getGame().getPhaseHandler().getPhase(), getGame().isGameOver());
         final MagicStack stack = getGame().getStack();
@@ -1761,6 +1764,9 @@ public class PlayerControllerHuman extends PlayerController implements IGameCont
         final InputPassPriority defaultInput = new InputPassPriority(this);
         defaultInput.showAndWait();
         netLog.trace("InputPassPriority returned for player {}, chosenSa={}", player.getName(), defaultInput.getChosenSa());
+        if (getGame().hasPendingTakeBack(player) && getGame().getPendingTakeBackToken() != defaultInput) {
+            getGame().clearPendingTakeBack();
+        }
         return defaultInput.getChosenSa();
     }
 
@@ -2770,6 +2776,125 @@ public class PlayerControllerHuman extends PlayerController implements IGameCont
                 inputQueue.updateObservers();
             }
             return true;
+        }
+        return false;
+    }
+
+    @Override
+    public boolean canTakeBackLastAction() {
+        if (player == null || !getGame().canTakeBack(player)) {
+            return false;
+        }
+        // High: only while the human is in InputPassPriority with nothing in progress.
+        final Input current = inputQueue.getInput();
+        if (!(current instanceof InputPassPriority)) {
+            return false;
+        }
+        if (getGame().costPaymentStack.peek() != null) {
+            return false;
+        }
+        return true;
+    }
+
+    @Override
+    public void takeBackLastAction() {
+        // D1/M3: safe on the render/EDT thread — only sets pending + stop().
+        // Never restore here (no GameAction.invoke, no pool-thread inline fallback).
+        // PhaseHandler.mainLoopStep runs resolvePendingTakeBack on the game-loop thread.
+        final Input current = inputQueue.getInput();
+        if (!(current instanceof InputPassPriority)) {
+            // Pool-thread race: cast already replaced IPP — abandon pending, do not restore.
+            if (ThreadUtil.isGameThread()) {
+                getGame().clearPendingTakeBack();
+            }
+            return;
+        }
+        if (!canTakeBackLastAction()) {
+            return;
+        }
+        // Atomic check-and-stop: only set pending if that same IPP is still current.
+        synchronized (inputQueue) {
+            final Input still = inputQueue.getInput();
+            if (still != current || !(still instanceof InputPassPriority ipp)) {
+                if (ThreadUtil.isGameThread()) {
+                    getGame().clearPendingTakeBack();
+                }
+                return;
+            }
+            if (player == null || !getGame().canTakeBack(player)
+                    || getGame().costPaymentStack.peek() != null) {
+                return;
+            }
+            getGame().requestTakeBack(player, ipp);
+            ipp.stop();
+        }
+    }
+
+    /**
+     * DS4 M3: called on the game-loop thread after InputPassPriority was stopped for a
+     * take-back request. Handles restore result messaging / concede.
+     */
+    @Override
+    public void resolvePendingTakeBack() {
+        final Player pending = getGame().clearPendingTakeBack();
+        if (pending == null || !pending.equals(player)) {
+            return;
+        }
+        applyTakeBackResult(getGame().takeBack(player));
+    }
+
+    /**
+     * DS4: restore while already on the true game-loop thread in {@link InputPassPriority}
+     * (unit-test helper). On failure shows a message; CATASTROPHIC concedes cleanly.
+     * Do not call from {@link forge.util.ThreadUtil}'s "Game-*" pool — that is not the loop.
+     */
+    public boolean tryTakeBackLastAction() {
+        if (!canTakeBackLastAction()) {
+            return false;
+        }
+        return applyTakeBackResult(getGame().takeBack(player));
+    }
+
+    private boolean applyTakeBackResult(final TakeBackResult result) {
+        if (result == TakeBackResult.SUCCESS) {
+            final Input currentInput = inputQueue.getInput();
+            if (currentInput instanceof InputPassPriority) {
+                currentInput.showMessageInitial();
+            }
+            // Snapshot restore may not emit a complete delta — mark every
+            // ProtocolGuiGame peer for a full state push on the next update.
+            boolean anyNet = false;
+            for (final Player p : getGame().getPlayers()) {
+                if (p.getController() instanceof PlayerControllerHuman pch
+                        && pch.getGui() instanceof forge.gamemodes.net.ProtocolGuiGame pgg) {
+                    pgg.setResyncPending();
+                    pgg.updateGameView();
+                    anyNet = true;
+                }
+            }
+            if (anyNet || (getGui() != null && getGui().isNetGame())) {
+                inputQueue.updateObservers();
+            }
+            return true;
+        }
+        if (result == TakeBackResult.CATASTROPHIC) {
+            if (getGui() != null) {
+                getGui().showMatchNote(Localizer.getInstance().getMessage("lblTakeBackCatastrophic"));
+            }
+            // H2: end cleanly via the controller concede path (not player.concede alone).
+            this.concede();
+            // Release any blocked priority input (stop removes it from the queue).
+            final Input current = inputQueue.getInput();
+            if (current instanceof InputPassPriority ipp) {
+                ipp.stop();
+            } else {
+                inputQueue.onGameOver(true);
+            }
+            return false;
+        }
+        if (result == TakeBackResult.RESTORE_FAILED && getGui() != null) {
+            // Adventure duels: MatchScreen note via Classic.render — not FOptionPane.
+            getGui().showMatchNote(Localizer.getInstance().getMessage("lblTakeBackFailed"));
         }
         return false;
     }

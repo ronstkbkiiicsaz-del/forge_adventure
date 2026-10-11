@@ -750,6 +750,55 @@ direction, pasting a Moxfield deck link into Forge is one step.
 - A URL import is parsed through the shared loader. Use a fixture, no network in tests.
 - The stock world is unchanged.
 
+## Quests (Steve, 2026-10-10)
+
+### QL1. Choose which quest the arrow tracks (urgent; next after DS4)
+Today the navigation arrow always points at one quest's target, with no way to change it. In Steve's game it points
+at town for a "do a side quest" stage, so he can't find the side-quest locations.
+- The quest log gets a **Track** button per active quest; the arrow, map marker and HUD line follow the tracked quest.
+  One tracked quest at a time; tracking is saved.
+- Stages that say "do any side quest" point at the **nearest** valid target (nearest `QuestSource` / `Sidequest` POI
+  the player has discovered), or show "no known location" instead of pointing at town.
+- Controller: Track is reachable from the quest list. New quests don't steal tracking unless nothing is tracked.
+- Tests: track B while A is active → arrow targets B; save/load keeps it; finishing the tracked quest moves tracking
+  to the next active one; "any side quest" picks the nearest discovered target.
+
+### QL2. Quest log overhaul (after the duel screen work)
+A full redesign of the quest log: active, available and completed tabs; each quest shows its giver, reward, current
+stage and all stage objectives with progress; filter by town or type; map pins for known objectives; abandon with
+confirmation; clear "turn in at X" states. Controller-first layout.
+
+## Deck builder
+
+### DB1. A deck builder as good as Moxfield's (after MX1; extends its import)
+Steve: there should be no reason building a deck here is harder than on Moxfield.
+- **Import from any site that exports for MTG Arena** (Moxfield, Archidekt, MTGGoldfish, AetherHub, Untapped,
+  17lands...): the Arena text format (`4 Card Name (SET) 123`, `Deck` / `Sideboard` / `Commander` / `Companion`
+  headers), plus plain `4 Card Name` lists. Forge's `DeckRecognizer` already parses these; MX1 adds URLs. Import is
+  always limited to the collection with the missing list (MX1 rules).
+- **Search** with Scryfall-style syntax (`t:creature c:br cmc<=3 o:"draw a card" r:rare set:zen`) plus quick filter
+  chips (color, type, cost, rarity, set, owned/unowned, legal in this plane's format).
+- **Views**: group by type, cost or color; list, text and visual (card image) views; drag between deck, sideboard and
+  a **maybeboard**.
+- **Stats panel**: mana curve, color pie vs land sources, type breakdown, average cost; land count suggestion.
+- **Sample hand** (draw 7, mulligan, draw next) and **legality** shown live with the reason for each illegal card.
+- **Deck tags and folders**, duplicate deck, and **export** in Arena text (feeds Moxfield) per MX1.
+- Controller and mouse both first-class. Works for every format the planes use (60-card, 40-card limited, Commander).
+- Tests: Arena-format text with headers imports to the right sections; the search syntax parses the listed keys;
+  stats match a known deck; legality flags a card out of rotation.
+
+## Gathering
+
+### GN1. More variety in gather nodes (note from play, 2026-10-10)
+Steve gets lots of scrap and trees and nothing else. Cause: every world biome maps to exactly one material family
+(`MaterialListData.materialBiomeForWorldBiome` + `WorldStage.pickBiomeFamily`): wastes (the home plane around the
+start) only gives scrap, plus the 30% trees that grow everywhere. Forest and mountain are the only two-family biomes.
+- Give every biome a primary family (~50%), trees (~20%) and a mix of the others (~30%), weighted toward families
+  that fit the biome (plains: stone + plants, island: waters + crystal/pearls, swamp: dead + plants, wastes: scrap +
+  stone + ash, mountain: ore + ash + gems).
+- Make the shares tunable in `config.json`. Tests: over many rolls each biome yields its primary most, and every
+  listed secondary family appears.
+
 ## Duel screen
 
 ### DS1. Arena-style duel screen (rewritten 2026-10-10; queued after MX1)
@@ -945,6 +994,65 @@ with him.
   (dialogue lines keyed to playtime, friendships and events). Voice of raid warnings, Nothing reports, intel.
 
 ## Formats, achievements and card styles (2026-10-08)
+
+### SN1. Seasons: a 4-set Standard that moves with time, and the player still chooses (Steve, 2026-10-10)
+Problem from play: with RW1 sending most loot into the newest set, one ~250-card set saturates fast and a 3-set
+window is too thin to build from. Step 1 is already in: home-plane loot spreads over the whole window
+(`rw1NewestSetShare`, 50% newest). SN1 is the rest.
+
+**Standard = 4 sets** (`StandardWindow.WINDOW_SIZE` 3 → 4, tunable), plus the staples as today. Old saves keep their
+current sets; the window just has room for one more.
+
+**Campaign start (decided 2026-10-10).** New games keep today's two picks: a starter set (sealed packs) plus a core set
+or the Core Set Collection, so Standard opens with 2 sets. The **first two seasons are short** (7 in-game days,
+tunable) and each adds a set the player picks from the shortlist, so Standard reaches 4 sets within the first month;
+from then on normal seasons rotate one set in and the oldest out.
+
+**Seasons.** Forge Adventure has no world clock today (the day/night look is only a cosmetic background tint), so SN1
+adds an in-game calendar, shown on the HUD and Status screen (all numbers tunable, decided with Steve 2026-10-10):
+- **Overworld, towns and dungeons:** time flows; **15 minutes of real exploring = 1 in-game day**. Menus, pauses
+  and idle time don't count.
+- **A duel costs a flat 2 in-game hours**, win or lose, however long it really took (most play time is duels, so
+  real duel length must not drive the calendar).
+- **Resting at an inn** skips to the next morning.
+- Estimate: a typical real hour (about 40 min of duels, 4 fights, plus 20 min exploring) is about 1.7 in-game days.
+  So a **normal season = 14 in-game days (about 8 hours of play)** and an **opening season = 7 days (about 4
+  hours)**. More dueling stretches a season in real time; more exploring shortens it.
+A **season** lasts a tunable number of in-game days (14 by default; see above). Each season brings **one new set**
+into Standard; when the window is full the oldest set rotates to Historic. Nothing owned is ever lost.
+- **Mastery pulls the next season forward**: mastering the newest set (today's requirement) ends the season early, so
+  fast players aren't held back and slow players aren't left behind; the calendar guarantees progress either way.
+- The season name is the newest set ("The Zendikar season"); a short banner and town criers announce it. Shops
+  restock with the new set, events and the League switch to it, prerelease-style events run in the first days.
+
+**Choice: how the player picks the next set.** Today, mastering a set opens a pick from every booster set not in the
+window (`choosableSets`), and only one unlock happens per world. SN1 keeps the player in charge:
+- **Season vote / pick at the season's end.** When a season ends (by calendar or mastery), the player picks the next
+  set from a **shortlist of 3** offered by the world, plus **"Choose any set"** behind a cost (a rare Planar Key item
+  from bosses or achievements, or gold), so choice exists without decision paralysis every time.
+- The shortlist follows a sensible order: the block or era after the newest set (real release order) for one slot,
+  a set the player has shown interest in (cards owned, plane visited, decks built) for another, and one random set.
+- **No pick made?** If the player skips the choice (closes it, or the season ends mid-dungeon), the world picks the
+  release-order option after a grace period of a few in-game days, with a reminder. The pick is never forced mid-duel.
+- **Undo window**: the choice can be changed for free until the player opens a pack or wins a fight with the new set.
+- **Pin a set (optional, tunable):** the player can keep one favourite set from rotating out for one extra season,
+  once per few seasons, so a loved set isn't lost the moment it ages.
+- The current one-unlock-per-world rule (`setUnlockedThisWorld`) is replaced by the season clock; set planes and
+  portals still open for each set that enters Standard (`masteryUnlocksSetPlane` keeps working, triggered by entry).
+
+**Rewards and economy under seasons**
+- Home-plane loot: 50% newest, 50% spread over the other three (already live, tunable). Set planes give their set.
+- Duplicates beyond 4 copies of a card can auto-convert to dust (player toggle), so long seasons feed crafting.
+- Season rewards: finishing a season with its set mastered grants a cosmetic (card style or title) and a Planar Key.
+
+**Co-op note (standing rule):** the host's calendar and window rule the session; partner picks happen in their own
+world. Co-op is frozen, so nothing here may touch the co-op save path.
+
+**Tests:** window holds 4 and rotates the oldest to Historic on the 5th; calendar ends a season after N days and
+mastery ends it early; the shortlist has 3 distinct sets not already in the window, including the next by release
+order; skipping the choice auto-picks after the grace period; undo works until a pack is opened or a fight won; old
+saves load with their 3 sets and gain the 4th slot; stock world unchanged.
+
 
 ### EN1. Enemy decks by format and theme (depends on K for the plane format; data can start now)
 - Enemies carry **theme tags** by creature type (merfolk, goblin, zombie, ...). Each tag has **2-3 themes**: for

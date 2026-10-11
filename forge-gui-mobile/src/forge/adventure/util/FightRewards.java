@@ -41,6 +41,8 @@ public final class FightRewards {
 
     /** Test override for {@link #currentSetCode()}; null = live resolution. */
     private static String currentSetOverrideForTest;
+    /** Test override for the Standard window sets used on the home plane; null = live window. */
+    private static List<String> windowSetsOverrideForTest;
     /** Test override for ownership counts; null = live collection. */
     private static java.util.function.Function<String, Integer> ownedCountOverrideForTest;
 
@@ -57,7 +59,13 @@ public final class FightRewards {
         ownedCountOverrideForTest = fn;
     }
 
+    /** Test helper: force the home-plane Standard window (oldest first, newest last); null clears. */
+    public static void setWindowSetsForTest(List<String> sets) {
+        windowSetsOverrideForTest = sets;
+    }
+
     public static void clearTestOverrides() {
+        windowSetsOverrideForTest = null;
         currentSetOverrideForTest = null;
         ownedCountOverrideForTest = null;
     }
@@ -234,6 +242,10 @@ public final class FightRewards {
         if (sigWanted > 0) {
             List<PaperCard> signatures = pickSignatures(enemy.themeId, deckList, sigWanted, rng,
                     allowFullCoreSignatureFallback);
+            // No theme (or no theme card in the deck): the signature comes from the deck it played.
+            if (signatures.isEmpty() && allowFullCoreSignatureFallback) {
+                signatures = pickDeckSignatures(deckList, sigWanted, rng);
+            }
             for (PaperCard pc : signatures) {
                 if (pc != null) {
                     out.add(new Reward(pc));
@@ -311,14 +323,17 @@ public final class FightRewards {
         int fromDeck = total - fromSet;
 
         if (fromSet > 0) {
-            List<PaperCard> setPicks = generateFromCurrentSet(rdata, setCode, fromSet, coreExclude, rng);
-            for (PaperCard pc : setPicks) {
-                if (pc != null) {
-                    out.add(new Reward(pc));
+            int granted = 0;
+            for (java.util.Map.Entry<String, Integer> e : splitAcrossWindow(setCode, fromSet, rng).entrySet()) {
+                List<PaperCard> setPicks = generateFromCurrentSet(rdata, e.getKey(), e.getValue(), coreExclude, rng);
+                for (PaperCard pc : setPicks) {
+                    if (pc != null) {
+                        out.add(new Reward(pc));
+                        granted++;
+                    }
                 }
             }
             // Thin / empty set pool → top up from the deck (core names excluded).
-            int granted = setPicks.size();
             if (granted < fromSet) {
                 fromDeck += fromSet - granted;
             }
@@ -334,6 +349,66 @@ public final class FightRewards {
                     }
                 }
             }
+        }
+    }
+
+    /**
+     * How many of {@code count} set cards come from each set. On a set plane (or with a forced test set)
+     * everything comes from {@code primary}. On the home plane each card rolls: {@code rw1NewestSetShare}
+     * goes to the newest set, the rest is spread evenly over the other sets in the Standard window, so loot
+     * feeds the whole format instead of flooding one set.
+     */
+    public static java.util.Map<String, Integer> splitAcrossWindow(String primary, int count, Random rng) {
+        java.util.Map<String, Integer> out = new java.util.LinkedHashMap<>();
+        List<String> others = new ArrayList<>();
+        boolean spread = currentSetOverrideForTest == null || windowSetsOverrideForTest != null;
+        if (spread) {
+            try {
+                if (windowSetsOverrideForTest == null && SetPlaneRules.activeSetCode() != null
+                        && !SetPlaneRules.activeSetCode().isEmpty()) {
+                    spread = false;
+                }
+            } catch (Throwable t) {
+                spread = false;
+            }
+        }
+        if (spread) {
+            for (String code : windowSets()) {
+                if (code != null && !code.isEmpty() && !code.equalsIgnoreCase(primary)
+                        && !StandardWindow.CORE_COLLECTION.equals(code)
+                        && StaticData.instance().getEditions().get(code) != null) {
+                    others.add(code);
+                }
+            }
+        }
+        float share = newestSetShare();
+        for (int i = 0; i < count; i++) {
+            String code = others.isEmpty() || rng.nextFloat() < share
+                    ? primary : others.get(rng.nextInt(others.size()));
+            out.merge(code, 1, Integer::sum);
+        }
+        return out;
+    }
+
+    private static List<String> windowSets() {
+        if (windowSetsOverrideForTest != null) {
+            return windowSetsOverrideForTest;
+        }
+        try {
+            AdventurePlayer player = AdventurePlayer.current();
+            StandardWindow window = player == null ? null : player.getStandardWindow();
+            return window == null || !window.isActive() ? Collections.emptyList() : window.getSets();
+        } catch (Throwable t) {
+            return Collections.emptyList();
+        }
+    }
+
+    static float newestSetShare() {
+        try {
+            ConfigData cfg = Config.instance().getConfigData();
+            return cfg == null ? 0.5f : Math.max(0f, Math.min(1f, cfg.rw1NewestSetShare));
+        } catch (Throwable t) {
+            return 0.5f;
         }
     }
 
@@ -536,6 +611,45 @@ public final class FightRewards {
             }
             remaining.remove(picked);
             // Signature: normal printing from the rotation when possible (CS0).
+            PaperCard pc = resolvePrinting(picked, null);
+            if (pc != null) {
+                out.add(pc);
+            }
+        }
+        return out;
+    }
+
+    /**
+     * Signature for an enemy without a usable theme: a non-basic card from the deck it played,
+     * weighted toward higher rarity and toward cards the player doesn't own yet.
+     */
+    public static List<PaperCard> pickDeckSignatures(List<PaperCard> deckCards, int count, Random rng) {
+        List<PaperCard> out = new ArrayList<>();
+        if (deckCards == null || deckCards.isEmpty() || count <= 0 || rng == null) {
+            return out;
+        }
+        List<String> weighted = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
+        for (PaperCard pc : deckCards) {
+            if (pc == null || pc.getRules() == null || pc.getRules().getType().isBasicLand()
+                    || !seen.add(pc.getName())) {
+                continue;
+            }
+            int copies = switch (pc.getRarity()) {
+                case MythicRare, Rare -> 3;
+                case Uncommon -> 2;
+                default -> 1;
+            };
+            for (int i = 0; i < copies; i++) {
+                weighted.add(pc.getName());
+            }
+        }
+        for (int i = 0; i < count && !weighted.isEmpty(); i++) {
+            String picked = weightedPick(weighted, rng);
+            if (picked == null) {
+                break;
+            }
+            weighted.removeIf(picked::equals);
             PaperCard pc = resolvePrinting(picked, null);
             if (pc != null) {
                 out.add(pc);
