@@ -32,6 +32,8 @@ public final class AscendantCardEconomy {
 
     /** Set code → season index when it left Standard (for post-rotation age). */
     private static final Map<String, Integer> rotatedAtSeason = new HashMap<>();
+    /** Snapshot of Standard window codes at last bind / season change (to detect rotations). */
+    private static final LinkedHashSet<String> lastWindowSets = new LinkedHashSet<>();
     /** Current season's spiked common/uncommon names (town rumour). */
     private static final LinkedHashSet<String> seasonSpikes = new LinkedHashSet<>();
     private static int spikesForSeason = -1;
@@ -58,7 +60,8 @@ public final class AscendantCardEconomy {
     }
 
     /**
-     * Bind to the live SN1 calendar (idempotent). Replaces reflection / static fallback.
+     * Bind to the live SN1 calendar (idempotent). Seasonal appreciation and spikes
+     * are driven by {@link AdventureSeason#addSeasonChangeListener}, not by polling.
      */
     public static void bindSeasonCalendar(AdventureSeason season) {
         if (boundSeason == season)
@@ -66,8 +69,13 @@ public final class AscendantCardEconomy {
         if (boundSeason != null)
             boundSeason.removeSeasonChangeListener(SEASON_LISTENER);
         boundSeason = season;
-        if (season != null)
+        if (season != null) {
             season.addSeasonChangeListener(SEASON_LISTENER);
+            snapshotWindowSets();
+            // Seed spikes for the current season once at bind; later rolls are listener-only.
+            if (spikesForSeason != season.getSeasonIndex())
+                rollSeasonSpikes(season.getSeasonIndex());
+        }
     }
 
     private static void ensureBound() {
@@ -93,16 +101,16 @@ public final class AscendantCardEconomy {
         return boundSeason != null ? boundSeason.getGameDays() : 0d;
     }
 
-    /** Current season index ({@link AdventureSeason#seasonIndex()}). */
+    /** Current season index ({@link AdventureSeason#getSeasonIndex()}). */
     public static int currentSeasonIndex() {
         ensureBound();
         try {
             AdventurePlayer p = Current.player();
             if (p != null && p.getSeason() != null)
-                return p.getSeason().seasonIndex();
+                return p.getSeason().getSeasonIndex();
         } catch (Exception ignored) {
         }
-        return boundSeason != null ? boundSeason.seasonIndex() : 0;
+        return boundSeason != null ? boundSeason.getSeasonIndex() : 0;
     }
 
     /** Record that {@code setCode} left Standard at {@code seasonIndex}. */
@@ -115,6 +123,7 @@ public final class AscendantCardEconomy {
     /** Test hook: clear rotation age / spikes. */
     public static void resetLifecycleStateForTest() {
         rotatedAtSeason.clear();
+        lastWindowSets.clear();
         seasonSpikes.clear();
         spikesForSeason = -1;
     }
@@ -124,10 +133,42 @@ public final class AscendantCardEconomy {
         noteSetRotated(setCode, seasonIndex);
     }
 
-    private static void onSeasonChanged(int seasonIndex, String newSet, String rotatedSet) {
-        if (rotatedSet != null && !rotatedSet.isBlank())
-            noteSetRotated(rotatedSet, seasonIndex);
+    /** SN1 {@link AdventureSeason.SeasonChangeListener}: appreciate rotations + roll spikes. */
+    private static void onSeasonChanged(AdventureSeason season) {
+        if (season == null)
+            return;
+        int seasonIndex = season.getSeasonIndex();
+        noteRotationsFromWindowDiff(seasonIndex);
         rollSeasonSpikes(seasonIndex);
+    }
+
+    private static void snapshotWindowSets() {
+        lastWindowSets.clear();
+        try {
+            AdventurePlayer p = Current.player();
+            if (p != null && p.getStandardWindow() != null)
+                lastWindowSets.addAll(p.getStandardWindow().getSets());
+        } catch (Exception ignored) {
+        }
+    }
+
+    /** Any set that left the Standard window since the last snapshot rotated this season. */
+    private static void noteRotationsFromWindowDiff(int seasonIndex) {
+        LinkedHashSet<String> now = new LinkedHashSet<>();
+        try {
+            AdventurePlayer p = Current.player();
+            if (p != null && p.getStandardWindow() != null)
+                now.addAll(p.getStandardWindow().getSets());
+        } catch (Exception ignored) {
+        }
+        if (!lastWindowSets.isEmpty()) {
+            for (String prev : lastWindowSets) {
+                if (prev != null && !now.contains(prev))
+                    noteSetRotated(prev, seasonIndex);
+            }
+        }
+        lastWindowSets.clear();
+        lastWindowSets.addAll(now);
     }
 
     /** Seasons since this card's edition left Standard (0 while still legal). */
@@ -421,18 +462,10 @@ public final class AscendantCardEconomy {
     public static boolean isSpiked(String cardName) {
         if (cardName == null || seasonSpikes.isEmpty())
             return false;
-        ensureSpikesForCurrentSeason();
         return seasonSpikes.contains(cardName);
     }
 
-    private static void ensureSpikesForCurrentSeason() {
-        int idx = currentSeasonIndex();
-        if (spikesForSeason != idx)
-            rollSeasonSpikes(idx);
-    }
-
     public static List<String> currentSpikeNames() {
-        ensureSpikesForCurrentSeason();
         return List.copyOf(seasonSpikes);
     }
 

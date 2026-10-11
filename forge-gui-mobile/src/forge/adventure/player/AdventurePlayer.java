@@ -3694,13 +3694,24 @@ public class AdventurePlayer implements Serializable, SaveFileContent {
 
     // ---- Ascendant gathering methods (Package B2) ----
 
-    /** Advance in-game play time used by outpost production and SN1 exploring calendar. Ascendant only. */
+    /**
+     * Advance in-game play time used by outpost production. Ascendant only.
+     * SN1 calendar exploring is separate — see {@link #tickSeasonExploring(float)}.
+     */
     public void tickAdventurePlaySeconds(float delta) {
         if (!Config.ascendant() || delta <= 0f)
             return;
         adventurePlaySeconds += delta;
-        if (season.isEnabled())
-            season.tickExploring(delta, standardWindow, cards);
+    }
+
+    /**
+     * SN1: advance the season calendar from real exploring time.
+     * Call only while the player is moving — idle / standing still must not count.
+     */
+    public void tickSeasonExploring(float delta) {
+        if (!Config.ascendant() || delta <= 0f || !season.isEnabled())
+            return;
+        season.tickExploring(delta, standardWindow, cards);
     }
 
     /** SN1: charge flat duel hours on the calendar (win or lose). */
@@ -3717,11 +3728,11 @@ public class AdventurePlayer implements Serializable, SaveFileContent {
         season.lockUndo();
     }
 
-    /** SN1: rest at an inn until the next morning. */
-    public void restSeasonUntilMorning() {
+    /** SN1: rest at an inn until the next morning (gold cost, once per in-game day). */
+    public boolean restSeasonUntilMorning() {
         if (!Config.ascendant() || !season.isEnabled())
-            return;
-        season.restUntilMorning(standardWindow, cards);
+            return false;
+        return season.restUntilMorning(standardWindow, cards);
     }
 
     public double getAdventurePlaySeconds() {

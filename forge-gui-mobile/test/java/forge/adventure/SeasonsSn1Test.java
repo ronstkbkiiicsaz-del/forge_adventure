@@ -38,6 +38,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * SN1 seasons: 4-set Standard, calendar, shortlist, grace auto-pick, undo, old-save default.
@@ -99,6 +100,8 @@ public class SeasonsSn1Test {
             Assert.assertEquals(classAscendantConfig.sn1WindowSize, 4);
             Assert.assertEquals(classAscendantConfig.sn1SeasonDays, 14);
             Assert.assertEquals(classAscendantConfig.sn1OpeningSeasonDays, 7);
+            Assert.assertEquals(classAscendantConfig.sn1RestGoldCost, 25,
+                    "Inn Rest gold cost must be present and tunable");
 
             Config.resetInstanceForTest();
             Config.instance();
@@ -328,6 +331,229 @@ public class SeasonsSn1Test {
                 "pinned oldest must be skipped; next-oldest rotates");
         Assert.assertTrue(window.getSets().contains("M11"));
         Assert.assertFalse(window.getSets().contains("M12"));
+        Assert.assertTrue(window.didLastAddConsumePin(), "pin skip must be reported to the season");
+    }
+
+    @Test
+    public void pinExpiresAfterSkipPath() {
+        StandardWindow window = new StandardWindow();
+        window.init(List.of("M11", "M12", "ZEN", "ROE"));
+        AdventureSeason season = new AdventureSeason();
+        season.initNewGame(window);
+        Assert.assertTrue(season.pinSet("M11", window));
+        Assert.assertEquals(season.getPinnedSet(), "M11");
+        season.endByMastery(window, new CardPool());
+        String pick = season.getShortlist().get(0);
+        season.applyPick(window, pick, false);
+        Assert.assertNull(season.getPinnedSet(), "pin must expire after the skip path consumes it");
+        Assert.assertTrue(window.getSets().contains("M11"), "pinned set stays in the window");
+        Assert.assertFalse(window.getSets().contains("M12"), "next-oldest rotates instead");
+    }
+
+    @Test
+    public void undoRemovesHistoryAndRestoresShortlistWithoutReseed() {
+        StandardWindow window = new StandardWindow();
+        window.init(List.of("M11", "M12"));
+        AdventureSeason season = new AdventureSeason();
+        season.initNewGame(window);
+        season.endByMastery(window, new CardPool());
+        List<String> shortlistBefore = new ArrayList<>(season.getShortlist());
+        String pick = shortlistBefore.get(0);
+        Assert.assertFalse(window.getUnlockedHistory().contains(pick)
+                        || window.getSets().contains(pick));
+        season.applyPick(window, pick, false);
+        Assert.assertTrue(window.getUnlockedHistory().contains(pick));
+        Assert.assertTrue(season.isUndoAvailable());
+        season.undoPick(window);
+        Assert.assertFalse(window.getUnlockedHistory().contains(pick),
+                "undo must remove the set from unlockedHistory");
+        Assert.assertEquals(season.getShortlist(), shortlistBefore,
+                "undo must restore the same shortlist (no nanoTime reseed)");
+        Assert.assertTrue(season.isChoicePending());
+    }
+
+    @Test
+    public void undoRefundsChooseAnyPlanarKey() {
+        StandardWindow window = new StandardWindow();
+        window.init(List.of("M11", "M12"));
+        AdventureSeason season = new AdventureSeason();
+        season.initNewGame(window);
+        // Calendar end (not mastery) so mastery rewards do not mask the Choose-any spend.
+        season.tickExploring(7f * 15f * 60f + 1f, window, new CardPool());
+        Assert.assertTrue(season.isChoicePending());
+        season.addPlanarKeys(1);
+        int keysBefore = season.getPlanarKeys();
+        String any = null;
+        for (CardEdition ed : window.choosableSets()) {
+            if (!season.getShortlist().contains(ed.getCode())) {
+                any = ed.getCode();
+                break;
+            }
+        }
+        if (any == null)
+            any = season.getShortlist().get(0);
+        season.applyPick(window, any, true);
+        Assert.assertNull(season.getLastPickError(), "Choose any with a Planar Key must succeed");
+        Assert.assertFalse(season.isChoicePending());
+        Assert.assertTrue(window.getSets().contains(any));
+        Assert.assertEquals(season.getPlanarKeys(), keysBefore - 1, "Choose any spends a Planar Key");
+        Assert.assertTrue(season.isUndoAvailable());
+        season.undoPick(window);
+        Assert.assertEquals(season.getPlanarKeys(), keysBefore, "undo must refund the Planar Key");
+        Assert.assertFalse(window.getUnlockedHistory().contains(any));
+    }
+
+    @Test
+    public void undoSeasonCountersSurviveSaveLoad() {
+        StandardWindow window = new StandardWindow();
+        window.init(List.of("M11", "M12"));
+        AdventureSeason season = new AdventureSeason();
+        season.initNewGame(window);
+        season.endByMastery(window, new CardPool());
+        String pick = season.getShortlist().get(0);
+        double startBefore = season.daysIntoSeason();
+        season.applyPick(window, pick, false);
+        Assert.assertTrue(season.isUndoAvailable());
+        SaveFileData data = new SaveFileData();
+        season.save(data);
+        Assert.assertTrue(data.containsKey("sn1UndoSeasonStartDays"));
+        Assert.assertTrue(data.containsKey("sn1UndoSeasonsCompleted"));
+
+        AdventureSeason loaded = new AdventureSeason();
+        StandardWindow loadedWindow = new StandardWindow();
+        loadedWindow.load(window.saveSets(), true, false, window.saveHistory());
+        loaded.load(data, loadedWindow);
+        Assert.assertTrue(loaded.isUndoAvailable());
+        String removed = loaded.undoPick(loadedWindow);
+        Assert.assertEquals(removed, pick);
+        Assert.assertEquals(loaded.seasonsCompleted(), 0);
+        Assert.assertEquals(loadedWindow.getSets(), List.of("M11", "M12"));
+        Assert.assertEquals(startBefore, loaded.daysIntoSeason(), 1e-6);
+    }
+
+    @Test
+    public void shortlistPickRejectedWhenNotOnList() {
+        StandardWindow window = new StandardWindow();
+        window.init(List.of("M11", "M12"));
+        AdventureSeason season = new AdventureSeason();
+        season.initNewGame(window);
+        season.endByMastery(window, new CardPool());
+        Assert.assertNull(season.applyPick(window, "ZZZ_NOT_A_SET", false));
+        Assert.assertTrue(season.isChoicePending());
+        Assert.assertNotNull(season.getLastPickError());
+    }
+
+    @Test
+    public void emptyChoosableSetsEndsSeasonWithNoPick() {
+        StandardWindow window = new StandardWindow();
+        List<String> all = new ArrayList<>();
+        for (CardEdition ed : StandardWindow.boosterSets())
+            all.add(ed.getCode());
+        Assert.assertFalse(all.isEmpty(), "need a live card DB");
+        window.init(all);
+        Assert.assertTrue(window.choosableSets().isEmpty());
+        AdventureSeason season = new AdventureSeason();
+        season.initNewGame(window);
+        AtomicInteger fires = new AtomicInteger();
+        season.addSeasonChangeListener(s -> fires.incrementAndGet());
+        Assert.assertTrue(season.endByMastery(window, new CardPool()));
+        Assert.assertFalse(season.isChoicePending(), "empty choosable must not leave pick pending");
+        Assert.assertEquals(season.seasonsCompleted(), 1);
+        Assert.assertEquals(fires.get(), 1, "season-change listener must fire on empty end");
+    }
+
+    @Test
+    public void remasteringAlreadyRewardedSetDoesNotFarmKeys() {
+        StandardWindow window = new StandardWindow();
+        window.init(List.of("M11", "M12"));
+        AdventureSeason season = new AdventureSeason();
+        season.initNewGame(window);
+        Assert.assertTrue(season.endByMastery(window, new CardPool()));
+        String pick1 = season.getShortlist().get(0);
+        int keysBefore = season.getPlanarKeys();
+        season.applyPick(window, pick1, false);
+        int keysAfterFirst = season.getPlanarKeys();
+        Assert.assertTrue(keysAfterFirst > keysBefore, "first mastery grants Planar Keys");
+
+        // Put M12 back as newest; it was already rewarded — must not farm again.
+        window.restoreSets(List.of("M11", "M12"));
+        Assert.assertEquals(window.newestSet(), "M12");
+        Assert.assertTrue(season.endByMastery(window, new CardPool()));
+        String pick2 = season.getShortlist().get(0);
+        season.applyPick(window, pick2, false);
+        Assert.assertEquals(season.getPlanarKeys(), keysAfterFirst,
+                "re-picking/remastering an already-rewarded set must not farm Planar Keys");
+    }
+
+    @Test
+    public void innRestOncePerInGameDay() {
+        ConfigData freeRest = new Json().fromJson(ConfigData.class,
+                new FileHandle(resolveForgeGuiDir()
+                        .resolve("res/adventure/Shandalar Ascendant/config.json").toFile()));
+        freeRest.sn1RestGoldCost = 0; // exercise once-per-day without a live gold wallet
+        Config.installConfigDataForTest(freeRest);
+
+        StandardWindow window = new StandardWindow();
+        window.init(List.of("M11", "ZEN"));
+        AdventureSeason season = new AdventureSeason();
+        season.initNewGame(window);
+        Assert.assertEquals(season.restGoldCost(), 0);
+        Assert.assertTrue(season.canRestToday());
+        Assert.assertTrue(season.restUntilMorning(window, new CardPool()));
+        Assert.assertFalse(season.canRestToday(), "second rest same calendar day must be blocked");
+        Assert.assertFalse(season.restUntilMorning(window, new CardPool()));
+        // One explore-day later, Rest is available again.
+        season.tickExploring(15f * 60f + 1f, window, new CardPool());
+        Assert.assertTrue(season.canRestToday(), "new calendar day unlocks Rest again");
+        Assert.assertTrue(season.restUntilMorning(window, new CardPool()));
+    }
+
+    @Test
+    public void calendarApiExposesDaySeasonIndexAndListener() {
+        StandardWindow window = new StandardWindow();
+        window.init(List.of("M11", "ZEN"));
+        AdventureSeason season = new AdventureSeason();
+        season.initNewGame(window);
+        Assert.assertEquals(season.getGameDays(), 0d, 1e-9);
+        Assert.assertEquals(season.calendarDayNumber(), 1);
+        Assert.assertEquals(season.getSeasonIndex(), 0);
+        AtomicInteger fires = new AtomicInteger();
+        season.addSeasonChangeListener(s -> {
+            fires.incrementAndGet();
+            Assert.assertSame(s, season);
+        });
+        season.endByMastery(window, new CardPool());
+        season.applyPick(window, season.getShortlist().get(0), false);
+        Assert.assertEquals(fires.get(), 1);
+        Assert.assertEquals(season.getSeasonIndex(), 1);
+        Assert.assertTrue(season.getGameDays() >= 0d);
+    }
+
+    @Test
+    public void legacyChoicePendingClearedOnNewGamePlus() {
+        // Use stock config so isChoicePending reads the legacy flag (not a live SN1 season).
+        Config.installConfigDataForTest(stockConfig);
+        StandardWindow window = new StandardWindow();
+        window.init(List.of("M11", "M12"));
+        window.setLegacyChoicePending(true);
+        Assert.assertTrue(window.isChoicePending(), "legacy pending visible before NG+ clear");
+        window.startNewWorld();
+        Assert.assertFalse(window.isSetUnlockedThisWorld());
+        Assert.assertFalse(window.isChoicePending(),
+                "legacy standardChoicePending must be cleared on NG+");
+    }
+
+    @Test
+    public void pendingSetPlaneRemovedOnUnlockUndo() {
+        forge.adventure.world.MultiverseState multi = new forge.adventure.world.MultiverseState();
+        multi.initHomeFromLive(1L, 0f, 0f);
+        String planeId = "set_zen";
+        multi.registerSetPlane(planeId, 1L, "world/set_plane_world.json", "Zendikar");
+        multi.rememberPendingHomeGate(planeId);
+        Assert.assertTrue(multi.hasPlane(planeId));
+        Assert.assertTrue(multi.removePendingSetPlane(planeId));
+        Assert.assertFalse(multi.hasPlane(planeId));
+        Assert.assertFalse(multi.getPendingHomeGatePlaneIds().contains(planeId));
     }
 
     @Test

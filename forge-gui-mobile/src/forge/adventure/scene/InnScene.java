@@ -82,6 +82,7 @@ public class InnScene extends UIScene {
             rest = ui.findActor("rest");
             ui.onButtonPress("rest", InnScene.this::restUntilMorning);
             rest.setVisible(true);
+            refreshRestButton();
             return;
         }
         rest = Controls.newTextButton("Rest", InnScene.this::restUntilMorning);
@@ -90,6 +91,27 @@ public class InnScene extends UIScene {
         rest.setBounds(b[0], b[1], b[2], b[3]);
         ui.addActor(rest);
         addToSelectable(rest);
+        refreshRestButton();
+    }
+
+    private void refreshRestButton() {
+        if (rest == null || !Config.ascendant())
+            return;
+        var season = Current.player().getSeason();
+        if (season == null || !season.isEnabled()) {
+            rest.setVisible(false);
+            return;
+        }
+        rest.setVisible(true);
+        int cost = season.restGoldCost();
+        boolean can = season.canRestToday();
+        if (!can) {
+            rest.setText("Rested");
+            rest.setDisabled(true);
+        } else {
+            rest.setText(cost > 0 ? "Rest (" + cost + "g)" : "Rest");
+            rest.setDisabled(false);
+        }
     }
 
     /**
@@ -111,6 +133,7 @@ public class InnScene extends UIScene {
         if (!Config.ascendant())
             return;
         Current.player().restSeasonUntilMorning();
+        refreshRestButton();
         refreshStatus();
     }
 
@@ -144,6 +167,7 @@ public class InnScene extends UIScene {
     @Override
     public void enter() {
         super.enter();
+        refreshRestButton();
         refreshStatus();
         GameHUD.getInstance().updateBGM();
     }
