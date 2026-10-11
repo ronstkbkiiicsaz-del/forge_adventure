@@ -165,8 +165,8 @@ public class SkillsScene extends UIScene {
     /** MX1: "Collection exported &lt;time&gt;" plus a How-to scene dialog (not FOptionPane). */
     private void addMoxfieldExportStatusRow() {
         TypingLabel status = label("[BLACK]" + MoxfieldMx1.exportStatusLine());
-        status.setWrap(true);
-        scrollContainer.add(status).colspan(2).align(Align.left).padLeft(10).growX();
+        // No wrap/growX: a wrapping label spanning columns collapsed the skill name and XP columns.
+        scrollContainer.add(status).colspan(2).align(Align.left).padLeft(10);
         Localizer loc = Forge.getLocalizer();
         TextraButton howTo = Controls.newTextButton(loc.getMessage("lblHowTo"));
         howTo.addListener(new ClickListener() {
