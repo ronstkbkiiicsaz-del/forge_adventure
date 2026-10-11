@@ -1,26 +1,40 @@
 # Shandalar Ascendant: Grok ⇄ Wren handoff
 
-> **WHOSE TURN: WREN**
-> Turn passed by Grok on 2026-10-11, 05:45 Phoenix time
+> **WHOSE TURN: GROK**
+> Turn passed by Wren on 2026-10-11, 06:18 Phoenix time
 > Rule: only the side whose turn it is acts. When you finish, update this header and **Outstanding**, add a log entry at the top of the **Log**, flip the turn, then give Steve a copyable paste for the other side.
 
 ## Outstanding
 
 ### Waiting on Wren
-Four PRs are ready to test and merge. Each was merged with the current feature/set-start (after #69 and #71), conflicts were resolved by keeping every labelled ConfigData/config.json block, and each is MERGEABLE/CLEAN. They touch the same config files, so later ones will need the usual keep-all-blocks resolve as earlier ones merge.
+- Nothing.
 
-| PR | Head | What's in it | Tests |
-|---|---|---|---|
-| #70 DS1 (PR 1 of the roadmap plan) | `5b8331ddef8` | `ArenaDuelScreen`: opponent on top, you at the bottom, centre stack column, fanned hand, auto-arranged battlefield (lands, creatures, others; small boards centred), context button plus Pass until EOT, DS4 take back kept, DS3 right-click scope unchanged. Gated by `ModernDuelScreen` + `ds1ArenaDuelScreen`. Classic chrome hidden on Arena (the stray "2/3" bar was the classic VStack dropdown). One backdrop spans the whole play area. Real xvfb renders in the PR (landscape + portrait). Tests: pairwise overlap in both orientations, and hand cards keep card aspect and stay on screen. Later DS1 PRs: targeting/combat, mana/cost views, prompt views, animations with AU1, full pad focus. | mobile 362/0, gl 14/0, desktop 873 with 2 co-op flakes |
-| #72 SN1 | `d61cfad2695` | Seasons: 4-set Standard (`sn1WindowSize`), `AdventureSeason` calendar (15 min exploring = 1 day, duel = 2h, inn Rest skips to morning), 7-day opening seasons ×2 then 14-day seasons, mastery ends a season early, shortlist pick with grace auto-pick and undo. HUD, Status, Skills and Inn UI. Old saves default from their rotation. Wired through `StandardWindow`/RW1/CS0. Real renders in the PR; the HUD season line clears the QL1 line and the minimap. Gaps: town criers are HUD notices only, Planar Keys are a counter, mastery cosmetics wait on CS1/AC1. | mobile 361/0, gl 14/0, desktop 873 (co-op flakes, 48/0 on rerun) |
-| #73 AU1 | `2d57c42855f` | Sound overhaul: Kenney CC0 `au1_*.ogg` (pack table in the PR and in CREDITS.md), `Au1Sounds` hooks for DS1 animations, counter sound from the engine's `GameEventSpellCountered` (no name heuristics), chest/pickup/UI sounds wired with fire-once tests, UI volume plus muted overworld ambience. Stock sounds unchanged. | mobile 355/0, gl 13/0, desktop 873 (co-op flakes, 13/0 alone) |
-| #74 EC1 | `4c513b90e3a` | Card economy: base gold 50/150/300/500, special 400, basics 0; rank band 0.4×-3.5×; Standard/Historic 1.25×/0.75×; sale 30%; market band 0.5-2.0, drift 10%/day; colour lean 1.15×. Hooks `CardUtil.getCardPrice`, shops/sell, craft/salvage. Old saves keep gold, cards and dust; stock `cardprices.txt` unchanged. `CraftingApi` drives **MX1 Craft missing** (dust per card and total, confirm before spending, disabled with a reason when short, source printings, then import). MX1 TODO removed. Wren's MX1 nit fixed: Import is disabled with no known cards. Gap: plane-format shop lean (K) deferred. | mobile 361/0, gl 14/0, desktop 873 with 3 co-op flakes |
+### Waiting on Grok: r2 for all four (priority order)
+Linux runner, all four merged together (keep-all config resolve, no duplicate keys/fields): 2 failures caused by the
+combination: `CardEconomyEc1Test.marketDriftsBackOverGameDays` (EC1 + SN1 calendar) and
+`CoopDuelInProcessTest.guestNetGameControllerModernDragToCastPlaysLand` (DS1 touches the co-op modern path; co-op is
+frozen, keep it unchanged). Rebase each on the others as they merge.
 
-### Waiting on Grok (priority order)
-- **Play bug: stuck after a dungeon fight reward** (Steve). In progress on its own branch: reproduce through the real duel and reward path with a fail-before test, fix the root cause, and check the overworld and arena too. If Steve hits it again, his `STUCK:` log line helps.
-- Then DS1 PR 2 onward, DB1, GN1, DS5, QL2, the #51 redo.
-- Low nits from Wren 05:08: QL1 test `tearDown` should reset the plane id; the F8 test's NPE match depends on the JDK message (the MX1 Import nit is fixed in #74).
-- Later nits: #63 doc line "lists must be truly empty, not a space" plus the tileset test checking PNGs and `.tx` templates; #60 test asserting `playerTitle` sits inside `stats`.
+**Steve's decisions (2026-10-11):**
+- **EC1 card value follows a life cycle** (replaces "ignore the price list"): while a card's set is in Standard it is
+  priced by rarity/power (a live Badlands is an ordinary ~300 rare). After rotation its value **appreciates each
+  season**, rares/mythics fastest, scaled by power/age. Pedigree cards (dual lands, power, iconic staples) get a much
+  higher long-term ceiling: use `cardprices.txt` as the **pedigree target/ceiling**, approached over many seasons, not
+  as an immediate price. Each season a few commons/uncommons **spike** (town rumour "X is in demand"). Tunables for
+  curve, ceiling share and spike count. Tests: a card priced ~rarity base while in Standard; rises after N seasons;
+  Badlands climbs toward its list price over many seasons but starts low; a spiked common shows the rumour.
+- **Historic crafting stays more expensive than Standard** (crafting follows value; keep the old 2x intent through
+  the value function; `historicCraftFactor` must not be dead).
+- **AU1 may add `GameEventSpellCountered`** to forge-game (approved).
+
+| PR | Required for r2 |
+|---|---|
+| #70 DS1 | **Blockers:** (1) Cancel/second button hidden with no replacement: mulligan, cancel mana payment, cancel targeting, "No" on confirms, alpha strike all dead-end for mouse/touch (`ArenaDuelScreen` ~160-165). Add a secondary context button wired to `selectButtonCancel` with the prompt's label. (2) Avatars, life, piles, phase indicator, command zone and floating mana are hidden (`VPlayerPanel.doArenaLayout` ~422-436) and nothing is drawn in `ArenaDuelLayout`'s avatar/piles/phaseRail rects: life invisible, graveyard/exile unopenable, commanders uncastable, **players untargetable** (avatar is the `selectPlayer` target). (3) The reseal pass (`MatchScreen` ~1387-1399) redraws every card unrotated with no overlays on top of the real panels: tapped look untapped, P/T/counters/highlights hidden, cards drawn twice. **High:** `stackColumn.refresh()` rebuilds every frame (`ArenaDuelScreen` ~270, `VArenaStackColumn` ~49-74); `new Color` in many draw methods; classic VStack menus (auto-yield, always yes/no, target reveal) unreachable. **Medium:** context label "Resolve" overrides every prompt when the stack is non-empty and "OK"/"Auto" become "Pass" (use the prompt's own labels, localized); second human's prompt hidden in Always mode; pad can't focus the new buttons; tests must drive a scripted duel through mulligan, targets (incl. a player), attack/block, pay mana, X, modes. **Low:** classic `VCardDisplayArea`/`VPlayerPanel` tweaks need a "classic unchanged" check; unused `ds1*` config fields; dedupe the arena-detection check. Also fix the co-op test failure above. |
+| #72 SN1 | **High:** pin never expires (`StandardWindow` ~139-142 skip path never clears `pinnedSet`); undo adds sets to `unlockedHistory` and leaves the opened plane/portal, and doesn't refund the Planar Key/gold of "choose any"; **inn Rest is free and unlimited** (add a cost and once per in-game day). **Medium:** idle time counts (`WorldStage` ~162, `MapStage` ~1517 tick while standing still; spec excludes idle); `undoSeasonStartDays/undoSeasonsCompleted` not saved; auto-pick doesn't `RewardData.invalidateCardPool()`; re-picking an already-mastered rotated-out set farms Mastery Surge + Planar Keys; undo rerolls the shortlist (nanoTime reseed). **Low:** legacy `standardChoicePending` lingers into NG+; validate picks against the shortlist; empty `choosableSets` leaves "pick next set" forever (end the season with no pick and say so); "choose any" fails silently and spends the key without asking; season cosmetic and Planar Key sources missing. |
+| #73 AU1 | **Medium:** gate on Adventure too (`Au1Sounds.enabled()` is Ascendant-only, so constructed/quest/draft matches get AU1 sounds); de-duplicate: attack sound fires per click incl. un-declare and again on declare, one clip per card for draw/exile/damage (play once per event, scaled), controller confirm plays twice, reward flip plays three sounds; honour `isSynced`; keep stock per-card `SVar:SoundEffect` sounds. **Low:** UI slider ignored when effects volume is 0; `loadedScriptClips` → `ConcurrentHashMap`; UI slider only in Ascendant; "mute ambience" mutes biome music (rename or separate); `CoinsDrop` silent at price 0. |
+| #74 EC1 | **High:** shops use the wrong town's market: `CardUtil` ~399 prices from `currentLocationChanges` (set only by inn visits, never cleared, not saved) while purchases write to the shop's own changes; map shops price from the last inn; selling outside town moves the last town's market; cross-town arbitrage. Price and record from the shop's own location. **Medium:** depends on SN1's calendar (reflection lookup, static fallback never advances): call it directly once SN1 is in; implement Steve's life-cycle valuation above; keep Historic crafting more expensive. **Low:** sell/buy band too wide at high skill (pumped markets loop; cap the sell multiplier); Craft missing checks reagents for one copy only and can partially craft. Fix the drift test failure above. |
+
+- Then DS1's later PRs, DB1, GN1, DS5, QL2, the #51 redo.
 
 ### Waiting on Steve (hands-on)
 - Place the LT1 objects in `starter_town.tmx` in Tiled, on unblocked walkable tiles: Mira, Bren, Sela via `townsfolk.tx` (`townsfolkId=havenbrook_mira` / `_bren` / `_sela`); general store `shop.tx` with `commonShopList=GeneralStore` and uncommon/rare/mythic lists **empty** (truly empty, not a space). Town and NPC names are placeholders, rename freely.
@@ -34,6 +48,11 @@ Four PRs are ready to test and merge. Each was merged with the current feature/s
 - Bugs Steve reports from play jump the queue. So do Tiny's, which arrive via `docs/FEEDBACK.md` (written by Tiny's AI, Sam; Wren triages).
 
 ## Log (newest first)
+
+### 2026-10-11 06:18 · Wren → Grok
+- Merged **#75** (stuck after a dungeon reward: quest dialog shown before `activate()`), thanks. Wren merged a Skills
+  screen fix (MX1's status row used a wrapping label that collapsed the name/XP columns).
+- #70, #72, #73, #74 reviewed and tested together: all four back for r2 (Outstanding). Steve's design calls recorded.
 
 ### 2026-10-11 05:45 · Grok → Wren
 - #70 DS1, #72 SN1, #73 AU1 and #74 EC1 are all ready (merged with current base, CLEAN). #74 also wires MX1 Craft missing.
