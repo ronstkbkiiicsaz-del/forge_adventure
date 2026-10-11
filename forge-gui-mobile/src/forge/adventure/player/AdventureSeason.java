@@ -66,8 +66,12 @@ public final class AdventureSeason {
     private boolean undoPaidWithKey;
     private int undoGoldPaid;
     private boolean undoOpenedPlane;
+    private boolean undoFirstUnlock;
     private boolean undoGrantedMasteryRewards;
     private String undoMasteryRewardSet;
+    /** Pin state before the pick (restored on undo when the skip path consumed it). */
+    private String undoPinnedSet;
+    private int undoSeasonsSincePin = 99;
     private boolean newestWasMasteredThisSeason;
     private String pinnedSet;
     private int seasonsSincePin = 99;
@@ -305,8 +309,11 @@ public final class AdventureSeason {
         undoPaidWithKey = false;
         undoGoldPaid = 0;
         undoOpenedPlane = false;
+        undoFirstUnlock = false;
         undoGrantedMasteryRewards = false;
         undoMasteryRewardSet = null;
+        undoPinnedSet = null;
+        undoSeasonsSincePin = 99;
         newestWasMasteredThisSeason = false;
         pinnedSet = null;
         seasonsSincePin = 99;
@@ -383,11 +390,14 @@ public final class AdventureSeason {
                 return false;
             }
         }
+        // Record the day being rested (tonight), not the morning after — otherwise
+        // canRestToday stays false for the whole next calendar day.
+        int dayRested = calendarDayNumber();
         double nextMorning = Math.floor(gameDays) + 1d;
         if (nextMorning <= gameDays)
             nextMorning = gameDays + 1d;
         gameDays = nextMorning;
-        lastRestDay = calendarDayNumber();
+        lastRestDay = dayRested;
         afterTimeAdvanced(window, collection);
         notifyPlayer("You rest until morning. Day " + calendarDayNumber() + "."
                 + (cost > 0 ? " (-" + cost + " gold)" : ""));
@@ -676,14 +686,17 @@ public final class AdventureSeason {
             undoGoldPaid = 0;
         }
         undoOpenedPlane = false;
+        undoFirstUnlock = firstUnlock;
         undoGrantedMasteryRewards = false;
         undoMasteryRewardSet = null;
+        undoPinnedSet = pinnedSet;
+        undoSeasonsSincePin = seasonsSincePin;
         undoAvailable = true;
 
         String rotated = window.addSetForSeason(code, pinnedSet);
         undoRotated = rotated;
         if (window.didLastAddConsumePin() || (rotated != null && rotated.equals(pinnedSet))) {
-            // Pin expires after it skips (or would have left).
+            // Pin expires after it skips (or would have left). Restored on undo.
             pinnedSet = null;
             seasonsSincePin = 0;
         }
@@ -808,7 +821,9 @@ public final class AdventureSeason {
 
         // Revert window sets.
         window.restoreSets(undoSets);
-        if (removed != null)
+        // Only erase history when this pick was the first unlock — re-adding a
+        // previously rotated-out set must keep the real unlock on undo.
+        if (removed != null && undoFirstUnlock)
             window.removeFromHistory(removed);
 
         // Refund Choose any cost.
@@ -823,7 +838,7 @@ public final class AdventureSeason {
             }
         }
 
-        // Close / revert opened plane + portal.
+        // Close / revert opened plane + portal (live home or inactive home blob).
         if (undoOpenedPlane && removed != null) {
             try {
                 forge.adventure.world.WorldSave save = forge.adventure.world.WorldSave.getCurrentSave();
@@ -845,7 +860,9 @@ public final class AdventureSeason {
         choicePending = true;
         seasonsCompleted = undoSeasonsCompleted;
         seasonStartDays = undoSeasonStartDays;
-        seasonsSincePin = Math.max(0, seasonsSincePin - 1);
+        // Restore pin + cooldown from before the pick (including a consumed pin).
+        pinnedSet = undoPinnedSet;
+        seasonsSincePin = undoSeasonsSincePin;
         // Restore the exact shortlist — do not rebuild (no reseed / nanoTime).
         shortlistSeed = undoShortlistSeed;
         shortlist.clear();
@@ -865,8 +882,11 @@ public final class AdventureSeason {
         undoPaidWithKey = false;
         undoGoldPaid = 0;
         undoOpenedPlane = false;
+        undoFirstUnlock = false;
         undoGrantedMasteryRewards = false;
         undoMasteryRewardSet = null;
+        undoPinnedSet = null;
+        undoSeasonsSincePin = 99;
         notifyPlayer("Set choice undone" + (removed == null ? "." : ": " + StandardWindow.setName(removed) + "."));
         return removed;
     }
@@ -881,8 +901,11 @@ public final class AdventureSeason {
         undoPaidWithKey = false;
         undoGoldPaid = 0;
         undoOpenedPlane = false;
+        undoFirstUnlock = false;
         undoGrantedMasteryRewards = false;
         undoMasteryRewardSet = null;
+        undoPinnedSet = null;
+        undoSeasonsSincePin = 99;
     }
 
     public boolean canPin() {
@@ -940,7 +963,9 @@ public final class AdventureSeason {
         data.store("sn1UndoPaidWithKey", undoPaidWithKey);
         data.store("sn1UndoGoldPaid", undoGoldPaid);
         data.store("sn1UndoOpenedPlane", undoOpenedPlane);
+        data.store("sn1UndoFirstUnlock", undoFirstUnlock);
         data.store("sn1UndoGrantedMasteryRewards", undoGrantedMasteryRewards);
+        data.store("sn1UndoSeasonsSincePin", undoSeasonsSincePin);
         if (releaseOrderPick != null)
             data.store("sn1ReleaseOrderPick", releaseOrderPick);
         if (pinnedSet != null)
@@ -953,6 +978,8 @@ public final class AdventureSeason {
             data.store("sn1UndoReleaseOrderPick", undoReleaseOrderPick);
         if (undoMasteryRewardSet != null)
             data.store("sn1UndoMasteryRewardSet", undoMasteryRewardSet);
+        if (undoPinnedSet != null)
+            data.store("sn1UndoPinnedSet", undoPinnedSet);
         data.storeObject("sn1Shortlist", shortlist.toArray(new String[0]));
         data.storeObject("sn1UndoSets", undoSets.toArray(new String[0]));
         data.storeObject("sn1UndoShortlist", undoShortlist.toArray(new String[0]));
@@ -992,8 +1019,11 @@ public final class AdventureSeason {
         undoPaidWithKey = data.containsKey("sn1UndoPaidWithKey") && data.readBool("sn1UndoPaidWithKey");
         undoGoldPaid = data.containsKey("sn1UndoGoldPaid") ? Math.max(0, data.readInt("sn1UndoGoldPaid")) : 0;
         undoOpenedPlane = data.containsKey("sn1UndoOpenedPlane") && data.readBool("sn1UndoOpenedPlane");
+        undoFirstUnlock = data.containsKey("sn1UndoFirstUnlock") && data.readBool("sn1UndoFirstUnlock");
         undoGrantedMasteryRewards = data.containsKey("sn1UndoGrantedMasteryRewards")
                 && data.readBool("sn1UndoGrantedMasteryRewards");
+        undoSeasonsSincePin = data.containsKey("sn1UndoSeasonsSincePin")
+                ? Math.max(0, data.readInt("sn1UndoSeasonsSincePin")) : 99;
         releaseOrderPick = data.containsKey("sn1ReleaseOrderPick") ? data.readString("sn1ReleaseOrderPick") : null;
         pinnedSet = data.containsKey("sn1PinnedSet") ? data.readString("sn1PinnedSet") : null;
         undoPicked = data.containsKey("sn1UndoPicked") ? data.readString("sn1UndoPicked") : null;
@@ -1002,6 +1032,7 @@ public final class AdventureSeason {
                 ? data.readString("sn1UndoReleaseOrderPick") : null;
         undoMasteryRewardSet = data.containsKey("sn1UndoMasteryRewardSet")
                 ? data.readString("sn1UndoMasteryRewardSet") : null;
+        undoPinnedSet = data.containsKey("sn1UndoPinnedSet") ? data.readString("sn1UndoPinnedSet") : null;
         shortlist.clear();
         if (data.containsKey("sn1Shortlist")) {
             String[] sl = (String[]) data.readObject("sn1Shortlist");
