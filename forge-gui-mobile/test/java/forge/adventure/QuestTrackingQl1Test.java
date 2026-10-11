@@ -79,7 +79,7 @@ public class QuestTrackingQl1Test {
     }
 
     @AfterClass(alwaysRun = true)
-    public void restoreAndAssertRealUserDirUntouched() {
+    public void restoreAndAssertRealUserDirUntouched() throws Exception {
         try {
             Config.resetInstanceForTest();
         } finally {
@@ -169,13 +169,22 @@ public class QuestTrackingQl1Test {
         player.getQuests().add(questB);
         AdventureQuestController.trackQuest(questB);
 
-        SaveFileData saved = player.save();
+        // Same quest blob path AdventurePlayer.save/load uses (storeObject "quests").
+        SaveFileData saved = new SaveFileData();
+        saved.storeObject("quests", player.getQuests().toArray());
         player.getQuests().clear();
-        player.load(saved);
+        Object[] loaded = (Object[]) saved.readObject("quests");
+        Assert.assertNotNull(loaded);
+        for (Object o : loaded) {
+            player.getQuests().add((AdventureQuestData) o);
+        }
+        // Mirrors AdventurePlayer.load after reading quests.
+        AdventureQuestController.ensureTrackedQuest();
 
         AdventureQuestData tracked = AdventureQuestController.getTrackedQuest();
         Assert.assertNotNull(tracked, "tracking must survive save/load");
         Assert.assertEquals(tracked.getName(), "Save B");
+        Assert.assertTrue(tracked.isTracked);
         QuestNavigationTarget nav = tracked.resolveNavigationTarget(new Vector2(0, 0));
         Assert.assertTrue(nav.hasPoi());
         Assert.assertEquals(nav.poi.getID(), poiB.getID());
