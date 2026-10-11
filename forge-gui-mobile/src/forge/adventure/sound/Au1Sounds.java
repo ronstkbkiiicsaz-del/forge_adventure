@@ -92,6 +92,31 @@ public final class Au1Sounds {
         }
     }
 
+    /**
+     * Per-match cleanup: flush/drop burst coalescing and UI latches. Does not clear
+     * Adventure hooks (next duel still needs them). Safe from any thread — no game refs.
+     */
+    public static void onMatchEnded() {
+        resetEventBursts();
+        lastUiHoverTarget = null;
+        uiConfirmLatch = false;
+    }
+
+    /**
+     * Full static reset for tests / leaving Adventure: hooks, test overrides, bursts.
+     * Call from test tearDown and when exiting Adventure so nothing leaks into later suites.
+     */
+    public static void resetAllStaticState() {
+        adventureModeOverrideForTest = null;
+        recording = false;
+        recordedPlays.clear();
+        onMatchEnded();
+        ISoundPlaybackHooks current = SoundSystem.getPlaybackHooks();
+        if (current instanceof Au1SoundEnrichment) {
+            SoundSystem.setPlaybackHooks(null);
+        }
+    }
+
     // ---- Test helpers (real behaviour; no source greps) ----
 
     public static void setRecording(boolean on) {

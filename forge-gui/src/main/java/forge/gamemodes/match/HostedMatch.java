@@ -389,6 +389,8 @@ public class HostedMatch {
         boolean isMatchOver = game.getView().isMatchOver();
 
         game = null;
+        // Drop per-match AU1 burst/debounce state (hooks stay registered for Adventure).
+        SoundSystem.notifyMatchEnded();
 
         for (final PlayerControllerHuman humanController : humanControllers) {
             humanController.getGui().setGameSpeed(PlaybackSpeed.NORMAL);
