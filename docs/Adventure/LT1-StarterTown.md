@@ -1,8 +1,10 @@
 # LT1 — Havenbrook (Starter Town) placement checklist
 
-Live town map: `forge-gui/res/adventure/common/maps/map/ascendant/havenbrook.tmx` (32x22, built by Wren
+Live town map: `forge-gui/res/adventure/common/maps/map/ascendant/havenbrook.tmx` (90x60 village, built by Wren
 from the CC0 Ninja Adventure tilesets in `maps/tileset/ninja/`, per-tile collision lives in those `.tsx`
-files). It already has the entry, Inn, GeneralStore shop and Mira/Bren/Sela.
+files; `ninja_HavenbrookExtras` holds roof recolours, the mill wheel, windmill sails and waterfall, and
+`ninja_HavenbrookBackdrop` is the hazy upper town painted above the cliff). It already has the entry
+(south road), Inn, GeneralStore shop and Mira (by the inn), Bren (by the store) and Sela (central square).
 
 Steve's earlier draft `starter_town.tmx` stays in the repo, unused. **Do not let agents edit that TMX.** Steve owns it in Tiled. Wiring lives outside the map
 (POI, biome list, shops, townsfolk/dialog JSON, object templates).
