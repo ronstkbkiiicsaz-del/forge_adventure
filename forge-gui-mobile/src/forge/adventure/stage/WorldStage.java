@@ -1684,15 +1684,14 @@ public class WorldStage extends GameStage implements SaveFileContent {
 
     private void drawNavigationArrow() {
         Vector2 navDirection = null;
-        for (AdventureQuestData adq : Current.player().getQuests()) {
-            if (adq.isTracked) {
-                PointOfInterest nearestValidPOI = adq.getClosestValidPOI(player.getCenter());
-                if (nearestValidPOI != null) {
-                    navDirectionVec.set(nearestValidPOI.getCenter()).sub(player.getCenter());
-                    navDirection = navDirectionVec;
-                    break;
-                }
-
+        AdventureQuestData adq = AdventureQuestController.getTrackedQuest();
+        if (adq != null) {
+            forge.adventure.util.QuestNavigationTarget nav =
+                    adq.resolveNavigationTarget(player.getCenter());
+            if (nav != null && nav.hasPoi()) {
+                navDirectionVec.set(nav.poi.getCenter()).sub(player.getCenter());
+                navDirection = navDirectionVec;
+            } else if (nav == null || !nav.noKnownLocation) {
                 if (adq.getTargetEnemySprite() == null
                         && adq.getActiveStages().size() > 0
                         && adq.qualifiesForDetachedQuest(adq.getActiveStages().get(0))) {
@@ -1714,8 +1713,8 @@ public class WorldStage extends GameStage implements SaveFileContent {
                         }
                     }
                 }
-                break;
             }
+            // noKnownLocation: leave navDirection null so the arrow stays hidden
         }
         if (navDirection != null) {
             navArrow.navTargetAngle = navDirection.angleDeg();

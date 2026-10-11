@@ -88,6 +88,8 @@ public class GameHUD extends Stage {
     private final TextraLabel hostPresenceText = Controls.newTextraLabel("");
     private final ScrollPane hostPresencePane;
     private final TypingLabel partyStatusLabel;
+    /** QL1: HUD line for the tracked quest target (or "no known location"). */
+    private final TypingLabel trackedQuestHud;
     private final TextraButton partyActor;
     private final Image miniMap, gamehud, mapborder, avatarborder, blank;
     private final InputEvent eventTouchDown, eventTouchUp;
@@ -257,6 +259,13 @@ public class GameHUD extends Stage {
         partyStatusLabel.setPosition(5, Forge.isLandscapeMode() ? 102 : getHeight() - 120);
         partyStatusLabel.setWidth(160f);
 
+        trackedQuestHud = Controls.newTypingLabel("");
+        trackedQuestHud.setColor(Color.BLACK);
+        trackedQuestHud.skipToTheEnd();
+        trackedQuestHud.setVisible(false);
+        trackedQuestHud.setPosition(5, Forge.isLandscapeMode() ? 78 : getHeight() - 145);
+        trackedQuestHud.setWidth(Math.min(220f, getWidth() * 0.45f));
+
         partyActor = Controls.newTextButton("[%100]Party", this::partyButtonPressed);
         partyActor.setSize(72f, 25f);
         partyActor.setPosition(Forge.isLandscapeMode() ? 378 : getWidth() - 80, Forge.isLandscapeMode() ? 0 : 30);
@@ -265,6 +274,7 @@ public class GameHUD extends Stage {
         ui.addActor(notificationPane);
         ui.addActor(hostPresencePane);
         ui.addActor(partyStatusLabel);
+        ui.addActor(trackedQuestHud);
         //move touchpad here so z-index is over notificationPane and we can still move the player
         if (GuiBase.isAndroid()) //add touchpad for android
             ui.addActor(touchpad);
@@ -451,19 +461,64 @@ public class GameHUD extends Stage {
         restorePlayerCollision();
         if (openMapActor != null) {
             String val = "[%80]" + Forge.getLocalizer().getMessageorUseDefault("lblZoom", "Zoom");
-            for (AdventureQuestData adq : Current.player().getQuests()) {
-                if (adq.getTargetPOI() != null) {
+            AdventureQuestData tracked = AdventureQuestController.getTrackedQuest();
+            if (tracked != null) {
+                forge.adventure.util.QuestNavigationTarget nav = tracked.resolveNavigationTarget(
+                        WorldStage.getInstance().getPlayerSprite() != null
+                                ? WorldStage.getInstance().getPlayerSprite().getCenter()
+                                : new Vector2());
+                if (nav != null && (nav.hasPoi() || nav.noKnownLocation)) {
                     val = "[%80][+GPS] " + Forge.getLocalizer().getMessageorUseDefault("lblZoom", "Zoom");
-                    break;
+                } else if (tracked.getTargetPOI() != null) {
+                    val = "[%80][+GPS] " + Forge.getLocalizer().getMessageorUseDefault("lblZoom", "Zoom");
+                }
+            } else if (!Config.ql1QuestTracking()) {
+                for (AdventureQuestData adq : Current.player().getQuests()) {
+                    if (adq.getTargetPOI() != null) {
+                        val = "[%80][+GPS] " + Forge.getLocalizer().getMessageorUseDefault("lblZoom", "Zoom");
+                        break;
+                    }
                 }
             }
             openMapActor.setText(val);
             openMapActor.layout();
         }
+        updateTrackedQuestHud();
         if (MapStage.getInstance().isInMap())
             updateBookmarkActor(MapStage.getInstance().getChanges().isBookmarked());
         updateEnemyCounter();
         avatarGroup.setZIndex(ui.getChildren().size);
+    }
+
+    /** QL1: show the tracked quest name and target (or "no known location") on the HUD. */
+    public void updateTrackedQuestHud() {
+        if (trackedQuestHud == null) {
+            return;
+        }
+        if (!Config.ql1QuestTracking()) {
+            trackedQuestHud.setVisible(false);
+            return;
+        }
+        AdventureQuestData tracked = AdventureQuestController.getTrackedQuest();
+        if (tracked == null) {
+            trackedQuestHud.setVisible(false);
+            return;
+        }
+        Vector2 from = WorldStage.getInstance().getPlayerSprite() != null
+                ? WorldStage.getInstance().getPlayerSprite().getCenter()
+                : new Vector2();
+        forge.adventure.util.QuestNavigationTarget nav = tracked.resolveNavigationTarget(from);
+        String line;
+        if (nav != null && !nav.hudLine.isEmpty()) {
+            line = nav.hudLine;
+        } else if (tracked.getTargetPOI() != null) {
+            line = tracked.getName() + " — " + tracked.getTargetPOI().getDisplayName();
+        } else {
+            line = tracked.getName();
+        }
+        trackedQuestHud.setText("[%80][+GPS] " + line);
+        trackedQuestHud.skipToTheEnd();
+        trackedQuestHud.setVisible(true);
     }
 
     void updateKeys() {
