@@ -254,7 +254,7 @@ public final class ModernDuelController {
             return false;
         }
         if (!dragActive) {
-            if (Math.hypot(dx, dy) < ModernDuelScreen.DRAG_SLOP_PX) {
+            if (Math.hypot(dx, dy) < ModernDuelScreen.dragSlopPx()) {
                 return false;
             }
             dragActive = true;

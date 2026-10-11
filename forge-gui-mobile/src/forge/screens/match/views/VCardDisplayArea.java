@@ -31,6 +31,7 @@ import forge.model.FModel;
 import forge.screens.match.CardFlightOverlay;
 import forge.screens.match.MatchController;
 import forge.screens.match.MatchScreen;
+import forge.screens.match.ModernDuelActions;
 import forge.screens.match.ModernDuelController;
 import forge.screens.match.ModernDuelGestures;
 import forge.screens.match.ModernDuelScreen;
@@ -238,10 +239,36 @@ public abstract class VCardDisplayArea extends VDisplayArea implements ActivateH
         orderedCards.get().clear();
         infoGhostCardIds.get().clear();
 
+        // DS1 Arena: fan the local player's hand across the hand band.
+        if (this instanceof VZoneDisplay zone
+                && zone.getZoneType() == ZoneType.Hand
+                && MatchController.getView() != null
+                && MatchController.getView().isArenaDuelScreen()) {
+            return layoutArenaHandFan(visibleWidth, visibleHeight);
+        }
+
         float x = 0;
         float y = 0;
         float cardHeight = visibleHeight;
         float cardWidth = getCardWidth(cardHeight);
+
+        // Arena field rows: with a small board the cards naturally sit left in a
+        // wide lane. Center the group so the lane doesn't look empty on the right.
+        final boolean arenaField = this instanceof VField.FieldRow
+                && MatchController.getView() != null
+                && MatchController.getView().isArenaDuelScreen();
+        if (arenaField) {
+            float totalW = 0f;
+            for (CardAreaPanel cardPanel : new ArrayList<>(cardPanels.get())) {
+                if (cardPanel != null) {
+                    final int stack = 1 + countStackDepth(cardPanel);
+                    totalW += cardWidth + (stack - 1) * cardWidth * getCardStackOffset();
+                }
+            }
+            if (totalW > 0f && totalW < visibleWidth) {
+                x = (visibleWidth - totalW) / 2f;
+            }
+        }
 
         for (CardAreaPanel cardPanel : new ArrayList<>(cardPanels.get())) {
             if (cardPanel != null) {
@@ -250,7 +277,50 @@ public abstract class VCardDisplayArea extends VDisplayArea implements ActivateH
             }
         }
 
-        return new ScrollBounds(x, visibleHeight);
+        return new ScrollBounds(Math.max(x, visibleWidth), visibleHeight);
+    }
+
+    private int countStackDepth(final CardAreaPanel cardPanel) {
+        int n = 0;
+        CardAreaPanel p = cardPanel.getNextPanelInStack();
+        while (p != null) {
+            n++;
+            p = p.getNextPanelInStack();
+        }
+        return n;
+    }
+
+    private ScrollBounds layoutArenaHandFan(float visibleWidth, float visibleHeight) {
+        final List<CardAreaPanel> panels = new ArrayList<>(cardPanels.get());
+        final int count = panels.size();
+        final boolean[] playable = new boolean[count];
+        for (int i = 0; i < count; i++) {
+            final CardAreaPanel p = panels.get(i);
+            playable[i] = p != null && ModernDuelActions.isHandCastableFromViews(
+                    p.getCard(), p.getCard() == null ? null : p.getCard().getController());
+        }
+        int hover = -1;
+        for (int i = 0; i < count; i++) {
+            if (panels.get(i) != null && panels.get(i).isHovered()) {
+                hover = i;
+                break;
+            }
+        }
+        final List<forge.screens.match.ArenaHandFan.CardPose> poses =
+                forge.screens.match.ArenaHandFan.fan(count, visibleWidth, visibleHeight, hover, playable);
+        float maxRight = visibleWidth;
+        for (int i = 0; i < poses.size(); i++) {
+            final forge.screens.match.ArenaHandFan.CardPose pose = poses.get(i);
+            final CardAreaPanel panel = panels.get(pose.index);
+            if (panel == null) {
+                continue;
+            }
+            orderedCards.get().add(panel.getCard());
+            panel.setBounds(pose.x, pose.y, pose.w, pose.h);
+            // Slight vertical lift already baked into pose.y for hover.
+            maxRight = Math.max(maxRight, pose.x + pose.w);
+        }
+        return new ScrollBounds(maxRight, visibleHeight);
     }
 
     @Override

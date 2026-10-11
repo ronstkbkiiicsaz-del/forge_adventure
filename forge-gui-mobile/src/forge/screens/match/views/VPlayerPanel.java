@@ -335,37 +335,51 @@ public class VPlayerPanel extends FContainer {
 
     @Override
     protected void doLayout(float width, float height) {
+        // DS1 Arena: keep hand/field stacked (portrait-style) even in landscape so the
+        // ArenaDuelLayout playerHand / playerField bands stay readable.
+        if (isArenaDuelLayout()) {
+            doArenaLayout(width, height);
+            return;
+        }
+        // Restore classic chrome if we previously hid it for Arena.
+        setArenaChromeVisible(true);
         if (Forge.isLandscapeMode()) {
             doLandscapeLayout(width, height);
             return;
         }
 
         //layout for bottom panel by default
-        float x = avatarHeight;
-        float w = width - avatarHeight;
+        final float chromeH = avatarHeight;
+        float x = chromeH;
+        float w = width - chromeH;
         float indicatorScale = 1f;
-        if (avatarHeight < VAvatar.HEIGHT) {
+        if (chromeH < VAvatar.HEIGHT) {
             indicatorScale = 0.6f;
         }
-        float h = phaseIndicator.getPreferredHeight(w) * indicatorScale;
-        phaseIndicator.setBounds(x, height - h, w, h);
+        phaseIndicator.setVisible(true);
+        float phaseH = phaseIndicator.getPreferredHeight(w) * indicatorScale;
+        phaseIndicator.setBounds(x, height - phaseH, w, phaseH);
 
-        float y = height - avatarHeight;
+        float y = height - chromeH;
         float displayAreaHeight = displayAreaHeightFactor * y / 3;
         y -= displayAreaHeight;
         for (InfoTab tab : tabs) {
             tab.setDisplayBounds(0, y, width, displayAreaHeight);
         }
 
-        y = height - avatarHeight;
+        y = height - chromeH;
+        avatar.setSize(chromeH, chromeH);
         avatar.setPosition(0, y);
 
         float lifeLabelWidth = LIFE_FONT.getBounds("99").width * 1.2f * indicatorScale; //make just wide enough for 2-digit life totals
-        float infoLabelHeight = avatarHeight - phaseIndicator.getHeight();
+        float infoLabelHeight = chromeH - (!phaseIndicator.isVisible() ? 0f : phaseIndicator.getHeight());
+        if (infoLabelHeight < chromeH * 0.55f) {
+            infoLabelHeight = chromeH;
+        }
         lblLife.setBounds(x, y, lifeLabelWidth, infoLabelHeight);
         x += lifeLabelWidth;
 
-        float infoTabWidth = (getWidth() - x) / tabs.size();
+        float infoTabWidth = (getWidth() - x) / Math.max(1, tabs.size());
         for (InfoTab tab : tabs) {
             tab.setBounds(x, y, infoTabWidth, infoLabelHeight);
             x += infoTabWidth;
@@ -398,6 +412,106 @@ public class VPlayerPanel extends FContainer {
 
         //this is used for landscape so set this to 0
         field.setFieldModifier(0);
+    }
+
+    /**
+     * DS1 Arena panel layout: hide classic avatar/zone-tab chrome (those were the
+     * thin clipped icon bars along the top/bottom edges) and pin the local hand to
+     * the bottom of the player panel at the same fraction ArenaDuelLayout uses.
+     */
+    private void doArenaLayout(final float width, final float height) {
+        setArenaChromeVisible(false);
+        // Classic phase strip: hide hard. Leftover bounds from a prior classic layout
+        // were still painting a green active-phase bar across the top of the opp panel.
+        phaseIndicator.setVisible(false);
+        phaseIndicator.setBounds(0, 0, 0, 0);
+        for (final VPhaseIndicator.PhaseLabel lbl : phaseIndicator.allLabels()) {
+            lbl.setVisible(false);
+            lbl.setBounds(0, 0, 0, 0);
+        }
+        if (commandZone != null) {
+            commandZone.setVisible(false);
+        }
+        if (floatingMana != null) {
+            floatingMana.setVisible(false);
+        }
+        field.setCommandZoneWidth(0);
+        field.setFieldModifier(0);
+
+        // Opponent panel: field fills the whole band (no hand strip, no classic tabs).
+        if (isFlipped()) {
+            for (InfoTab tab : tabs) {
+                tab.setDisplayBounds(0, 0, width, 0);
+                tab.setDisplayVisible(false);
+            }
+            field.setBounds(0, 0, width, height);
+            return;
+        }
+
+        // Local player: hand band at the bottom, matching ArenaDuelLayout.playerHand.
+        // Landscape bumps the fraction so fanned cards stay card-aspect and fully on screen.
+        final float handFrac = Math.max(arenaHandFraction(), Forge.isLandscapeMode() ? 0.34f : 0.28f);
+        final float minHand = Forge.isLandscapeMode() ? 120f : 100f;
+        final float handH = Math.max(minHand, Math.min(height * 0.48f, height * handFrac));
+        final float fieldH = Math.max(1f, height - handH);
+
+        for (InfoTab tab : tabs) {
+            tab.setDisplayBounds(0, fieldH, width, handH);
+            // Only the selected zone (hand) should paint; keep others hidden.
+            tab.setDisplayVisible(false);
+        }
+        // Prefer the selected zone; fall back to the hand band for the local player.
+        final VZoneDisplay handZone = getZoneDisplay(ZoneType.Hand);
+        if (selectedTab != null) {
+            selectedTab.setDisplayVisible(true);
+        } else if (handZone != null) {
+            handZone.setVisible(true);
+        }
+        // Force the hand zone into the band so a prompt transition cannot leave it
+        // at a stale classic chrome position.
+        if (handZone != null) {
+            handZone.setBounds(0, fieldH, width, handH);
+            if (selectedTab == null || selectedTab.getDisplayArea() == handZone) {
+                handZone.setVisible(true);
+            }
+        }
+
+        field.setBounds(0, 0, width, fieldH);
+    }
+
+    private void setArenaChromeVisible(final boolean visible) {
+        avatar.setVisible(visible);
+        lblLife.setVisible(visible);
+        phaseIndicator.setVisible(visible);
+        for (InfoTab tab : tabs) {
+            tab.setVisible(visible);
+        }
+    }
+
+    /**
+     * Stretch the match plate across this panel. Avoids screen-aligned UVs that
+     * map the lower player band onto dark water and read as a flat void.
+     */
+    private void paintArenaPanelBackdrop(final Graphics g) {
+        forge.assets.FSkinTexture plate = forge.assets.FSkinTexture.ADV_BG_MATCH;
+        if (plate.getWidth() <= 0) {
+            plate = forge.assets.FSkinTexture.BG_MATCH;
+        }
+        final float w = getWidth();
+        final float h = getHeight();
+        // Opaque in-bounds plate only. Negative-Y "forest bias" blits escaped the
+        // flipped opponent panel and punched FBO alpha holes into the other half.
+        g.resetAlphaComposite();
+        g.startClip(0, 0, w, h);
+        try {
+            g.fillRect(new Color(0.10f, 0.16f, 0.12f, 1f), 0, 0, w, h);
+            if (plate.getWidth() > 0) {
+                g.drawImage(plate, 0, 0, w, h);
+            }
+        } finally {
+            g.endClip();
+        }
+        g.resetAlphaComposite();
     }
 
     private void layoutFloatingMana(float panelWidth, float fieldBottom) {
@@ -434,6 +548,27 @@ public class VPlayerPanel extends FContainer {
 
     private float initW, initH, commandZoneWidth, commandZoneCount, avatarWidth, prefWidth;
     private final float mod = 2.4f;
+
+    /** True when the active match view is the DS1 Arena skeleton (hand stays bottom-stacked). */
+    private static boolean isArenaDuelLayout() {
+        if (Forge.getCurrentScreen() instanceof forge.screens.match.ArenaDuelScreen) {
+            return true;
+        }
+        final MatchScreen view = MatchController.getView();
+        return view != null && view.isArenaDuelScreen();
+    }
+
+    private static float arenaHandFraction() {
+        try {
+            if (forge.adventure.util.Config.instance() != null
+                    && forge.adventure.util.Config.instance().getConfigData() != null) {
+                return forge.adventure.util.Config.instance().getConfigData().ds1HandFraction;
+            }
+        } catch (final RuntimeException ignored) {
+            // Config may be unavailable in some headless paths
+        }
+        return 0.28f;
+    }
 
     private void doLandscapeLayout(float width, float height) {
         initW = width;
@@ -475,6 +610,11 @@ public class VPlayerPanel extends FContainer {
     }
 
     private void updateTabLayout(float width, float height) {
+        // Arena keeps portrait-stacked field/hand; never re-apply classic landscape chrome.
+        if (isArenaDuelLayout()) {
+            doArenaLayout(width, height);
+            return;
+        }
         float x = avatar.getRight();
         phaseIndicator.resetFont();
         phaseIndicator.setBounds(x, 0, avatar.getWidth() * 0.6f, height);
@@ -555,12 +695,43 @@ public class VPlayerPanel extends FContainer {
     }
 
     @Override
+    public void draw(Graphics g) {
+        // Arena: scissor the whole panel so field-row / zone clips cannot paint into the
+        // other half and zero FBO alpha (reads as a flat dark void in captures).
+        if (isArenaDuelLayout()) {
+            g.startClip(0, 0, getWidth(), getHeight());
+            try {
+                super.draw(g);
+            } finally {
+                g.endClip();
+            }
+            return;
+        }
+        super.draw(g);
+    }
+
+    @Override
     public void drawBackground(Graphics g) {
         float y;
         InfoTab infoTab = selectedTab;
         float pad = Forge.isHorizontalTabLayout() ? avatarWidth / 16f : 0f;
+        final VDisplayArea selectedDisplayArea = infoTab == null ? null : infoTab.getDisplayArea();
+        // Arena: paint the match plate across the whole player panel so landscape
+        // player-field / under-hand regions aren't a flat dark void (screen-aligned
+        // VField UV mapped those bands onto dark water + lost FBO alpha). Hand scrim
+        // still sits on top for card readability.
+        if (isArenaDuelLayout()) {
+            g.resetAlphaComposite();
+            paintArenaPanelBackdrop(g);
+            final VZoneDisplay handZone = getZoneDisplay(ZoneType.Hand);
+            if (handZone != null && handZone.isVisible() && handZone.getHeight() > 1f) {
+                g.fillRect(new Color(0.16f, 0.18f, 0.22f, 1f),
+                        handZone.getLeft(), handZone.getTop(), handZone.getWidth(), handZone.getHeight());
+            }
+            g.resetAlphaComposite();
+            return; // no classic zone-tab borders in Arena
+        }
         if (infoTab != null) { //draw background and border for selected zone if needed
-            VDisplayArea selectedDisplayArea = infoTab.getDisplayArea();
             float x = selectedDisplayArea == null ? 0 : selectedDisplayArea.getLeft();
             float w = selectedDisplayArea == null ? 0 : selectedDisplayArea.getWidth();
             float top = selectedDisplayArea == null ? 0 : selectedDisplayArea.getTop();
