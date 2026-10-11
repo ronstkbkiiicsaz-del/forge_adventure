@@ -487,7 +487,10 @@ public class WorldStage extends GameStage implements SaveFileContent {
                     Forge.switchScene(duelScene);
                 }, ScreenUtil.getInstance().takeScreenshot(), true, false, false, false, "", Current.player().avatar(), mob.getAtlasPath(), Current.player().getName(), mob.getName()));
                 currentMob = mob;
-                WorldSave.getCurrentSave().autoSave();
+                // Ascendant SV1 autosaves from DuelScene.initDuels; stock keeps the overworld autosave.
+                if (!forge.adventure.util.InteriorMapSave.autosaveBeforeFightEnabled()) {
+                    WorldSave.getCurrentSave().autoSave();
+                }
             });
         });
     }

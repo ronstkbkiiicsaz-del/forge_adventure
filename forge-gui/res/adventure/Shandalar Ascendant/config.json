@@ -134,6 +134,8 @@
   "rw1AllRegularFights": true,
   "rw1NewestSetShare": 0.5,
   "cs0SourcePrintings": true,
+  "sv1SaveAnywhere": true,
+  "sv1AutosaveBeforeFight": true,
   "lt1LivingTowns": true,
   "lt1WarnMissingMapObjects": true,
   "lt1FallbackEntryXFraction": 0.5,
