@@ -318,6 +318,43 @@ public abstract class GameStage extends Stage {
         return animationTimeout > 0;
     }
 
+    private float stuckSeconds;
+    private boolean stuckLogged;
+    private float lastStuckX = Float.NaN, lastStuckY = Float.NaN;
+
+    /**
+     * Diagnostic: when the player keeps trying to move (keys held or mouse/touch down) but the sprite
+     * hasn't moved for 5 seconds, log once which input gate is holding them, so a "can't move" report
+     * can be traced from forge.log.
+     */
+    private void logIfPlayerStuck(float delta) {
+        if (player == null)
+            return;
+        boolean trying = touchX >= 0 || KeyBinding.Left.isPressed() || KeyBinding.Right.isPressed()
+                || KeyBinding.Up.isPressed() || KeyBinding.Down.isPressed() || controllerInput.len() > 0.2f;
+        boolean moved = player.getX() != lastStuckX || player.getY() != lastStuckY;
+        lastStuckX = player.getX();
+        lastStuckY = player.getY();
+        if (!trying || moved) {
+            stuckSeconds = 0;
+            stuckLogged = false;
+            return;
+        }
+        stuckSeconds += delta;
+        if (stuckSeconds >= 5f && !stuckLogged) {
+            stuckLogged = true;
+            System.err.println("STUCK: player can't move for 5s on " + getClass().getSimpleName()
+                    + " paused=" + isPaused() + " animationTimeout=" + animationTimeout
+                    + " pendingEndAction=" + (onEndAction != null)
+                    + " dialogOnlyInput=" + isDialogOnlyInput()
+                    + " mapDialogOnlyInput=" + MapStage.getInstance().isDialogOnlyInput()
+                    + " advFreezePlayerControls=" + Forge.advFreezePlayerControls
+                    + " scene=" + (Forge.getCurrentScene() == null ? "null" : Forge.getCurrentScene().getClass().getSimpleName())
+                    + " pos=" + player.getX() + "," + player.getY()
+                    + " dir=" + player.getMovementDirection());
+        }
+    }
+
     public GameStage() {
         super(new ScalingViewport(Scaling.stretch, Scene.getIntendedWidth(), Scene.getIntendedHeight(), new OrthographicCamera()), Forge.getGraphics().getBatch());
         WorldSave.getCurrentSave().onLoad(() -> {
@@ -368,6 +405,7 @@ public abstract class GameStage extends Stage {
     @Override
     public final void act(float delta) {
         super.act(delta);
+        logIfPlayerStuck(delta);
 
         if (animationTimeout >= 0) {
             animationTimeout -= delta;
