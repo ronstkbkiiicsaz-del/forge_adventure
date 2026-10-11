@@ -590,7 +590,6 @@ public class ArenaDuelScreenGlTest {
      */
     private static void assertLifeBadgePixels(final ArenaDuelScreen arena,
             final Pixmap flipped, final int w, final int h) {
-        final int clearR = 18, clearG = 23, clearB = 31;
         for (final VPlayerPanel panel : new VPlayerPanel[] {
                 arena.getBottomPlayerPanel(), arena.getTopPlayerPanel() }) {
             if (panel == null) {
@@ -606,22 +605,30 @@ public class ArenaDuelScreenGlTest {
             final int x1 = Math.min(w, Math.round(b[0] + b[2]));
             final int y1 = Math.min(h, Math.round(b[1] + b[3]));
             Assert.assertTrue(x1 > x0 && y1 > y0, "badge rect empty in pixmap space");
-            int painted = 0;
+            int inkOrBorder = 0;
+            int darkFill = 0;
             for (int y = y0; y < y1; y++) {
                 for (int x = x0; x < x1; x++) {
                     final int px = flipped.getPixel(x, y);
                     final int r = (px >>> 24) & 0xff;
                     final int gch = (px >>> 16) & 0xff;
                     final int bl = (px >>> 8) & 0xff;
-                    // Non-background: darker badge fill or cream ink / gold border.
-                    if (Math.abs(r - clearR) + Math.abs(gch - clearG) + Math.abs(bl - clearB) > 40) {
-                        painted++;
+                    // Cream ink / gold border (high luminance warm pixels).
+                    if (r > 180 && gch > 140 && bl < 200) {
+                        inkOrBorder++;
+                    }
+                    // Near-black badge fill distinct from FBO clear (~18,23,31).
+                    if (r < 12 && gch < 12 && bl < 18) {
+                        darkFill++;
                     }
                 }
             }
             final int area = Math.max(1, (x1 - x0) * (y1 - y0));
-            Assert.assertTrue(painted > area / 5,
-                    "life badge rect lacks painted pixels (" + painted + "/" + area
+            Assert.assertTrue(inkOrBorder > 40,
+                    "life badge lacks cream/gold ink pixels (" + inkOrBorder
+                            + ") for " + panel.getPlayer());
+            Assert.assertTrue(darkFill > area / 10,
+                    "life badge lacks dark fill (" + darkFill + "/" + area
                             + ") for " + panel.getPlayer());
         }
     }

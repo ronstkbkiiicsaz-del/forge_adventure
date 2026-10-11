@@ -67,9 +67,9 @@ public class VPlayerPanel extends FContainer {
     private static final float INFO_TAB_PADDING_Y = Utils.scale(2);
     private static final Color ARENA_PANEL_PLATE = new Color(0.10f, 0.16f, 0.12f, 1f);
     private static final Color ARENA_HAND_SCRIM = new Color(0.16f, 0.18f, 0.22f, 1f);
-    private static final Color ARENA_LIFE_BADGE_FILL = new Color(0.08f, 0.09f, 0.12f, 1f);
-    private static final Color ARENA_LIFE_BADGE_BORDER = new Color(0.92f, 0.78f, 0.32f, 1f);
-    private static final Color ARENA_LIFE_BADGE_INK = new Color(1f, 0.96f, 0.82f, 1f);
+    private static final Color ARENA_LIFE_BADGE_FILL = new Color(0.02f, 0.02f, 0.04f, 1f);
+    private static final Color ARENA_LIFE_BADGE_BORDER = new Color(0.95f, 0.82f, 0.28f, 1f);
+    private static final Color ARENA_LIFE_BADGE_INK = new Color(1f, 0.98f, 0.88f, 1f);
     private static final FSkinFont ARENA_LIFE_FONT = FSkinFont._get(28);
     private static final FSkinFont ARENA_LIFE_COUNTER_FONT = FSkinFont._get(14);
 
@@ -1025,11 +1025,12 @@ public class VPlayerPanel extends FContainer {
             final float h = getHeight();
             g.resetAlphaComposite();
             g.fillRect(ARENA_LIFE_BADGE_FILL, 0, 0, w, h);
-            g.drawRect(2f, ARENA_LIFE_BADGE_BORDER, 0, 0, w, h);
+            g.drawRect(3f, ARENA_LIFE_BADGE_BORDER, 0, 0, w, h);
             final boolean showCounters = poisonCounters > 0 || energyCounters > 0;
             final float lifeH = showCounters ? h * 0.62f : h;
-            g.drawText(lifeStr, ARENA_LIFE_FONT, ARENA_LIFE_BADGE_INK,
-                    1f, 0, w - 2f, lifeH, false, Align.center, true);
+            // Outlined cream digits so the total stays readable on any backdrop.
+            g.drawOutlinedText(lifeStr, ARENA_LIFE_FONT, ARENA_LIFE_BADGE_INK, Color.BLACK,
+                    2f, 1f, w - 4f, lifeH, false, Align.center, true);
             if (showCounters) {
                 final float cy = lifeH;
                 final float ch = h - lifeH;
