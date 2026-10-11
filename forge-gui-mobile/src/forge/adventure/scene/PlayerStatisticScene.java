@@ -354,8 +354,8 @@ public class PlayerStatisticScene extends UIScene {
         }
         seasonStatusLabel = Controls.newTextraLabel("");
         seasonStatusLabel.setName("seasonStatus");
-        // Both orientations sit on the dark chrome (footer / Awards band) — light text.
-        seasonStatusLabel.setColor(com.badlogic.gdx.graphics.Color.LIGHT_GRAY);
+        // Both orientations sit on the dark chrome (footer / Awards band) — white text.
+        seasonStatusLabel.setColor(com.badlogic.gdx.graphics.Color.WHITE);
         float[] b = seasonStatusStageBounds(Forge.isLandscapeMode(), ui.getHeight());
         seasonStatusLabel.setBounds(b[0], b[1], b[2], b[3]);
         seasonStatusLabel.setVisible(false);
@@ -376,7 +376,7 @@ public class PlayerStatisticScene extends UIScene {
                 seasonStatusLabel.setVisible(false);
                 return;
             }
-            seasonStatusLabel.setText("[%55][LIGHT_GRAY]" + line);
+            seasonStatusLabel.setText("[%50][WHITE]" + line);
             seasonStatusLabel.layout();
             seasonStatusLabel.setVisible(true);
         } catch (Throwable ignored) {
@@ -391,8 +391,8 @@ public class PlayerStatisticScene extends UIScene {
      */
     public static float[] seasonStatusStageBounds(boolean landscape, float layoutH) {
         if (landscape) {
-            // json (8, 255, 275, 14) → stageY = 1; clear of scrollWindow / nav chrome.
-            float jx = 8f, jy = 255f, jw = 275f, jh = 14f;
+            // json (8, 254, 275, 14) → stageY = 2; clear of scrollWindow (~17) / nav chrome.
+            float jx = 8f, jy = 254f, jw = 275f, jh = 14f;
             return new float[] { jx, layoutH - jy - jh, jw, jh };
         }
         // Right of Awards — match Awards height so the band stays clear of scrollWindow.
