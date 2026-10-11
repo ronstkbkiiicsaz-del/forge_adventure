@@ -27,6 +27,10 @@ import java.util.Locale;
 public final class Au1Sounds {
     private static final List<String> recordedPlays = new ArrayList<>();
     private static boolean recording;
+    /** Last UI focus target that already played hover (suppresses held-key / re-select doubles). */
+    private static Object lastUiHoverTarget;
+    /** True after Use/confirm key-down until key-up, so held Use does not re-fire confirm. */
+    private static boolean uiConfirmLatch;
 
     private Au1Sounds() {
     }
@@ -57,6 +61,14 @@ public final class Au1Sounds {
     public static void setRecording(boolean on) {
         recording = on;
         recordedPlays.clear();
+        lastUiHoverTarget = null;
+        uiConfirmLatch = false;
+    }
+
+    /** Test helper: clear focus/confirm debounce state. */
+    public static void resetUiDebounceForTest() {
+        lastUiHoverTarget = null;
+        uiConfirmLatch = false;
     }
 
     public static List<String> drainRecordedPlays() {
@@ -254,8 +266,39 @@ public final class Au1Sounds {
         play(Au1SoundId.UI_HOVER);
     }
 
+    /**
+     * Play UI hover only when focus moves to a different actor. Repeated select of the
+     * same target (held d-pad / re-focus) does not re-fire.
+     */
+    public static void playUiHoverIfChanged(Object target) {
+        if (!enabled() || target == null) {
+            return;
+        }
+        if (target.equals(lastUiHoverTarget)) {
+            return;
+        }
+        lastUiHoverTarget = target;
+        play(Au1SoundId.UI_HOVER);
+    }
+
     public static void playUiConfirm() {
         play(Au1SoundId.UI_CONFIRM);
+    }
+
+    /**
+     * Confirm for controller Use key: plays once per down/up cycle. Call
+     * {@link #releaseUiConfirmLatch()} on key-up.
+     */
+    public static void playUiConfirmOnPress() {
+        if (!enabled() || uiConfirmLatch) {
+            return;
+        }
+        uiConfirmLatch = true;
+        play(Au1SoundId.UI_CONFIRM);
+    }
+
+    public static void releaseUiConfirmLatch() {
+        uiConfirmLatch = false;
     }
 
     public static void playPackRip() {

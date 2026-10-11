@@ -1,7 +1,6 @@
 package forge.adventure.sound;
 
 import forge.game.card.CardView;
-import forge.game.card.CardView.CardStateView;
 import forge.game.event.EventValueChangeType;
 import forge.game.event.GameEvent;
 import forge.game.event.GameEventAttackersDeclared;
@@ -14,6 +13,7 @@ import forge.game.event.GameEventMulligan;
 import forge.game.event.GameEventPlayerLivesChanged;
 import forge.game.event.GameEventShuffle;
 import forge.game.event.GameEventSpellAbilityCast;
+import forge.game.event.GameEventSpellCountered;
 import forge.game.event.GameEventSpellResolved;
 import forge.game.event.GameEventTokenCreated;
 import forge.game.event.GameEventZone;
@@ -25,12 +25,14 @@ import forge.player.GamePlayerUtil;
 import forge.sound.ISoundPlaybackHooks;
 import forge.sound.SoundCategory;
 
-import java.util.Locale;
 import java.util.Objects;
 
 /**
  * AU1 duel/UI event enrichment registered on {@link forge.sound.SoundSystem}.
  * Suppresses stock clips only for events we remap; everything else keeps stock behaviour.
+ *
+ * <p>Counter sounds come only from {@link GameEventSpellCountered} (fired by
+ * {@code CounterEffect} when a spell is actually countered) — never from card-name heuristics.
  */
 public final class Au1SoundEnrichment implements ISoundPlaybackHooks {
     public static final Au1SoundEnrichment INSTANCE = new Au1SoundEnrichment();
@@ -42,6 +44,10 @@ public final class Au1SoundEnrichment implements ISoundPlaybackHooks {
     public boolean handleGameEvent(GameEvent evt) {
         if (!Au1Sounds.enabled() || evt == null) {
             return false;
+        }
+        if (evt instanceof GameEventSpellCountered) {
+            Au1Sounds.playCounter();
+            return true;
         }
         if (evt instanceof GameEventSpellAbilityCast cast) {
             if (cast.sa() != null && cast.sa().isSpell()) {
@@ -57,11 +63,8 @@ public final class Au1SoundEnrichment implements ISoundPlaybackHooks {
             if (resolved.spell() == null || !resolved.spell().isSpell()) {
                 return false;
             }
-            CardView host = resolved.spell().getHostCard();
-            if (host != null && looksLikeCounterspell(host)) {
-                Au1Sounds.playCounter();
-                return true;
-            }
+            // Counterspell itself resolving is a normal resolve; the countered spell
+            // already produced GameEventSpellCountered above.
             Au1Sounds.playResolve();
             return true;
         }
@@ -184,23 +187,5 @@ public final class Au1SoundEnrichment implements ISoundPlaybackHooks {
     @Override
     public boolean muteAmbience() {
         return Au1Sounds.muteOverworldAmbience();
-    }
-
-    private static boolean looksLikeCounterspell(CardView host) {
-        if (host == null) {
-            return false;
-        }
-        CardStateView state = host.getCurrentState();
-        if (state == null || !state.isInstant()) {
-            return false;
-        }
-        String name = host.getName() == null ? "" : host.getName().toLowerCase(Locale.ROOT);
-        if (name.contains("counterspell") || name.startsWith("negate") || name.equals("cancel")
-                || name.equals("dissolve") || name.equals("deny")                 || name.contains("revoke")
-                || name.contains("dismiss") || name.equals("remand")) {
-            return true;
-        }
-        // Oracle text is not always on the view; name heuristics cover the common set.
-        return name.startsWith("counter ") || name.contains(" counter");
     }
 }

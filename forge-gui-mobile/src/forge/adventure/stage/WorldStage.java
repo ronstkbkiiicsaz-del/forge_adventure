@@ -1270,6 +1270,9 @@ public class WorldStage extends GameStage implements SaveFileContent {
                     .append(" → ").append(dust).append(" dust");
         } else {
             ap.addMaterial(grantMat.id, amount);
+            if (Config.au1SoundOverhaul() && primary) {
+                forge.adventure.sound.Au1Sounds.playItemPickup();
+            }
             msg.append("Gathered ").append(amount).append("× ").append(grantMat.getDisplayName());
             // Floating text: the main material plus any extra nodes of the same material.
             if (primary) {

@@ -11,7 +11,10 @@ import forge.game.event.GameEventCardDamaged;
 import forge.game.event.GameEventCardDamaged.DamageType;
 import forge.game.event.GameEventMulligan;
 import forge.game.event.GameEventShuffle;
+import forge.game.event.GameEventSpellCountered;
+import forge.game.event.GameEventSpellResolved;
 import forge.game.player.PlayerView;
+import forge.game.spellability.SpellAbilityView;
 import forge.localinstance.properties.ForgePreferences.FPref;
 import forge.model.FModel;
 import forge.sound.ISoundPlaybackHooks;
@@ -221,6 +224,78 @@ public class Au1SoundEffectsTest {
         Assert.assertTrue(Au1SoundEnrichment.INSTANCE.handleGameEvent(
                 new GameEventCardDamaged(null, null, 9, DamageType.Normal)));
         Assert.assertTrue(Au1Sounds.drainRecordedPlays().contains("au1_combat_damage_heavy"));
+    }
+
+    @Test
+    public void counterSoundOnlyFromEngineSpellCounteredEvent() {
+        Au1Sounds.drainRecordedPlays();
+
+        SpellAbilityView noSa = null;
+        // Real engine path: CounterEffect fires GameEventSpellCountered when a spell is countered.
+        Assert.assertTrue(Au1SoundEnrichment.INSTANCE.handleGameEvent(
+                new GameEventSpellCountered(noSa, noSa)));
+        List<String> afterCounter = Au1Sounds.drainRecordedPlays();
+        Assert.assertEquals(afterCounter.size(), 1, "countered event must play exactly once: " + afterCounter);
+        Assert.assertEquals(afterCounter.get(0), "au1_counter");
+
+        // A second countered event plays once more (not latched across distinct counters).
+        Assert.assertTrue(Au1SoundEnrichment.INSTANCE.handleGameEvent(
+                new GameEventSpellCountered(noSa, noSa)));
+        Assert.assertEquals(Au1Sounds.drainRecordedPlays(), List.of("au1_counter"));
+
+        // Spell resolve — even with a Counterspell-like stack description — must NOT play counter.
+        // (Name heuristics are forbidden; only GameEventSpellCountered maps to au1_counter.)
+        Assert.assertFalse(Au1SoundEnrichment.INSTANCE.handleGameEvent(
+                new GameEventSpellResolved(noSa, false, "Counterspell")));
+        Assert.assertTrue(Au1Sounds.drainRecordedPlays().isEmpty(),
+                "SpellResolved must not emit au1_counter from the card name");
+
+        Assert.assertFalse(Au1SoundEnrichment.INSTANCE.handleGameEvent(
+                new GameEventSpellResolved(noSa, false, "Counterbalance")));
+        Assert.assertTrue(Au1Sounds.drainRecordedPlays().isEmpty(),
+                "Non-counter spell with a counter-like name must not emit au1_counter");
+
+        // DS1 may still call playCounter() directly.
+        Au1Sounds.playCounter();
+        Assert.assertEquals(Au1Sounds.drainRecordedPlays(), List.of("au1_counter"));
+    }
+
+    @Test
+    public void chestItemPickupAndUiFocusFireOnceWithoutDoubleOnRepeat() {
+        Au1Sounds.resetUiDebounceForTest();
+        Au1Sounds.drainRecordedPlays();
+
+        // Treasure / reward-sprite path: chest open + item pickup (instant gold/shards/life).
+        Au1Sounds.playChestOpen();
+        Au1Sounds.playItemPickup();
+        List<String> loot = Au1Sounds.drainRecordedPlays();
+        Assert.assertEquals(loot, List.of("au1_chest_open", "au1_item_pickup"));
+
+        // Gathering primary grant: item pickup once.
+        Au1Sounds.playItemPickup();
+        Assert.assertEquals(Au1Sounds.drainRecordedPlays(), List.of("au1_item_pickup"));
+
+        // Focus move A → A (held key / re-select): hover once.
+        Object actorA = new Object();
+        Object actorB = new Object();
+        Au1Sounds.playUiHoverIfChanged(actorA);
+        Au1Sounds.playUiHoverIfChanged(actorA);
+        Au1Sounds.playUiHoverIfChanged(actorA);
+        Assert.assertEquals(Au1Sounds.drainRecordedPlays(), List.of("au1_ui_hover"));
+
+        // Focus move A → B → A: hover for each change.
+        Au1Sounds.playUiHoverIfChanged(actorB);
+        Au1Sounds.playUiHoverIfChanged(actorA);
+        Assert.assertEquals(Au1Sounds.drainRecordedPlays(), List.of("au1_ui_hover", "au1_ui_hover"));
+
+        // Controller Use held: confirm once per down/up cycle.
+        Au1Sounds.playUiConfirmOnPress();
+        Au1Sounds.playUiConfirmOnPress();
+        Au1Sounds.playUiConfirmOnPress();
+        Assert.assertEquals(Au1Sounds.drainRecordedPlays(), List.of("au1_ui_confirm"));
+        Au1Sounds.releaseUiConfirmLatch();
+        Au1Sounds.playUiConfirmOnPress();
+        Assert.assertEquals(Au1Sounds.drainRecordedPlays(), List.of("au1_ui_confirm"));
     }
 
     @Test
