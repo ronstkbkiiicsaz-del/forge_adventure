@@ -632,6 +632,27 @@ public class ConfigData {
      */
     public String ql1NoKnownLocationMessage = "no known location";
 
+    // ---- Ascendant Arena duel screen (Package DS1 PR1): layout skeleton tunables. ----
+
+    /**
+     * When true (Ascendant default), Adventure duels use the Arena-style screen skeleton
+     * under preference Auto. The Settings preference Still gates Always/Never. Stock modes
+     * and {@code Never} keep the classic MatchScreen. Old saves omit this key and keep the default.
+     */
+    public boolean ds1ArenaDuelScreen = true;
+
+    /** Share of viewport width (landscape) / height factor (portrait) reserved for the phase rail. */
+    public float ds1PhaseRailFraction = 0.07f;
+
+    /** Share of the player area height used by the fanned hand. */
+    public float ds1HandFraction = 0.28f;
+
+    /** Share of the centre lane width used by the stack column. */
+    public float ds1StackFraction = 0.48f;
+
+    /** Drag slop in pixels before a hand/battlefield press becomes a drag (~Neo Forge 9px). */
+    public float ds1DragSlopPx = 9f;
+
     // ---- Ascendant MX1: Moxfield round trip (export / collection-limited import). ----
 
     /**
