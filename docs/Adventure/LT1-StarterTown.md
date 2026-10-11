@@ -1,8 +1,10 @@
 # LT1 — Havenbrook (Starter Town) placement checklist
 
-Hand-made town map: `forge-gui/res/adventure/common/maps/map/ascendant/starter_town.tmx`
+Live town map: `forge-gui/res/adventure/common/maps/map/ascendant/havenbrook.tmx` (32x22, built by Wren
+from the CC0 Ninja Adventure tilesets in `maps/tileset/ninja/`, per-tile collision lives in those `.tsx`
+files). It already has the entry, Inn, GeneralStore shop and Mira/Bren/Sela.
 
-**Do not let agents edit this TMX.** Steve owns it in Tiled. Wiring lives outside the map
+Steve's earlier draft `starter_town.tmx` stays in the repo, unused. **Do not let agents edit that TMX.** Steve owns it in Tiled. Wiring lives outside the map
 (POI, biome list, shops, townsfolk/dialog JSON, object templates).
 
 ## Overworld placement (already wired)
@@ -12,7 +14,7 @@ Hand-made town map: `forge-gui/res/adventure/common/maps/map/ascendant/starter_t
 | POI `name` | `StarterTown` |
 | Display name | Havenbrook |
 | Type | `town` |
-| Map | `../common/maps/map/ascendant/starter_town.tmx` |
+| Map | `../common/maps/map/ascendant/havenbrook.tmx` |
 | Biome | Colorless (`world/biomes/colorless.json`) |
 | Pin | `radiusFactor` 0.01, `offsetX` 0.06, `offsetY` 0.0 |
 | Why here | ~50 tiles east of the player start / Spawn at map center (500,500) on the 1000×1000 home plane, outside `minTownSpacing` (40) |

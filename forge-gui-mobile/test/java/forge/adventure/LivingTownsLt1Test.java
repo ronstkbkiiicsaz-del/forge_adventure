@@ -27,7 +27,8 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * LT1 living-town behaviour: Havenbrook POI resolves to {@code starter_town.tmx},
+ * LT1 living-town behaviour: Havenbrook POI resolves to {@code havenbrook.tmx} (hand-built Ninja Adventure map;
+ * Steve's {@code starter_town.tmx} stays in the repo, unused),
  * entry/fallback, shop + townsfolk data validate, missing objects warn without crash.
  * Uses Surefire {@code forge.test.userDir}; never writes the real user dir.
  */
@@ -76,8 +77,8 @@ public class LivingTownsLt1Test {
         Assert.assertEquals(poi.type, "town");
         Assert.assertEquals(poi.count, 1);
         Assert.assertEquals(poi.displayName, "Havenbrook");
-        Assert.assertTrue(poi.map != null && poi.map.contains("starter_town.tmx"),
-                "POI map should point at starter_town.tmx: " + poi.map);
+        Assert.assertTrue(poi.map != null && poi.map.contains("havenbrook.tmx"),
+                "POI map should point at havenbrook.tmx: " + poi.map);
         List<String> tags = poi.questTags != null ? Arrays.asList(poi.questTags) : List.of();
         Assert.assertFalse(tags.contains("QuestSource"),
                 "Havenbrook must not be QuestSource until it has a quest board");
@@ -85,7 +86,7 @@ public class LivingTownsLt1Test {
                 "Havenbrook must not be Sidequest until it has a quest board");
 
         Path map = LivingTownMapSupport.resolvePoiMapFile(planeDir, commonDir, poi.map);
-        Assert.assertTrue(Files.isRegularFile(map), "starter_town.tmx must resolve: " + map);
+        Assert.assertTrue(Files.isRegularFile(map), "havenbrook.tmx must resolve: " + map);
 
         String colorless = Files.readString(planeDir.resolve("world/biomes/colorless.json"),
                 StandardCharsets.UTF_8);
@@ -113,6 +114,31 @@ public class LivingTownsLt1Test {
     }
 
     @Test
+    public void havenbrookTilesetsResolveThroughRealLoader() throws Exception {
+        Path map = commonDir.resolve("maps/map/ascendant/havenbrook.tmx");
+        Assert.assertTrue(Files.isRegularFile(map), map.toString());
+        FileHandle tmx = new FileHandle(map.toFile());
+        TemplateTmxMapLoader loader = new TemplateTmxMapLoader();
+        Array<FileHandle> tsx = loader.resolveExternalTilesets(tmx);
+        Assert.assertTrue(tsx.size >= 6, "expected every Ninja Adventure tileset, got " + tsx.size);
+        boolean anyCollision = false;
+        for (FileHandle handle : tsx) {
+            Assert.assertTrue(handle.exists(), "tileset missing via real loader: " + handle.path());
+            Assert.assertTrue(handle.name().startsWith("ninja_"), "unexpected tileset: " + handle.name());
+            String body = handle.readString("UTF-8");
+            anyCollision |= body.contains("<objectgroup");
+            String png = handle.name().replace(".tsx", ".png");
+            Assert.assertTrue(handle.parent().child(png).exists(), "tileset image missing: " + png);
+        }
+        Assert.assertTrue(anyCollision, "Ninja tilesets must carry per-tile collision for Havenbrook");
+        String xml = Files.readString(map, StandardCharsets.UTF_8);
+        for (String layer : new String[]{"Background", "Ground", "Foreground", "AboveSprites"}) {
+            Assert.assertTrue(xml.contains("name=\"" + layer + "\""), "havenbrook.tmx missing layer " + layer);
+        }
+        Assert.assertTrue(xml.contains("name=\"spriteLayer\""), "havenbrook.tmx needs a spriteLayer");
+    }
+
+    @Test
     public void missingTilesetFailsThroughRealLoader() throws Exception {
         Path tmp = Files.createTempDirectory("lt1-tsx-miss");
         Path tmx = tmp.resolve("broken.tmx");
@@ -135,17 +161,34 @@ public class LivingTownsLt1Test {
 
     @Test
     public void committedMapHasEntryInnAndShop_entryFallbackWorksWithoutCrash() throws Exception {
-        Path map = commonDir.resolve("maps/map/ascendant/starter_town.tmx");
+        Path map = commonDir.resolve("maps/map/ascendant/havenbrook.tmx");
         Assert.assertTrue(Files.isRegularFile(map), map.toString());
         List<TmxObjectInfo> objects = LivingTownMapSupport.parseTmxObjects(map);
 
-        // Current committed map (Steve may still be editing — do not require townsfolk yet).
         Assert.assertTrue(LivingTownMapSupport.hasObjectType(objects, "entry"),
-                "committed starter_town.tmx should already have an entry object");
+                "havenbrook.tmx should have an entry object");
         Assert.assertTrue(LivingTownMapSupport.hasObjectType(objects, "inn"),
-                "committed starter_town.tmx should already have an inn object");
+                "havenbrook.tmx should have an inn object");
         Assert.assertTrue(LivingTownMapSupport.hasObjectType(objects, "shop"),
-                "committed starter_town.tmx should already have a shop object");
+                "havenbrook.tmx should have a shop object");
+
+        Set<String> folkIds = new HashSet<>();
+        TmxObjectInfo generalStore = null;
+        for (TmxObjectInfo o : objects) {
+            if ("townsfolk".equalsIgnoreCase(o.type)) {
+                folkIds.add(o.properties.get("townsfolkId"));
+            }
+            if ("shop".equalsIgnoreCase(o.type) && "GeneralStore".equals(o.properties.get("commonShopList"))) {
+                generalStore = o;
+            }
+        }
+        Assert.assertEquals(folkIds, new HashSet<>(Arrays.asList(
+                "havenbrook_mira", "havenbrook_bren", "havenbrook_sela")), "Havenbrook townsfolk");
+        Assert.assertNotNull(generalStore, "Havenbrook needs the GeneralStore shop");
+        for (String key : new String[]{"uncommonShopList", "rareShopList", "mythicShopList"}) {
+            Assert.assertEquals(generalStore.properties.getOrDefault(key, ""), "",
+                    "GeneralStore " + key + " must be truly empty");
+        }
 
         // Fallback math when entry is missing (Steve mid-edit): no crash, deterministic pixels.
         float[] pos = LivingTownMapSupport.fallbackEntryPixels(64 * 16f, 48 * 16f,
@@ -200,10 +243,10 @@ public class LivingTownsLt1Test {
         Assert.assertFalse(itemNames.contains("Farmer's Tools"),
                 "Farmer's Tools is 6000g equipment, not a starter tool");
 
-        Path map = commonDir.resolve("maps/map/ascendant/starter_town.tmx");
+        Path map = commonDir.resolve("maps/map/ascendant/havenbrook.tmx");
         List<TmxObjectInfo> objects = LivingTownMapSupport.parseTmxObjects(map);
         Set<String> referenced = LivingTownMapSupport.shopNamesFromObjects(objects);
-        Assert.assertFalse(referenced.isEmpty(), "starter_town shop lists should name shops");
+        Assert.assertFalse(referenced.isEmpty(), "havenbrook shop lists should name shops");
         Set<String> missing = new HashSet<>(referenced);
         missing.removeAll(shopNames);
         Assert.assertTrue(missing.isEmpty(), "shop names on map missing from shops.json: " + missing);
