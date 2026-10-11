@@ -428,12 +428,21 @@ public class ArenaDuelScreen extends MatchScreen {
         final float h = btn.getHeight();
         g.fillRect(PROMPT_BTN_FACE, x, y, w, h);
         g.drawRect(Utils.scale(1), PROMPT_BTN_BORDER, x, y, w, h);
-        final String text = btn.getText();
-        if (text != null && !text.isEmpty()) {
-            g.drawText(text, FSkinFont.get(16), Color.WHITE,
-                    x, y, w, h, false, Align.center, true);
+        // Prefer the label's logical caption; FLabel may ellipsize getText() to "…".
+        String text = btn == btnCancel ? cancelCaption
+                : btn == btnPassUntilEot ? ArenaContextActions.passUntilEotLabel()
+                : contextCaption;
+        if (text == null || text.isEmpty() || "…".equals(text) || "...".equals(text)) {
+            text = btn.getText();
+        }
+        if (text != null && !text.isEmpty() && !"…".equals(text) && !"...".equals(text)) {
+            g.drawText(text, FSkinFont.get(14), Color.WHITE,
+                    x + 2f, y, w - 4f, h, false, Align.center, true);
         }
     }
+
+    private String contextCaption = "OK";
+    private String cancelCaption = "Cancel";
 
     private void refreshStackIfChanged(final boolean force) {
         if (stackColumn == null || !stackColumn.isVisible()) {
