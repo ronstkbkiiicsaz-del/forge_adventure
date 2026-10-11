@@ -239,6 +239,32 @@ public final class PlanarPortalPlacer {
     }
 
     /**
+     * SN1 undo: revert {@link #onSetUnlocked} for a set pick — remove a pending
+     * plane registration, clear a pending home gate, and drop a live home portal
+     * POI that targets the set plane (when still on home and never traveled).
+     */
+    public static void onSetUnlockUndone(WorldSave save, String setCode) {
+        if (save == null || setCode == null || setCode.isEmpty() || !ascendantGatesEnabled()) {
+            return;
+        }
+        if (StandardWindow.CORE_COLLECTION.equalsIgnoreCase(setCode)
+                || !SetPlaneRules.isKnownEdition(setCode)) {
+            return;
+        }
+        String planeId = SetPlaneGenerator.planeIdForSet(setCode);
+        MultiverseState multi = save.getMultiverse();
+        if (multi != null) {
+            multi.removePendingSetPlane(planeId);
+        }
+        World world = save.getWorld();
+        if (world != null && PlaneMeta.HOME_ID.equals(save.getCurrentPlaneId())) {
+            if (world.removePointOfInterestByTargetPlane(planeId) > 0) {
+                notifyCoopHashRefresh();
+            }
+        }
+    }
+
+    /**
      * Call after load / switch to home: place any missing Standard-window gates
      * and pending mastery gates.
      */
