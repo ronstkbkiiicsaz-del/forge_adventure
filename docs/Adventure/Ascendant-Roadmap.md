@@ -881,6 +881,12 @@ Forge's rules engine, card scripts and AI untouched**; this is a new presentatio
   a light shake on big hits. All animation speeds behind one setting, including "instant".
 - Sound hooks on the existing sound events.
 
+**Status 2026-10-11 (Steve playtest): DS1 is paused and off by default** (`ds1ArenaDuelScreen: false`). Part 1
+reused Forge's widgets and moved them around: overlapping text, the same piles, a hand that doesn't tuck or fan on
+hover, unreliable drag-to-cast, and **no game menu: no concede, no options, no Esc menu**. Restart from the hand
+prototype (`docs/Adventure/HandPrototype-Spec.md`) and a visual mockup Steve approves before any more screen code.
+Whatever replaces the screen must keep the game menu (concede, options, Esc) reachable.
+
 **Pop-out hand window** (`forge-gui-mobile-dev/.../HandWindow.java`): today it can show the base printing instead of the
 card's actual one (Steve's full-art foil Bloodthirsty Conqueror shows plain), because its name-based cache fallback
 (`findImageFile`) takes the first file for the name; no foil either. Either retire the window once DS1's hand is in, or
