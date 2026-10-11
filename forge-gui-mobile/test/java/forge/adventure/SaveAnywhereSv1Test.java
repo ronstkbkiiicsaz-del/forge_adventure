@@ -386,11 +386,25 @@ public class SaveAnywhereSv1Test {
                 Assert.assertEquals(Current.player().getGold(), 50,
                         "F8 must not quickload while a dialog is open");
 
+                // Clear dialog and press F8. quickLoad runs before switchScene; scene swap
+                // may NPE under GL (FSkin) — gold restore is the behavior under test.
                 dialogFlag.setBoolean(map, false);
                 Assert.assertFalse(map.isDialogOnlyInput());
-                map.keyDown(com.badlogic.gdx.Input.Keys.F8);
+                try {
+                    map.keyDown(com.badlogic.gdx.Input.Keys.F8);
+                } catch (Exception switchSceneEx) {
+                    Throwable root = switchSceneEx;
+                    while (root.getCause() != null && root.getCause() != root) {
+                        root = root.getCause();
+                    }
+                    if (!(root instanceof NullPointerException)
+                            || root.getMessage() == null
+                            || !root.getMessage().contains("FSkin")) {
+                        throw switchSceneEx;
+                    }
+                }
                 Assert.assertEquals(Current.player().getGold(), 100,
-                        "F8 quickload must run when no dialog is open");
+                        "F8 quickload must restore the quicksave when no dialog is open");
             } catch (Exception e) {
                 throw new RuntimeException(e);
             } finally {
