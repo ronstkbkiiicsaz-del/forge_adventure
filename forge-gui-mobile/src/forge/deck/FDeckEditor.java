@@ -646,6 +646,7 @@ public class FDeckEditor extends TabPageScreen<FDeckEditor> {
                     );
                 }
                 addItem(new FMenuItem(localizer.getMessage("btnCopyToClipboard"), Forge.hdbuttons ? FSkinImage.HDEXPORT : FSkinImage.BLANK, e -> FDeckViewer.copyDeckToClipboard(deck)));
+                addExtraDeckExportMenuItems(this);
                 addItem(new FCheckBoxMenuItem(localizer.getMessage("lblGroupIdenticalCards"), getGroupIdenticalCards(), e -> toggleGroupIdenticalCards()));
                 boolean devMode = FModel.getPreferences().getPrefBoolean(FPref.DEV_MODE_ENABLED);
                 if(!FModel.getPreferences().getPrefBoolean(FPref.ENFORCE_DECK_LEGALITY) || devMode)
@@ -657,6 +658,10 @@ public class FDeckEditor extends TabPageScreen<FDeckEditor> {
                 ((DeckEditorPage) getSelectedPage()).buildDeckMenu(this);
             }
         };
+    }
+
+    /** Override to add Ascendant MX1 export actions (Copy deck for Moxfield, Open export folder). */
+    protected void addExtraDeckExportMenuItems(FPopupMenu menu) {
     }
 
     protected void showAddBasicLandsDialog() {

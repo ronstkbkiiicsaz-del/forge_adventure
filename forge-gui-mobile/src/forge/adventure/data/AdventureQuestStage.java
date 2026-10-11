@@ -178,9 +178,10 @@ public class AdventureQuestStage implements Serializable {
         return cfg != null && cfg.ql1DiscoveredSideQuestTargetsOnly;
     }
 
-    /** Cache for {@link #collectSideQuestNavigationPois()}; invalidated via discovery stamp. */
+    /** Cache for {@link #collectSideQuestNavigationPois()}; keyed by discovery stamp + plane. */
     private transient List<PointOfInterest> sideQuestNavCache;
     private transient long sideQuestNavCacheStamp = Long.MIN_VALUE;
+    private transient String sideQuestNavCachePlaneId;
 
     /** Non-creating visited check — does not add empty change entries to the save. */
     private static boolean isDiscovered(PointOfInterest poi) {
@@ -200,6 +201,7 @@ public class AdventureQuestStage implements Serializable {
     public void invalidateSideQuestNavCache() {
         sideQuestNavCache = null;
         sideQuestNavCacheStamp = Long.MIN_VALUE;
+        sideQuestNavCachePlaneId = null;
     }
 
     public EnemySprite getTargetSprite() {
@@ -354,7 +356,12 @@ public class AdventureQuestStage implements Serializable {
         } catch (Exception e) {
             stamp = -1L;
         }
-        if (sideQuestNavCache != null && sideQuestNavCacheStamp == stamp) {
+        // Plane id must be part of the key: discovery stamp is save-global, but POIs are per plane.
+        String planeId = currentPlaneIdSafe();
+        if (sideQuestNavCache != null
+                && sideQuestNavCacheStamp == stamp
+                && planeId != null
+                && planeId.equals(sideQuestNavCachePlaneId)) {
             return new ArrayList<>(sideQuestNavCache);
         }
 
@@ -386,6 +393,7 @@ public class AdventureQuestStage implements Serializable {
         }
         sideQuestNavCache = new ArrayList<>(candidates);
         sideQuestNavCacheStamp = stamp;
+        sideQuestNavCachePlaneId = planeId;
         return new ArrayList<>(candidates);
     }
 
