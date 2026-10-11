@@ -114,6 +114,8 @@ public class QuestTrackingQl1Test {
         questSnapshot = new ArrayList<>(player.getQuests());
         player.getQuests().clear();
         WorldSave.getCurrentSave().clearChanges();
+        WorldSave.getCurrentSave().getMultiverse()
+                .presetCurrentPlaneId(forge.adventure.world.PlaneMeta.HOME_ID);
 
         installWorldWithPois();
     }
@@ -362,6 +364,42 @@ public class QuestTrackingQl1Test {
         Assert.assertEquals(actorsOf(detailSel),
                 java.util.Arrays.asList(ret, status, skills, achievements, detailTrack, detailBack),
                 "details selectables must drop list buttons and skip hidden abandon");
+    }
+
+    @Test
+    public void sideQuestNavCache_invalidatesWhenPlaneChanges() {
+        // Cache is keyed by discovery stamp + plane id. Same stamp after a plane switch
+        // must not reuse plane A's targets.
+        WorldSave.getCurrentSave().getMultiverse().presetCurrentPlaneId("plane_a");
+        PointOfInterest near = findPoi("QuestTownNear");
+        Assert.assertNotNull(near);
+        WorldSave.getCurrentSave().getPointOfInterestChanges(near.getID()).visit();
+
+        AdventureQuestData side = anySideQuest("Do Side Quests");
+        AdventurePlayer player = WorldSave.getCurrentSave().getPlayer();
+        player.getQuests().add(side);
+        AdventureQuestController.trackQuest(side);
+
+        QuestNavigationTarget navA = side.resolveNavigationTarget(new Vector2(0, 0));
+        Assert.assertTrue(navA.hasPoi(), "plane A should target the discovered source");
+        Assert.assertEquals(navA.poi.getID(), near.getID());
+        String planeATargetId = navA.poi.getID();
+        long stampAfterA = WorldSave.getCurrentSave().getPoiDiscoveryStamp();
+
+        // Plane B: wipe discovery entries (stamp unchanged) and rebuild the world with no visits.
+        WorldSave.getCurrentSave().getMultiverse().presetCurrentPlaneId("plane_b");
+        WorldSave.getCurrentSave().clearChanges();
+        Assert.assertEquals(WorldSave.getCurrentSave().getPoiDiscoveryStamp(), stampAfterA,
+                "clearChanges must not bump the discovery stamp");
+        PointOfInterestData.clearRuntimeCacheForTests();
+        installWorldWithPois();
+
+        QuestNavigationTarget navB = side.resolveNavigationTarget(new Vector2(0, 0));
+        Assert.assertFalse(navB.hasPoi(),
+                "plane B must recompute (nothing discovered), not reuse plane A cache");
+        Assert.assertTrue(navB.noKnownLocation);
+        Assert.assertTrue(navB.poi == null || !planeATargetId.equals(navB.poi.getID()),
+                "must not keep plane A's target after the plane change");
     }
 
     @Test
