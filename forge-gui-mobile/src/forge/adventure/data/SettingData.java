@@ -29,4 +29,9 @@ public class SettingData {
     public boolean bindEquipmentLoadoutsToDecks;
     public boolean drawChevronsToHiddenEnemiesInClearQuest;
     public boolean preferEraMatchedTokenArt;
+    /**
+     * AU1: when true, overworld biome music (WHITE/BLUE/BLACK/RED/GREEN/COLORLESS playlists)
+     * stays silent. Town/dungeon/match music is unaffected. Ascendant settings UI exposes this.
+     */
+    public boolean muteOverworldAmbience;
 }

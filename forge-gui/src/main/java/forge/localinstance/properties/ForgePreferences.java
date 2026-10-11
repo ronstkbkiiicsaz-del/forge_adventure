@@ -172,6 +172,7 @@ public class ForgePreferences extends AbstractPreferences<ForgePreferences.FPref
         UI_ENABLE_SOUNDS ("true"),
         UI_ENABLE_MUSIC ("true"),
         UI_VOL_SOUNDS ("100"),
+        UI_VOL_UI ("100"),
         UI_VOL_MUSIC ("100"),
         UI_PAUSE_MUSIC_ON_FOCUS_LOSS ("true"),
         UI_ALT_SOUND_SYSTEM ("false"),
