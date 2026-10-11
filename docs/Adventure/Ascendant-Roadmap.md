@@ -1008,7 +1008,11 @@ or the Core Set Collection, so Standard opens with 2 sets. The **first two seaso
 tunable) and each adds a set the player picks from the shortlist, so Standard reaches 4 sets within the first month;
 from then on normal seasons rotate one set in and the oldest out.
 
-**Seasons.** The world has an in-game calendar (days pass with travel and rest; shown on the HUD and Status screen).
+**Seasons.** Forge Adventure has no world clock today (the day/night look is only a cosmetic background tint), so SN1
+adds an in-game calendar, shown on the HUD and Status screen. **One in-game day = 15 minutes of active play**
+(tunable), and active play **includes duels**, where most play time goes; menus, pauses and idle time don't count.
+Resting at an inn skips to the next morning. That makes an opening season (15 days) about 4 hours of play and a
+normal season (30 days) about 7-8 hours.
 A **season** lasts a tunable number of in-game days (start with ~30, playtest it). Each season brings **one new set**
 into Standard; when the window is full the oldest set rotates to Historic. Nothing owned is ever lost.
 - **Mastery pulls the next season forward**: mastering the newest set (today's requirement) ends the season early, so
