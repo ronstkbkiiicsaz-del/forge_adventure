@@ -252,9 +252,9 @@ public final class AscendantCardEconomy {
 
     /**
      * Seasons since this card's edition left Standard (0 while still legal).
-     * Sets that were never in the window (Badlands / LEB, etc.) get a starting age of
-     * "rotated at season 0" plus release-order distance past the current window's oldest
-     * set, so pedigree cards climb in real play without a test hook.
+     * Sets that were never in the window (Badlands / LEB, etc.) are treated as having
+     * rotated at season 0 (release-order history before the campaign), so pedigree cards
+     * climb with real season changes without a test hook.
      */
     public static int seasonsOutOfStandard(PaperCard card) {
         if (card == null || isStandardLegal(card))
@@ -265,42 +265,15 @@ public final class AscendantCardEconomy {
         Integer at = rotatedAtSeason.get(ed.toUpperCase(Locale.ROOT));
         if (at != null)
             return Math.max(0, currentSeasonIndex() - at);
-        // Never recorded: treat as pre-campaign / never-window, age from season 0 + release order.
-        return Math.max(0, currentSeasonIndex() + releaseOrderAgeBonus(ed));
+        // Never recorded: pre-campaign / never-window → age = seasons completed since NG.
+        return Math.max(0, currentSeasonIndex());
     }
 
-    /**
-     * Extra starting age for editions older than the current window's oldest set
-     * (release order). Caps so NG Badlands stays near rarity base.
-     */
-    private static int releaseOrderAgeBonus(String edition) {
-        try {
-            CardEdition ed = FModel.getMagicDb().getEditions().get(edition);
-            if (ed == null || ed.getDate() == null)
-                return 0;
-            AdventurePlayer p = Current.player();
-            if (p == null || p.getStandardWindow() == null)
-                return 0;
-            List<String> sets = p.getStandardWindow().getSets();
-            if (sets == null || sets.isEmpty())
-                return 0;
-            java.util.Date oldest = null;
-            for (String code : sets) {
-                CardEdition w = FModel.getMagicDb().getEditions().get(code);
-                if (w == null || w.getDate() == null)
-                    continue;
-                if (oldest == null || w.getDate().before(oldest))
-                    oldest = w.getDate();
-            }
-            if (oldest == null || !ed.getDate().before(oldest))
-                return 0;
-            // Rough: ~one "season" of pre-age per ~90 days of release gap, capped low so
-            // Badlands starts near rarity base and climbs with real season changes.
-            long days = (oldest.getTime() - ed.getDate().getTime()) / (1000L * 60L * 60L * 24L);
-            return (int) Math.min(4, Math.max(0, days / 365L));
-        } catch (Exception e) {
-            return 0;
-        }
+    /** True when this edition was never recorded leaving the live Standard window. */
+    private static boolean isNeverWindowEdition(PaperCard card) {
+        if (card == null || card.getEdition() == null)
+            return false;
+        return !rotatedAtSeason.containsKey(card.getEdition().toUpperCase(Locale.ROOT));
     }
 
     public static boolean isStandardLegal(PaperCard card) {
@@ -344,7 +317,13 @@ public final class AscendantCardEconomy {
      * {@code cardprices.txt} over many seasons — never as an immediate price.
      */
     public static float lifeCycleGold(PaperCard card, ConfigData c) {
-        float base = rarityBaseGold(card, c) * rankMultiplier(card, c.ec1RankMultMin, c.ec1RankMultMax);
+        // Steve: a live / never-window Badlands is an ordinary ~300 rare — not a draft-rank jackpot.
+        // Power rank applies to cards that are (or were) in the Standard window; never-window
+        // pedigree cards start at rarity base and climb via the life-cycle curve only.
+        float rank = rankMultiplier(card, c.ec1RankMultMin, c.ec1RankMultMax);
+        if (!isStandardLegal(card) && isNeverWindowEdition(card))
+            rank = 1f;
+        float base = rarityBaseGold(card, c) * rank;
         if (isSpiked(card.getName()))
             base *= Math.max(1f, c.ec1SeasonSpikeMult);
 
