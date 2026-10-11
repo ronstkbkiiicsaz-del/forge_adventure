@@ -421,9 +421,19 @@ public class VPlayerPanel extends FContainer {
      */
     private void doArenaLayout(final float width, final float height) {
         setArenaChromeVisible(false);
+        // Classic phase strip: hide hard. Leftover bounds from a prior classic layout
+        // were still painting a green active-phase bar across the top of the opp panel.
         phaseIndicator.setVisible(false);
+        phaseIndicator.setBounds(0, 0, 0, 0);
+        for (final VPhaseIndicator.PhaseLabel lbl : phaseIndicator.allLabels()) {
+            lbl.setVisible(false);
+            lbl.setBounds(0, 0, 0, 0);
+        }
         if (commandZone != null) {
             commandZone.setVisible(false);
+        }
+        if (floatingMana != null) {
+            floatingMana.setVisible(false);
         }
         field.setCommandZoneWidth(0);
         field.setFieldModifier(0);
@@ -435,7 +445,6 @@ public class VPlayerPanel extends FContainer {
                 tab.setDisplayVisible(false);
             }
             field.setBounds(0, 0, width, height);
-            layoutFloatingMana(width, height);
             return;
         }
 
@@ -468,14 +477,32 @@ public class VPlayerPanel extends FContainer {
         }
 
         field.setBounds(0, 0, width, fieldH);
-        layoutFloatingMana(width, fieldH);
     }
 
     private void setArenaChromeVisible(final boolean visible) {
         avatar.setVisible(visible);
         lblLife.setVisible(visible);
+        phaseIndicator.setVisible(visible);
         for (InfoTab tab : tabs) {
             tab.setVisible(visible);
+        }
+    }
+
+    /**
+     * Stretch the match plate across this panel. Avoids screen-aligned UVs that
+     * map the lower player band onto dark water and read as a flat void.
+     */
+    private void paintArenaPanelBackdrop(final Graphics g) {
+        forge.assets.FSkinTexture plate = forge.assets.FSkinTexture.ADV_BG_MATCH;
+        if (plate.getWidth() <= 0) {
+            plate = forge.assets.FSkinTexture.BG_MATCH;
+        }
+        final float w = getWidth();
+        final float h = getHeight();
+        // Opaque bed first so FBO alpha stays 1 even on texture edges.
+        g.fillRect(new Color(0.07f, 0.10f, 0.09f, 1f), 0, 0, w, h);
+        if (plate.getWidth() > 0) {
+            g.drawImage(plate, 0, 0, w, h);
         }
     }
 
@@ -657,15 +684,19 @@ public class VPlayerPanel extends FContainer {
         InfoTab infoTab = selectedTab;
         float pad = Forge.isHorizontalTabLayout() ? avatarWidth / 16f : 0f;
         final VDisplayArea selectedDisplayArea = infoTab == null ? null : infoTab.getDisplayArea();
-        // Arena: field plate comes from VField + FieldScroller. Here only paint an
-        // opaque hand band so fanned cards stay readable.
+        // Arena: paint the match plate across the whole player panel so landscape
+        // player-field / under-hand regions aren't a flat dark void (screen-aligned
+        // VField UV mapped those bands onto dark water + lost FBO alpha). Hand scrim
+        // still sits on top for card readability.
         if (isArenaDuelLayout()) {
             g.resetAlphaComposite();
+            paintArenaPanelBackdrop(g);
             final VZoneDisplay handZone = getZoneDisplay(ZoneType.Hand);
             if (handZone != null && handZone.isVisible() && handZone.getHeight() > 1f) {
                 g.fillRect(new Color(0.16f, 0.18f, 0.22f, 1f),
                         handZone.getLeft(), handZone.getTop(), handZone.getWidth(), handZone.getHeight());
             }
+            g.resetAlphaComposite();
             return; // no classic zone-tab borders in Arena
         }
         if (infoTab != null) { //draw background and border for selected zone if needed

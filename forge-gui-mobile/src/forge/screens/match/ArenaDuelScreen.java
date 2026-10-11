@@ -115,6 +115,7 @@ public class ArenaDuelScreen extends MatchScreen {
         final ArenaDuelLayout.Rect menu = lastLayout.get("menuBar");
         if (getHeader() != null && menu != null) {
             getHeader().setBounds(menu.x, menu.y, menu.w, menu.h);
+            getHeader().setVisible(true);
             if (getHeader() instanceof FMenuBar) {
                 getHeader().setRotate90(false);
                 hideArenaMenuBulletTabs((FMenuBar) getHeader());

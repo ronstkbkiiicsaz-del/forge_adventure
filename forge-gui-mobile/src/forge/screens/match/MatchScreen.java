@@ -1270,38 +1270,24 @@ public class MatchScreen extends FScreen {
 
         @Override
         public void drawOverlay(Graphics g) {
-            // DS1 Arena: empty centre band between opponent/player panels loses FBO
-            // alpha after translucent UI. Re-seal that gap with the match plate so
-            // landscape matches portrait (stack column draws above the scroller).
+            // DS1 Arena: re-seal the centre band between panels with a stretched match
+            // plate (same treatment as each VPlayerPanel backdrop) so landscape doesn't
+            // leave a flat void between the two halves. Stack column draws above.
             if (MatchController.getView() != null && MatchController.getView().isArenaDuelScreen()
                     && topPlayerPanel != null && bottomPlayerPanel != null) {
                 final float gapTop = topPlayerPanel.getBottom();
                 final float gapH = bottomPlayerPanel.getTop() - gapTop;
                 if (gapH > 1f) {
-                    FSkinTexture arenaBG = Forge.isMobileAdventureMode ? currentBG : FSkinTexture.BG_MATCH;
-                    if (!Forge.isMobileAdventureMode && daytime != null) {
-                        arenaBG = "Day".equals(daytime) ? FSkinTexture.BG_MATCH_DAY : FSkinTexture.BG_MATCH_NIGHT;
-                    }
-                    if (FSkinTexture.ADV_BG_MATCH.getWidth() > 0) {
-                        arenaBG = FSkinTexture.ADV_BG_MATCH;
-                    }
+                    FSkinTexture arenaBG = FSkinTexture.ADV_BG_MATCH.getWidth() > 0
+                            ? FSkinTexture.ADV_BG_MATCH : FSkinTexture.BG_MATCH;
                     final float aw = getWidth();
-                    final float ah = getHeight();
-                    final float aspect = arenaBG.getWidth() / (float) Math.max(1, arenaBG.getHeight());
-                    float bgW = aw;
-                    float bgH = bgW / aspect;
-                    if (bgH < ah) {
-                        bgH = ah;
-                        bgW = bgH * aspect;
-                    }
                     g.resetAlphaComposite();
                     g.startClip(0, gapTop, aw, gapH);
                     try {
-                        // Also write an opaque bed so capture alpha stays 1 even if
-                        // the texture sample has premultiplied edges.
-                        g.fillRect(new com.badlogic.gdx.graphics.Color(0.07f, 0.09f, 0.12f, 1f),
+                        g.fillRect(new com.badlogic.gdx.graphics.Color(0.07f, 0.10f, 0.09f, 1f),
                                 0, gapTop, aw, gapH);
-                        g.drawImage(arenaBG, (aw - bgW) / 2f, (ah - bgH) / 2f, bgW, bgH);
+                        // Stretch across the gap so it matches the panel plates.
+                        g.drawImage(arenaBG, 0, gapTop, aw, gapH);
                     } finally {
                         g.endClip();
                     }

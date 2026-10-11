@@ -24,6 +24,17 @@ public class VPhaseIndicator extends FContainer {
     public static final float PADDING_X = Utils.scale(1);
     public static final float PADDING_Y = Utils.scale(2);
 
+    @Override
+    public void draw(final Graphics g) {
+        // DS1 Arena owns phase UI in the phase-rail band; never paint the classic
+        // green phase strip inside player panels (it survives as a leftover bar).
+        if (forge.screens.match.MatchController.getView() != null
+                && forge.screens.match.MatchController.getView().isArenaDuelScreen()) {
+            return;
+        }
+        super.draw(g);
+    }
+
     private static final Color YIELD_MARKER_COLOR = new Color(0xFFA528FF);
     private static final Color PAD_FOCUS_BORDER = new Color(1f, 1f, 1f, 0.95f);
 
