@@ -29,17 +29,37 @@ import static forge.adventure.util.AdventureQuestController.QuestStatus.*;
 public class AdventureQuestController implements Serializable {
 
     public static void trackQuest(AdventureQuestData quest) {
-        if (quest == null) {
-            return;
-        }
-        for (AdventureQuestData q: Current.player().getQuests()){
-            q.isTracked = q.equals(quest);
-        }
+        trackQuest(Current.player(), quest);
     }
 
-    /** Currently tracked quest, or null. */
+    /** Track {@code quest} on the given player (used during load before Current is swapped). */
+    public static void trackQuest(forge.adventure.player.AdventurePlayer player, AdventureQuestData quest) {
+        if (player == null || quest == null) {
+            return;
+        }
+        for (AdventureQuestData q : player.getQuests()) {
+            q.isTracked = q.equals(quest);
+            if (q.stages != null) {
+                for (AdventureQuestStage stage : q.stages) {
+                    if (stage != null) {
+                        stage.invalidateSideQuestNavCache();
+                    }
+                }
+            }
+        }
+        notifyTrackedQuestHud();
+    }
+
+    /** Currently tracked quest on {@link Current#player()}, or null. */
     public static AdventureQuestData getTrackedQuest() {
-        for (AdventureQuestData q : Current.player().getQuests()) {
+        return getTrackedQuest(Current.player());
+    }
+
+    public static AdventureQuestData getTrackedQuest(forge.adventure.player.AdventurePlayer player) {
+        if (player == null) {
+            return null;
+        }
+        for (AdventureQuestData q : player.getQuests()) {
             if (q != null && q.isTracked) {
                 return q;
             }
@@ -48,19 +68,27 @@ public class AdventureQuestController implements Serializable {
     }
 
     /**
-     * QL1 / legacy: if nothing is tracked, track the first active quest (old saves without a
-     * tracking flag, or after finishing the last tracked quest with others still active).
+     * QL1: if nothing is tracked, track the first active quest (old saves without a tracking
+     * flag, or after finishing the last tracked quest with others still active).
+     * No-op when {@link Config#ql1QuestTracking()} is off.
      */
     public static void ensureTrackedQuest() {
-        if (getTrackedQuest() != null) {
+        ensureTrackedQuest(Current.player());
+    }
+
+    public static void ensureTrackedQuest(forge.adventure.player.AdventurePlayer player) {
+        if (!Config.ql1QuestTracking() || player == null) {
             return;
         }
-        for (AdventureQuestData q : Current.player().getQuests()) {
+        if (getTrackedQuest(player) != null) {
+            return;
+        }
+        for (AdventureQuestData q : player.getQuests()) {
             if (q == null || q.completed || q.failed) {
                 continue;
             }
             if (!q.getActiveStages().isEmpty() || (q.stages != null && q.stages.length > 0)) {
-                trackQuest(q);
+                trackQuest(player, q);
                 return;
             }
         }
@@ -68,10 +96,17 @@ public class AdventureQuestController implements Serializable {
 
     /**
      * After a tracked quest is removed (complete / fail / abandon), move tracking to the next
-     * remaining active quest. No-op when something else is already tracked.
+     * remaining active quest. Ascendant / QL1 only.
      */
     public static void trackNextAfterRemoval() {
-        ensureTrackedQuest();
+        trackNextAfterRemoval(Current.player());
+    }
+
+    public static void trackNextAfterRemoval(forge.adventure.player.AdventurePlayer player) {
+        if (!Config.ql1QuestTracking()) {
+            return;
+        }
+        ensureTrackedQuest(player);
     }
 
     /**
@@ -83,6 +118,18 @@ public class AdventureQuestController implements Serializable {
             return QuestNavigationTarget.none();
         }
         return tracked.resolveNavigationTarget(from != null ? from : new com.badlogic.gdx.math.Vector2());
+    }
+
+    /** Refresh the HUD tracking line after track/untrack/discovery changes. */
+    public static void notifyTrackedQuestHud() {
+        try {
+            forge.adventure.stage.GameHUD hud = forge.adventure.stage.GameHUD.instance;
+            if (hud != null) {
+                hud.updateTrackedQuestHud();
+            }
+        } catch (Exception ignored) {
+            // HUD not built in headless tests.
+        }
     }
 
     public List<EnemyData> getExtraQuestSpawns(float difficultyFactor){

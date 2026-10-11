@@ -107,6 +107,28 @@ public class WorldSave {
         return changes;
     }
 
+    /**
+     * QL1: non-creating lookup — returns null when this POI has no changes entry yet.
+     * Prefer this for read-only checks (e.g. navigation) so the save is not filled with empties.
+     */
+    public PointOfInterestChanges findPointOfInterestChanges(String id) {
+        if (id == null) {
+            return null;
+        }
+        return pointOfInterestChanges.get(id);
+    }
+
+    /** Bumped when a POI is marked visited; invalidates QL1 discovered-target caches. */
+    private long poiDiscoveryStamp;
+
+    public long getPoiDiscoveryStamp() {
+        return poiDiscoveryStamp;
+    }
+
+    public void notePoiDiscovered() {
+        poiDiscoveryStamp++;
+    }
+
     static public boolean load(int currentSlot) {
         JSONStringLoader.clearCache();
         CardUtil.clearPriceCache();

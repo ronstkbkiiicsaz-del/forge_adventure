@@ -3,6 +3,8 @@ package forge.adventure;
 import com.badlogic.gdx.files.FileHandle;
 import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector2;
+import com.badlogic.gdx.scenes.scene2d.Actor;
+import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.Json;
 import forge.adventure.data.AdventureQuestData;
 import forge.adventure.data.AdventureQuestStage;
@@ -12,6 +14,8 @@ import forge.adventure.data.PointOfInterestData;
 import forge.adventure.data.WorldData;
 import forge.adventure.player.AdventurePlayer;
 import forge.adventure.pointofintrest.PointOfInterest;
+import forge.adventure.scene.QuestLogScene;
+import forge.adventure.scene.UIScene;
 import forge.adventure.util.AdventureQuestController;
 import forge.adventure.util.Config;
 import forge.adventure.util.QuestNavigationTarget;
@@ -109,6 +113,7 @@ public class QuestTrackingQl1Test {
         AdventurePlayer player = WorldSave.getCurrentSave().getPlayer();
         questSnapshot = new ArrayList<>(player.getQuests());
         player.getQuests().clear();
+        WorldSave.getCurrentSave().clearChanges();
 
         installWorldWithPois();
     }
@@ -271,14 +276,17 @@ public class QuestTrackingQl1Test {
     public void anySideQuest_noneDiscovered_noKnownLocationNotTown() {
         PointOfInterest near = findPoi("QuestTownNear");
         PointOfInterest haven = findPoi("HavenTown");
-        // Leave every QuestSource unvisited.
-        Assert.assertFalse(WorldSave.getCurrentSave().getPointOfInterestChanges(near.getID()).isVisited());
+        PointOfInterest dungeon = findPoi("SidequestDungeon");
+        // Leave every QuestSource / Sidequest unvisited (non-creating lookup).
+        Assert.assertNull(WorldSave.getCurrentSave().findPointOfInterestChanges(near.getID()));
+        Assert.assertNull(WorldSave.getCurrentSave().findPointOfInterestChanges(dungeon.getID()));
 
         AdventureQuestData side = anySideQuest("Do Side Quests");
         AdventurePlayer player = WorldSave.getCurrentSave().getPlayer();
         player.getQuests().add(side);
         AdventureQuestController.trackQuest(side);
 
+        long stampBefore = WorldSave.getCurrentSave().getPoiDiscoveryStamp();
         QuestNavigationTarget nav = AdventureQuestController.resolveTrackedNavigation(new Vector2(0, 0));
         Assert.assertFalse(nav.hasPoi(), "no discovered board → no POI target");
         Assert.assertTrue(nav.noKnownLocation);
@@ -287,6 +295,73 @@ public class QuestTrackingQl1Test {
         // Root-cause regression: must not resolve to the nearest town (Havenbrook stand-in).
         Assert.assertTrue(nav.poi == null || !nav.poi.getID().equals(haven.getID()),
                 "must not point at town when nothing is discovered");
+        // Navigation must not create empty POI change entries in the save.
+        Assert.assertNull(WorldSave.getCurrentSave().findPointOfInterestChanges(near.getID()));
+        Assert.assertNull(WorldSave.getCurrentSave().findPointOfInterestChanges(dungeon.getID()));
+        Assert.assertEquals(WorldSave.getCurrentSave().getPoiDiscoveryStamp(), stampBefore);
+    }
+
+    @Test
+    public void anySideQuest_discoveredSidequestOnly_targetsItWithoutQuestSource() {
+        // Wren r2: stage tags are QuestSource, but a discovered Sidequest-only POI must still
+        // be a candidate (UNION). Previously matchingTags (QuestSource towns) won and hid it.
+        PointOfInterest nearSource = findPoi("QuestTownNear");
+        PointOfInterest dungeon = findPoi("SidequestDungeon");
+        Assert.assertNotNull(nearSource);
+        Assert.assertNotNull(dungeon);
+        Assert.assertNull(WorldSave.getCurrentSave().findPointOfInterestChanges(nearSource.getID()),
+                "QuestSource must remain undiscovered");
+
+        WorldSave.getCurrentSave().getPointOfInterestChanges(dungeon.getID()).visit();
+        Assert.assertTrue(WorldSave.getCurrentSave().findPointOfInterestChanges(dungeon.getID()).isVisited());
+
+        AdventureQuestData side = anySideQuest("Do Side Quests");
+        AdventurePlayer player = WorldSave.getCurrentSave().getPlayer();
+        player.getQuests().add(side);
+        AdventureQuestController.trackQuest(side);
+
+        QuestNavigationTarget nav = side.resolveNavigationTarget(new Vector2(0, 0));
+        Assert.assertTrue(nav.hasPoi(), "discovered Sidequest must be a target even with no QuestSource visited");
+        Assert.assertEquals(nav.poi.getID(), dungeon.getID(),
+                "arrow must target the discovered Sidequest dungeon");
+        Assert.assertFalse(nav.noKnownLocation);
+    }
+
+    @Test
+    public void questLogSelectables_listAndDetailsExactVisibleSet() {
+        // Same rebuild QuestLogScene.buildList / loadDetailsPane use (nav + visible content).
+        Actor ret = namedVisible("return", true);
+        Actor status = namedVisible("status", true);
+        Actor skills = namedVisible("skills", true);
+        Actor achievements = namedVisible("achievements", true);
+        Actor hiddenAchievements = namedVisible("achievements-hidden", false);
+        Actor trackRow = namedVisible("track-row", true);
+        Actor detailsRow = namedVisible("details-row", true);
+        Actor staleHidden = namedVisible("stale-list-btn", false);
+
+        Array<UIScene.Selectable> listSel = new Array<>();
+        QuestLogScene.fillSelectables(listSel,
+                new Actor[]{ret, status, skills, achievements, hiddenAchievements},
+                java.util.Arrays.asList(trackRow, detailsRow, staleHidden));
+        Assert.assertEquals(actorsOf(listSel),
+                java.util.Arrays.asList(ret, status, skills, achievements, trackRow, detailsRow),
+                "list selectables must be exactly visible nav + row buttons");
+
+        Actor detailTrack = namedVisible("detail-track", true);
+        Actor detailBack = namedVisible("detail-back", true);
+        Actor detailAbandon = namedVisible("detail-abandon", false); // story quest: hidden
+        Array<UIScene.Selectable> detailSel = new Array<>();
+        // Switching to details clears prior list buttons (including stale ones).
+        QuestLogScene.fillSelectables(detailSel,
+                new Actor[]{ret, status, skills, achievements},
+                java.util.Arrays.asList(detailTrack, detailBack, detailAbandon, trackRow));
+        // trackRow still "visible" would wrongly stay if we didn't rebuild — content list is only details.
+        QuestLogScene.fillSelectables(detailSel,
+                new Actor[]{ret, status, skills, achievements},
+                java.util.Arrays.asList(detailTrack, detailBack, detailAbandon));
+        Assert.assertEquals(actorsOf(detailSel),
+                java.util.Arrays.asList(ret, status, skills, achievements, detailTrack, detailBack),
+                "details selectables must drop list buttons and skip hidden abandon");
     }
 
     @Test
@@ -320,13 +395,33 @@ public class QuestTrackingQl1Test {
                 new String[]{"Town", "QuestSource", "Sidequest", "BiomeColorless"});
         PointOfInterestData far = poiDef("QuestTownFar", "town",
                 new String[]{"Town", "QuestSource", "Sidequest", "BiomeColorless"});
+        // Sidequest only (no QuestSource) — Steve's missing candidates under the old prefer-tags path.
+        PointOfInterestData dungeon = poiDef("SidequestDungeon", "dungeon",
+                new String[]{"Dungeon", "Sidequest", "BiomeColorless"});
         PointOfInterestData.registerRuntime(haven);
         PointOfInterestData.registerRuntime(near);
         PointOfInterestData.registerRuntime(far);
+        PointOfInterestData.registerRuntime(dungeon);
 
         world.addPointOfInterest(poiAt(haven, 32f, 32f));
         world.addPointOfInterest(poiAt(near, 128f, 32f));
         world.addPointOfInterest(poiAt(far, 400f, 32f));
+        world.addPointOfInterest(poiAt(dungeon, 200f, 32f));
+    }
+
+    private static Actor namedVisible(String name, boolean visible) {
+        Actor a = new Actor();
+        a.setName(name);
+        a.setVisible(visible);
+        return a;
+    }
+
+    private static List<Actor> actorsOf(Array<UIScene.Selectable> sel) {
+        List<Actor> out = new ArrayList<>();
+        for (UIScene.Selectable s : sel) {
+            out.add(s.actor);
+        }
+        return out;
     }
 
     private static PointOfInterest findPoi(String name) {

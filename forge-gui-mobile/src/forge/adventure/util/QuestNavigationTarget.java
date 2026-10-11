@@ -1,5 +1,6 @@
 package forge.adventure.util;
 
+import forge.Forge;
 import forge.adventure.pointofintrest.PointOfInterest;
 
 /**
@@ -26,10 +27,35 @@ public final class QuestNavigationTarget {
         return new QuestNavigationTarget(poi, false, line);
     }
 
+    /** Localized "no known location" line for the HUD / map. */
+    public static QuestNavigationTarget noKnownLocation(String questName) {
+        return noKnownLocation(questName, localizedNoKnownLocation());
+    }
+
     public static QuestNavigationTarget noKnownLocation(String questName, String message) {
-        String msg = message == null || message.isEmpty() ? "no known location" : message;
+        String msg = message == null || message.isEmpty() ? localizedNoKnownLocation() : message;
         String line = questName == null || questName.isEmpty() ? msg : questName + " — " + msg;
         return new QuestNavigationTarget(null, true, line);
+    }
+
+    public static String localizedNoKnownLocation() {
+        String fallback = "no known location";
+        try {
+            if (Config.instance() != null && Config.instance().getConfigData() != null
+                    && Config.instance().getConfigData().ql1NoKnownLocationMessage != null
+                    && !Config.instance().getConfigData().ql1NoKnownLocationMessage.isEmpty()
+                    && !"no known location".equals(Config.instance().getConfigData().ql1NoKnownLocationMessage)) {
+                // Explicit non-default config override (tests / tunables).
+                return Config.instance().getConfigData().ql1NoKnownLocationMessage;
+            }
+        } catch (Exception ignored) {
+            // Config not ready.
+        }
+        try {
+            return Forge.getLocalizer().getMessageorUseDefault("lblNoKnownLocation", fallback);
+        } catch (Exception e) {
+            return fallback;
+        }
     }
 
     public static QuestNavigationTarget none() {

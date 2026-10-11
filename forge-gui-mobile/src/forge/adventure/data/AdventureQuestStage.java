@@ -178,15 +178,28 @@ public class AdventureQuestStage implements Serializable {
         return cfg != null && cfg.ql1DiscoveredSideQuestTargetsOnly;
     }
 
+    /** Cache for {@link #collectSideQuestNavigationPois()}; invalidated via discovery stamp. */
+    private transient List<PointOfInterest> sideQuestNavCache;
+    private transient long sideQuestNavCacheStamp = Long.MIN_VALUE;
+
+    /** Non-creating visited check — does not add empty change entries to the save. */
     private static boolean isDiscovered(PointOfInterest poi) {
         if (poi == null) {
             return false;
         }
         try {
-            return WorldSave.getCurrentSave().getPointOfInterestChanges(poi.getID()).isVisited();
+            forge.adventure.pointofintrest.PointOfInterestChanges changes =
+                    WorldSave.getCurrentSave().findPointOfInterestChanges(poi.getID());
+            return changes != null && changes.isVisited();
         } catch (Exception e) {
             return false;
         }
+    }
+
+    /** Test / tracking change: drop cached side-quest navigation candidates. */
+    public void invalidateSideQuestNavCache() {
+        sideQuestNavCache = null;
+        sideQuestNavCacheStamp = Long.MIN_VALUE;
     }
 
     public EnemySprite getTargetSprite() {
@@ -329,14 +342,24 @@ public class AdventureQuestStage implements Serializable {
     }
 
     /**
-     * Nearest-target candidates for "do any side quest": POIs matching the stage tags, or else
-     * any QuestSource / Sidequest. Optionally restricted to visited (discovered) ones. Never
-     * falls back to untagged towns (the old all-POI fallback that stuck the arrow on Havenbrook).
+     * Nearest-target candidates for "do any side quest": the UNION of QuestSource POIs,
+     * Sidequest POIs, and any stage-tag matches; optionally filtered to visited (discovered).
+     * Never falls back to untagged towns (the old all-POI fallback that stuck the arrow on
+     * Havenbrook). Preferring only stage tags (QuestSource) hid discovered Sidequest POIs.
      */
     private List<PointOfInterest> collectSideQuestNavigationPois() {
+        long stamp;
+        try {
+            stamp = WorldSave.getCurrentSave().getPoiDiscoveryStamp();
+        } catch (Exception e) {
+            stamp = -1L;
+        }
+        if (sideQuestNavCache != null && sideQuestNavCacheStamp == stamp) {
+            return new ArrayList<>(sideQuestNavCache);
+        }
+
         List<PointOfInterest> all = Current.world().getAllPointOfInterest();
-        List<PointOfInterest> matchingTags = new ArrayList<>();
-        List<PointOfInterest> sourceOrSide = new ArrayList<>();
+        Map<String, PointOfInterest> union = new LinkedHashMap<>();
         for (PointOfInterest q : all) {
             if (q == null || q.getData() == null || q.getData().questTags == null) {
                 continue;
@@ -345,25 +368,25 @@ public class AdventureQuestStage implements Serializable {
                 continue;
             }
             List<String> tags = Arrays.asList(q.getData().questTags);
-            boolean matchStage = true;
+            boolean matchStage = !POITags.isEmpty();
             for (String tag : POITags) {
                 if (!tags.contains(tag)) {
                     matchStage = false;
                     break;
                 }
             }
-            if (matchStage) {
-                matchingTags.add(q);
-            }
-            if (tags.contains("QuestSource") || tags.contains("Sidequest")) {
-                sourceOrSide.add(q);
+            boolean sourceOrSide = tags.contains("QuestSource") || tags.contains("Sidequest");
+            if (matchStage || sourceOrSide) {
+                union.putIfAbsent(q.getID(), q);
             }
         }
-        List<PointOfInterest> candidates = !matchingTags.isEmpty() ? matchingTags : sourceOrSide;
+        List<PointOfInterest> candidates = new ArrayList<>(union.values());
         if (discoveredOnlySideQuestTargets()) {
             candidates.removeIf(q -> !isDiscovered(q));
         }
-        return candidates;
+        sideQuestNavCache = new ArrayList<>(candidates);
+        sideQuestNavCacheStamp = stamp;
+        return new ArrayList<>(candidates);
     }
 
     public AdventureQuestController.QuestStatus handleEvent(AdventureQuestEvent event) {

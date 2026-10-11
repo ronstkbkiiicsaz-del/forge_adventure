@@ -1,11 +1,13 @@
 package forge.adventure.scene;
 
 import com.badlogic.gdx.graphics.Color;
+import com.badlogic.gdx.scenes.scene2d.Actor;
 import com.badlogic.gdx.scenes.scene2d.InputEvent;
 import com.badlogic.gdx.scenes.scene2d.Touchable;
 import com.badlogic.gdx.scenes.scene2d.ui.*;
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener;
 import com.badlogic.gdx.utils.Align;
+import com.badlogic.gdx.utils.Array;
 import com.github.tommyettinger.textra.TextraButton;
 import com.github.tommyettinger.textra.TypingLabel;
 import forge.Adventure;
@@ -17,6 +19,9 @@ import forge.adventure.util.AdventureQuestController;
 import forge.adventure.util.Controls;
 import forge.adventure.util.Current;
 
+import java.util.ArrayList;
+import java.util.List;
+
 public class QuestLogScene extends UIScene {
     private Table scrollContainer, detailScrollContainer;
     Window scrollWindow;
@@ -24,6 +29,8 @@ public class QuestLogScene extends UIScene {
     Table root, detailRoot;
     TextraButton trackButton, backToListButton, abandonQuestButton;
     Scene lastGameScene;
+    /** Row Track/Details buttons currently on the list (for selectable rebuild). */
+    private final List<Button> listRowButtons = new ArrayList<>();
 
     private QuestLogScene() {
         super(Forge.isLandscapeMode() ? "ui/quests.json" : "ui/quests_portrait.json");
@@ -109,7 +116,7 @@ public class QuestLogScene extends UIScene {
         backToList();
 
         scrollContainer.clear();
-        clearSelectable();
+        listRowButtons.clear();
 
         for (AdventureQuestData quest : Current.player().getQuests()) {
             String headerCode = quest.isTracked ? "{GRADIENT=CYAN;BLUE;1;1}•{ENDGRADIENT}[BLACK]" : "[BLACK]";
@@ -139,9 +146,10 @@ public class QuestLogScene extends UIScene {
             });
             scrollContainer.add(details).align(Align.center).padRight(10);
             scrollContainer.row().padTop(5);
-            addToSelectable(track);
-            addToSelectable(details);
+            listRowButtons.add(track);
+            listRowButtons.add(details);
         }
+        rebuildListSelectables();
         performTouch(scrollPaneOfActor(scrollContainer)); //can use mouse wheel if available to scroll
     }
 
@@ -227,16 +235,71 @@ public class QuestLogScene extends UIScene {
             detailScrollContainer.row();
         }
         updateTrackButton(quest.isTracked);
-        addToSelectable(trackButton);
-        addToSelectable(backToListButton);
-        if (abandonQuestButton.isVisible()) {
-            addToSelectable(abandonQuestButton);
+        rebuildDetailsSelectables();
+    }
+
+    /** Re-add Return/Status/Skills/Achievements then list row buttons (AchievementsScene pattern). */
+    private void rebuildListSelectables() {
+        fillSelectables(getPossibleSelection(), navActors(), listRowButtons);
+    }
+
+    /** Clear stale list/detail selectables; nav + visible detail buttons only. */
+    private void rebuildDetailsSelectables() {
+        List<Actor> detailBtns = new ArrayList<>();
+        detailBtns.add(trackButton);
+        detailBtns.add(backToListButton);
+        detailBtns.add(abandonQuestButton);
+        fillSelectables(getPossibleSelection(), navActors(), detailBtns);
+    }
+
+    private Actor[] navActors() {
+        return new Actor[]{
+                ui.findActor("return"),
+                ui.findActor("status"),
+                ui.findActor("skills"),
+                ui.findActor("achievements")
+        };
+    }
+
+    /**
+     * Rebuild the controller selectable set: visible nav buttons first, then visible content
+     * buttons. Used by {@link #rebuildListSelectables}/{@link #rebuildDetailsSelectables} and
+     * covered by unit tests with real Actor visibility.
+     */
+    public static void fillSelectables(Array<Selectable> dest, Actor[] navButtons,
+                                Iterable<? extends Actor> contentButtons) {
+        dest.clear();
+        if (navButtons != null) {
+            for (Actor a : navButtons) {
+                if (a != null && a.isVisible()) {
+                    dest.add(new Selectable(a));
+                }
+            }
         }
+        if (contentButtons != null) {
+            for (Actor a : contentButtons) {
+                if (a != null && a.isVisible()) {
+                    dest.add(new Selectable(a));
+                }
+            }
+        }
+    }
+
+    /** Test helper: actors currently in the controller selectable set, in order. */
+    List<Actor> selectableActorsForTest() {
+        List<Actor> out = new ArrayList<>();
+        for (Selectable s : getPossibleSelection()) {
+            if (s != null && s.actor != null) {
+                out.add(s.actor);
+            }
+        }
+        return out;
     }
 
     private void toggleTracked(AdventureQuestData quest) {
         if (quest.isTracked) {
             quest.isTracked = false;
+            AdventureQuestController.notifyTrackedQuestHud();
         } else {
             AdventureQuestController.trackQuest(quest);
         }

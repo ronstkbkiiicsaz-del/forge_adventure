@@ -1676,8 +1676,9 @@ public class AdventurePlayer implements Serializable, SaveFileContent {
                 for (Object itsReallyAQuest : q)
                     quests.add((AdventureQuestData) itsReallyAQuest);
             }
-            // QL1 / legacy: old saves without a tracking flag track the first active quest.
-            AdventureQuestController.ensureTrackedQuest();
+            // QL1: old saves without a tracking flag track the first active quest.
+            // Use this instance — Current.player() may not be this object during load.
+            AdventureQuestController.ensureTrackedQuest(this);
         }
         if (data.containsKey("events")) {
             events.clear();
@@ -4289,7 +4290,7 @@ public class AdventurePlayer implements Serializable, SaveFileContent {
         boolean wasTracked = quest != null && quest.isTracked;
         quests.remove(quest);
         if (wasTracked) {
-            AdventureQuestController.trackNextAfterRemoval();
+            AdventureQuestController.trackNextAfterRemoval(this);
         }
     }
 

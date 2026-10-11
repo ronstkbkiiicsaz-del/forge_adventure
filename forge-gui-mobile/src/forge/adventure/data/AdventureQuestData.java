@@ -493,8 +493,7 @@ public class AdventureQuestData implements Serializable {
         validPOIs = new ArrayList<>(unique.values());
         if (validPOIs.isEmpty()) {
             if (anySideQuestStage && forge.adventure.util.Config.ql1QuestTracking()) {
-                String msg = forge.adventure.util.Config.instance().getConfigData().ql1NoKnownLocationMessage;
-                return QuestNavigationTarget.noKnownLocation(name, msg);
+                return QuestNavigationTarget.noKnownLocation(name);
             }
             return QuestNavigationTarget.none();
         }
