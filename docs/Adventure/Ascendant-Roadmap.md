@@ -979,6 +979,21 @@ and teams; the work is making the AI good at multiplayer Commander.
   the real threat, wipes when behind; LLM adapter builds a valid multiplayer prompt and falls back to Forge AI on
   timeout.
 
+### AD1. In-game Advisor chat (Steve, 2026-10-11; after MC1)
+A chat panel that uses the existing LLM settings (`LlmSettings`, the player's own key/endpoint; off when the LLM is
+off). The model only acts through a small set of explicit tools, and every change is shown and confirmed first.
+- **Deck building:** "build a BR sliver deck from what I own", "what do I cut for Fury Sliver?". Tools: read the
+  collection, the active plane's format/legality, card Oracle text. Output goes to the deck editor through the MX1
+  import path (collection-limited, missing list, replace/merge/new confirm).
+- **Rules and card questions** answered from Forge's own card scripts/Oracle text.
+- **"Why did the AI do that?"**: reads `llm_decisions.log` / the duel log and explains a decision.
+- **Tune the AI** through a whitelist of settings only (LLM on/off per decision type, aggression profile, decision
+  budget, mulligan floor), each shown as a diff and confirmed. No file or code editing.
+- **Collection help:** what to salvage or list on the fortress stall, mastery progress, collector requests.
+- Costs a fraction of a cent per question on the current model; per-message token cap; history kept per save.
+- Works in Ascendant and in regular Forge (Tiny gets it too). Tests: tool calls are validated against the whitelist;
+  a proposed deck goes through the collection-limited importer; no tool can write outside its scope.
+
 ## The core loop: living towns, friendship, the Archive and Bells (see `Lore.md`, `Game-Vision.md`)
 
 From the 2026-10-08 design handoff (`Handoff-2026-10-08.md`). The loop: **befriend townsfolk (mostly by playing
