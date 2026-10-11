@@ -958,6 +958,27 @@ stays optional and never ships a key. Forge's normal AI is always the fallback.
 - Use the LLM only for key decisions (attacks, blocks, main spells); Forge AI handles routine priority passes, so
   local models stay fast.
 
+### MC1. Multiplayer Commander AI for Steve and Tiny (outside Adventure; Steve, 2026-10-11)
+Goal: Steve and Tiny play Commander together against AI opponents (online lobby, Tailscale), on the same team, so
+games are fun co-op rather than a slugfest between them. The lobby already supports AI seats, the Commander variant
+and teams; the work is making the AI good at multiplayer Commander.
+- **Forge AI, multiplayer-aware:** threat assessment across all opponents (board power, commander damage taken,
+  life, cards in hand, combo pieces), attack the biggest threat rather than the last attacker, spread pressure
+  sensibly, keep blockers back against several opponents, hold removal for real threats, time board wipes when
+  behind on board, respect team allies (never target or attack teammates; share-aware wipes), cast and recast its
+  commander at sensible points, track commander damage.
+- **LLM opponent in multiplayer (optional per AI seat):** extend `LlmOpponent` to multiplayer state (all players'
+  boards, life, commander damage, team info) for key decisions (attacks, blocks, main spells, wipe/hold), Forge AI
+  for routine priority; a decision budget per turn so long games stay fast and cheap; a short "personality" per seat
+  for flavour (vengeful, politician, combo player).
+- **Decks:** AI seats can use real Commander precon lists (or the EN1 themes' Commander builds) instead of random
+  generation; a "power level" picker per seat (precon / upgraded / tuned) so games stay fair.
+- **Co-op variants to expose cleanly:** team Commander (2 humans vs 2 AI), Two-Headed Giant (shared life), and
+  Archenemy (both humans vs one boss AI with a scheme deck).
+- Tests: scripted 4-player boards where the AI picks the right threat, never attacks a teammate, holds removal for
+  the real threat, wipes when behind; LLM adapter builds a valid multiplayer prompt and falls back to Forge AI on
+  timeout.
+
 ## The core loop: living towns, friendship, the Archive and Bells (see `Lore.md`, `Game-Vision.md`)
 
 From the 2026-10-08 design handoff (`Handoff-2026-10-08.md`). The loop: **befriend townsfolk (mostly by playing
