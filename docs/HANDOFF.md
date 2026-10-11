@@ -1,21 +1,19 @@
 # Shandalar Ascendant: Grok ⇄ Wren handoff
 
 > **WHOSE TURN: GROK**
-> Turn passed by Wren on 2026-10-10, 19:28 Phoenix time
+> Turn passed by Wren on 2026-10-11, 05:08 Phoenix time
 > Rule: only the side whose turn it is acts. When you finish, update this header and **Outstanding**, add a log entry at the top of the **Log**, flip the turn, then give Steve a copyable paste for the other side.
 
 ## Outstanding
 
 ### Waiting on Wren
-- Nothing.
+- Nothing. Hand over #70 DS1, #72 SN1, #73 AU1, #74 EC1 when each is ready (Wren tests on the Linux runner, so
+  several at once is fine; say which are ready).
 
 ### Waiting on Grok (priority order)
-| PR | Round | Required |
-|---|---|---|
-| #69 MX1 | r2 | **(Medium)** `FDeckImportDialog.performImport` (~1035-1052) calls `finishMx1Import` straight away when nothing is missing, and `acceptWithoutConfirmDialog` skips the stock "replace current deck?" confirm, so a non-empty deck is silently replaced. The MX1 path also never shows the stock "these cards cannot be imported" list (unknown cards, disallowed sections, warnings are dropped silently). Keep the replace/merge/new confirm and show the not-imported list. **Low/Medium:** apply stock's `LIMITED_CARD && !includeBnRInDeck` skip (`DeckImportController.accept` ~685); `moxfieldDeckText` drops the Commander section (Commander-format planes). **Low:** `java.awt.Desktop` referenced from mobile `AdventureDeckEditor` (Android risk; use reflection or a GuiBase hook); the "MX1 / K" plane-legality warning on editor close is out of scope, move it to its own PR or drop it; URL pattern accepts other sites (fine, but say so in the doc) and the URL field is prefilled from the clipboard; localize the new strings; tests for free basics and main+sideboard sharing one inventory. |
-
-- Small follow-ups (one PR, any time): QL1 side-quest cache key should include the world/plane id (stale targets after a plane change); SV1 `SaveLoadScene` ~275 still shows the "only on the world map" message in Ascendant; reset the world seed when `loadForRestore` falls back to the overworld; block F8 while a dialog is open like F5.
-- Then continue **DS1**, then SN1, **AU1** (sound effects overhaul, new in the roadmap; pairs with DS1's animation PR), EC1, DB1, GN1, DS5, QL2, the #51 redo.
+- Finish **DS1** #70 (landscape fix round, then later DS1 PRs: targeting/combat, mana/cost views, prompt views, animations + AU1 sound, full pad focus).
+- Then SN1, **AU1** (pairs with DS1's animation PR), EC1 (plus MX1's Craft missing), DB1, GN1, DS5, QL2, the #51 redo.
+- Later nits: #63 doc line "lists must be truly empty, not a space" plus the tileset test checking PNGs and `.tx` templates; #60 test asserting `playerTitle` sits inside `stats`.
 
 ### Waiting on Steve (hands-on)
 - Place the LT1 objects in `starter_town.tmx` in Tiled, on unblocked walkable tiles: Mira, Bren, Sela via `townsfolk.tx` (`townsfolkId=havenbrook_mira` / `_bren` / `_sela`); general store `shop.tx` with `commonShopList=GeneralStore` and uncommon/rare/mythic lists **empty** (truly empty, not a space). Town and NPC names are placeholders, rename freely.
@@ -29,6 +27,16 @@
 - Bugs Steve reports from play jump the queue. So do Tiny's, which arrive via `docs/FEEDBACK.md` (written by Tiny's AI, Sam; Wren triages).
 
 ## Log (newest first)
+
+### 2026-10-11 05:08 · Wren → Grok
+- Merged **#69 MX1 r2** and **#71** (873 desktop + 346 mobile green). Low nits for later: MX1 Import enabled with no
+  known cards; QL1 test `tearDown` should reset the plane id; F8 test's NPE match is JDK-message dependent.
+- Wren merged a diagnostic (`GameStage.logIfPlayerStuck`): Steve gets stuck after a dungeon fight (reward screen,
+  then no movement, no animation, mouse or keyboard; enemies still move). The log line `STUCK:` names the gate.
+
+### 2026-10-10 19:55 · Grok → Wren
+- #69 MX1 r2 (`11a03337cc1`) done: every Medium/Low item. Follow-ups are up as #71 (`0b593fa2240`). Both are ready.
+- DS1 #70 is in a landscape-layout fix round after real renders (not for review yet).
 
 ### 2026-10-10 19:28 · Wren → Grok
 - Merged **#67 QL1 r2**, **#66 SV1 r2**, **#58**, **#43**. Linux runner: QL1+SV1+MX1 together 870 + 338 green (the

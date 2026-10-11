@@ -17,20 +17,26 @@ final class MoxfieldDeckUrlProvider implements DeckUrlProvider {
     public RemoteDeck load(final String normalizedUrl, final Iterable<Deck> savedDecks) throws IOException {
         final String deckId = getDeckId(normalizedUrl);
         final Map<?, ?> root = DeckUrlLoader.readJsonObject(API_BASE + deckId, PROVIDER_NAME);
-
-        final DeckUrlImportTextBuilder builder = new DeckUrlImportTextBuilder();
-        addSection(builder, root.get("commanders"), DeckSection.Commander);
-        addSection(builder, root.get("mainboard"), DeckSection.Main);
-        addSection(builder, root.get("sideboard"), DeckSection.Sideboard);
-        addSection(builder, root.get("companions"), DeckSection.Sideboard);
-
         return new RemoteDeck(
                 DeckUrlLoader.getDeckName(root, deckId, normalizedUrl,
                         localizer.getMessage("lblDeckUrlDefaultDeckName", PROVIDER_NAME), savedDecks),
                 DeckUrlLoader.getDeckFormat(root.get("format")),
                 normalizedUrl,
-                builder.toString(),
+                toImportText(root),
                 PROVIDER_NAME);
+    }
+
+    /**
+     * Build Arena-like import text from a Moxfield API deck JSON object (no network).
+     * Used by MX1 tests with a fixture and by {@link DeckUrlLoader#importTextFromMoxfieldJson}.
+     */
+    static String toImportText(final Map<?, ?> root) {
+        final DeckUrlImportTextBuilder builder = new DeckUrlImportTextBuilder();
+        addSection(builder, root.get("commanders"), DeckSection.Commander);
+        addSection(builder, root.get("mainboard"), DeckSection.Main);
+        addSection(builder, root.get("sideboard"), DeckSection.Sideboard);
+        addSection(builder, root.get("companions"), DeckSection.Sideboard);
+        return builder.toString();
     }
 
     static String getDeckId(final String deckUrl) throws IOException {

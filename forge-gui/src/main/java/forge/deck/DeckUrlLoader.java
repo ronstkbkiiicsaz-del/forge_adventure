@@ -49,6 +49,15 @@ public final class DeckUrlLoader {
         return provider.load(normalizedUrl, List.of()).importText();
     }
 
+    /**
+     * Parse a Moxfield {@code /v2/decks/all/{id}} JSON body into Arena-like import text
+     * without a network call. Shared by desktop/mobile import and MX1 offline tests.
+     */
+    public static String importTextFromMoxfieldJson(final String json) throws IOException {
+        final Map<?, ?> root = parseJsonObject(json, "Moxfield");
+        return MoxfieldDeckUrlProvider.toImportText(root);
+    }
+
     public static List<DeckProxy> getUrlDecks() {
         final List<DeckProxy> decks = new ArrayList<>();
         final StorageImmediatelySerialized<Deck> storage = getStorage();
@@ -247,7 +256,11 @@ public final class DeckUrlLoader {
     }
 
     static Map<?, ?> readJsonObject(final String requestUrl, final String providerName) throws IOException {
-        final Object parsed = new JsonParser(readUrl(requestUrl, providerName)).parse();
+        return parseJsonObject(readUrl(requestUrl, providerName), providerName);
+    }
+
+    static Map<?, ?> parseJsonObject(final String json, final String providerName) throws IOException {
+        final Object parsed = new JsonParser(json).parse();
         if (parsed instanceof Map<?, ?> root) {
             return root;
         }
