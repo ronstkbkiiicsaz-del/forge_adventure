@@ -249,6 +249,10 @@ public class VField extends FContainer {
         return row2;
     }
 
+    public FieldRow getRowSide() {
+        return rowSide;
+    }
+
     void setCommandZoneWidth(float commandZoneWidth0) {
         commandZoneWidth = commandZoneWidth0;
     }
