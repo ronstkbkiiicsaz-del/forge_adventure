@@ -137,6 +137,24 @@ public final class AdventureSeason {
         return seasonsCompleted;
     }
 
+    /**
+     * Test / EC1: advance fractional game days without a season pick.
+     * Market drift reads {@link #getGameDays()}.
+     */
+    public void advanceGameDaysForTest(double days) {
+        if (days > 0d)
+            gameDays += days;
+    }
+
+    /**
+     * Test / EC1: set calendar day fraction and season index.
+     * Life-cycle age reads {@link #getSeasonIndex()}.
+     */
+    public void setCalendarForTest(double days, int seasonIndex) {
+        gameDays = Math.max(0d, days);
+        seasonsCompleted = Math.max(0, seasonIndex);
+    }
+
     public boolean isChoicePending() {
         return choicePending;
     }

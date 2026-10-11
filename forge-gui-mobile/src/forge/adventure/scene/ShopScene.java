@@ -60,6 +60,10 @@ public class ShopScene extends ForgeScene {
     @Override
     public boolean leave() {
         Adventure.getInstance().renderTransitionScreen = true;
+        try {
+            AdventurePlayer.current().setActiveShopMarket(null);
+        } catch (Exception ignored) {
+        }
         return super.leave();
     }
 
@@ -97,6 +101,8 @@ public class ShopScene extends ForgeScene {
     public void loadChanges(PointOfInterestChanges changes) {
         AdventurePlayer.current().loadChanges(changes);
         this.changes = changes;
+        // EC1: map/inn shops price and record against this shop's own POI market.
+        AdventurePlayer.current().setActiveShopMarket(changes);
     }
 
     public int getCardPrice(PaperCard pc) {

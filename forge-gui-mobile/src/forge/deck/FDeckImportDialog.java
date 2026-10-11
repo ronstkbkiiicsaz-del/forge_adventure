@@ -26,6 +26,8 @@ import java.util.function.Function;
 import forge.Forge;
 import forge.Graphics;
 import forge.StaticData;
+import forge.adventure.util.CraftingApi;
+import forge.adventure.util.Current;
 import forge.adventure.util.MoxfieldMx1;
 import forge.deck.DeckRecognizer.TokenType;
 import forge.game.GameType;
@@ -68,6 +70,10 @@ public class FDeckImportDialog extends FDialog {
     private final static List<String> importOwnedOrCancel = List.of(
             Forge.getLocalizer().getMessage("lblImportWhatIOwn"),
             Forge.getLocalizer().getMessage("lblCancel"));
+    private final static List<String> importOwnedCraftOrCancel = List.of(
+            Forge.getLocalizer().getMessage("lblImportWhatIOwn"),
+            Forge.getLocalizer().getMessage("lblCraftMissing"),
+            Forge.getLocalizer().getMessage("lblCancel"));
 
     public FDeckImportDialog(final Deck currentDeck, final FDeckEditor.DeckEditorConfig editorConfig) {
         super(Forge.getLocalizer().getMessage("lblImportFromClipboard"), 2);
@@ -87,6 +93,10 @@ public class FDeckImportDialog extends FDialog {
         txtDeckUrl.setGhostText(Forge.getLocalizer().getMessage("lblMoxfieldDeckUrlGhost"));
         txtDeckUrl.setText("");
         txtDeckUrl.setVisible(mx1AscendantImport);
+        if (mx1AscendantImport) {
+            // Wren nit: keep Import disabled until a known card or URL is present.
+            txtDeckUrl.setChangedHandler(e -> refreshMx1ImportEnabled());
+        }
 
         GameType gameType = editorConfig.getGameType();
         controller.setGameFormat(gameType);
@@ -189,14 +199,38 @@ public class FDeckImportDialog extends FDialog {
             }
         }
 
-        // Still allow Import when only a URL field is filled (Ascendant MX1).
+        // MX1: Import stays off until known cards are parsed or a deck URL is filled.
         if (mx1AscendantImport) {
-            setButtonEnabled(0, true);
+            refreshMx1ImportEnabled();
+            if (!MoxfieldMx1.hasKnownCardTokens(tokens) && !hasDeckUrl()) {
+                String text = txtInput.getText();
+                if (text == null || text.isBlank()) {
+                    txtInput.setText(Forge.getLocalizer().getMessage("lblNoKnownCardsOnClipboard"));
+                }
+            }
             return;
         }
 
         setButtonEnabled(0, false);
         txtInput.setText(Forge.getLocalizer().getMessage("lblNoKnownCardsOnClipboard"));
+    }
+
+    private boolean hasDeckUrl() {
+        String url = txtDeckUrl.getText();
+        return url != null && !url.isBlank();
+    }
+
+    /** Wren MX1 nit: disable Import when no known cards were parsed (unless a URL is set). */
+    private void refreshMx1ImportEnabled() {
+        if (!mx1AscendantImport) {
+            return;
+        }
+        if (hasDeckUrl()) {
+            setButtonEnabled(0, true);
+            return;
+        }
+        List<DeckRecognizer.Token> tokens = controller.parseInput(txtInput.getText());
+        setButtonEnabled(0, MoxfieldMx1.hasKnownCardTokens(tokens));
     }
 
     @Override
@@ -282,22 +316,59 @@ public class FDeckImportDialog extends FDialog {
         else if (controller.isSmartCardArtEnabled())
             tokens = controller.optimiseCardArtInTokens();
 
-        final List<DeckRecognizer.Token> finalTokens = tokens;
+        List<DeckRecognizer.Token> workingTokens = tokens;
         Localizer localizer = Forge.getLocalizer();
 
         if (mx1AscendantImport && editorConfig.usePlayerInventory()) {
-            List<MoxfieldMx1.MissingCard> missing = MoxfieldMx1.missingFromTokens(finalTokens, editorConfig.getCardPool());
+            List<MoxfieldMx1.MissingCard> missing = MoxfieldMx1.missingFromTokens(workingTokens, editorConfig.getCardPool());
             if (!missing.isEmpty()) {
+                CraftingApi.CraftMissingPlan plan = CraftingApi.planCraftMissing(
+                        MoxfieldMx1.toCraftRequests(missing));
+                // Body always includes per-card + total dust (and disabled reason when short).
                 String body = MoxfieldMx1.formatMissingList(missing)
                         + "\n\n" + localizer.getMessage("lblImportOwnedCopiesConfirm");
-                // TODO(MX1/EC1): when EC1 game prices land, show dust cost per missing card and a
-                // "Craft missing" shortcut into Spell Smith / CraftingScene if that hooks cleanly.
-                if (SOptionPane.showOptionDialog(body, localizer.getMessage("lblMissingCards"),
-                        SOptionPane.WARNING_ICON, importOwnedOrCancel) == 1) {
+                // Always offer Craft missing when there is a craftable gap so controllers can
+                // reach it; when dust/reagents are short it stays listed but choosing it only
+                // surfaces the disabled reason (no spend).
+                boolean offerCraft = plan.totalCopies > 0;
+                List<String> options = offerCraft ? importOwnedCraftOrCancel : importOwnedOrCancel;
+                int choice = SOptionPane.showOptionDialog(body, localizer.getMessage("lblMissingCards"),
+                        SOptionPane.WARNING_ICON, options);
+                int cancelIndex = offerCraft ? 2 : 1;
+                if (choice < 0 || choice == cancelIndex) {
                     return;
                 }
+                if (offerCraft && choice == 1) {
+                    if (!plan.craftEnabled) {
+                        String reason = plan.disabledReason != null ? plan.disabledReason
+                                : localizer.getMessage("lblCraftMissing");
+                        SOptionPane.showMessageDialog(
+                                localizer.getMessage("lblCraftMissingUnavailable", reason),
+                                localizer.getMessage("lblCraftMissing"));
+                        return;
+                    }
+                    // Confirm before spending dust, then craft source printings and re-import.
+                    if (!SOptionPane.showConfirmDialog(plan.confirmBody(),
+                            localizer.getMessage("lblCraftMissing"),
+                            localizer.getMessage("lblCraftMissing"),
+                            localizer.getMessage("lblCancel"), false)) {
+                        return;
+                    }
+                    CraftingApi.craftMissing(plan.requests);
+                    try {
+                        if (Current.player() != null) {
+                            controller.setPlayerInventory(Current.player().getCards());
+                        }
+                    } catch (Exception ignored) {
+                        // Inventory refresh best-effort in headless tests.
+                    }
+                    workingTokens = controller.parseInput(input);
+                    if (editorConfig.usePlayerInventory()) {
+                        workingTokens = controller.constrainTokensToInventory();
+                    }
+                }
             }
-            String cannotImport = MoxfieldMx1.formatCannotImportList(finalTokens, controller);
+            String cannotImport = MoxfieldMx1.formatCannotImportList(workingTokens, controller);
             if (!cannotImport.isEmpty()) {
                 if (SOptionPane.showOptionDialog(
                         localizer.getMessage("lblFollowingCardsCannotBeImported") + "\n\n" + cannotImport,
@@ -318,6 +389,8 @@ public class FDeckImportDialog extends FDialog {
             });
             return;
         }
+
+        final List<DeckRecognizer.Token> finalTokens = workingTokens;
 
         StringBuilder sb = new StringBuilder();
         for (DeckRecognizer.Token token : finalTokens) {
