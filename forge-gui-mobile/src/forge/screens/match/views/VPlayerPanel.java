@@ -261,6 +261,20 @@ public class VPlayerPanel extends FContainer {
 
     @Override
     public void setRotate180(boolean b0) {
+        // DS1 Arena: keep both halves upright. Classic 180° on the opponent field
+        // rows + clips punches FBO alpha and leaves a flat dark void over the
+        // shared forest backdrop.
+        if (isArenaDuelLayout()) {
+            avatar.setRotate180(false);
+            lblLife.setRotate180(false);
+            phaseIndicator.setRotate180(false);
+            for (InfoTab tab : tabs) {
+                tab.setRotate180(false);
+            }
+            field.getRow1().setRotate180(false);
+            field.getRow2().setRotate180(false);
+            return;
+        }
         //only rotate certain parts of panel
         avatar.setRotate180(b0);
         lblLife.setRotate180(b0);
@@ -450,6 +464,8 @@ public class VPlayerPanel extends FContainer {
         arenaFieldSlot = fieldSlot;
         arenaHandSlot = handSlot;
         arenaScrollerHeight = scrollerHeight;
+        // Clear any classic opponent 180° that was applied before Arena layout.
+        setRotate180(false);
         if (getWidth() > 0 && getHeight() > 0) {
             doArenaLayout(getWidth(), getHeight());
         }
