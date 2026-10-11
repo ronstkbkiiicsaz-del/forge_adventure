@@ -407,6 +407,32 @@ public class ArenaDuelScreen extends MatchScreen {
         }
         refreshContextLabels();
         refreshStackIfChanged(false);
+        // Paint opaque faces for Arena prompt chrome. FLabel theme gradients can
+        // collapse to the near-black prompt bed under FBO capture; this keeps the
+        // Cancel / OK / Pass-EOT targets readable for mouse, pad, and screenshots.
+        paintPromptChromeFace(g, btnContext);
+        paintPromptChromeFace(g, btnCancel);
+        paintPromptChromeFace(g, btnPassUntilEot);
+    }
+
+    private static final Color PROMPT_BTN_FACE = new Color(0.28f, 0.34f, 0.44f, 1f);
+    private static final Color PROMPT_BTN_BORDER = new Color(0.75f, 0.78f, 0.85f, 1f);
+
+    private void paintPromptChromeFace(final Graphics g, final FLabel btn) {
+        if (btn == null || !btn.isVisible() || btn.getWidth() < 2f || btn.getHeight() < 2f) {
+            return;
+        }
+        final float x = btn.getLeft();
+        final float y = btn.getTop();
+        final float w = btn.getWidth();
+        final float h = btn.getHeight();
+        g.fillRect(PROMPT_BTN_FACE, x, y, w, h);
+        g.drawRect(Utils.scale(1), PROMPT_BTN_BORDER, x, y, w, h);
+        final String text = btn.getText();
+        if (text != null && !text.isEmpty()) {
+            g.drawText(text, FSkinFont.get(16), Color.WHITE,
+                    x, y, w, h, false, Align.center, true);
+        }
     }
 
     private void refreshStackIfChanged(final boolean force) {
