@@ -37,7 +37,6 @@ import forge.model.FModel;
 import forge.player.GamePlayerUtil;
 import forge.player.LobbyPlayerHuman;
 import forge.screens.FScreen;
-import forge.toolbox.FDisplayObject;
 import forge.util.collect.FCollectionView;
 import org.apache.commons.lang3.tuple.Pair;
 import org.jupnp.UpnpServiceConfiguration;
@@ -407,51 +406,6 @@ public class ArenaDuelScreenGlTest {
             }
         }
         return null;
-    }
-
-    /** Debug: list display objects whose bounds intersect the given screen rect. */
-    private static void dumpObjectsAt(final FDisplayObject root, final float x0, final float y0,
-            final float x1, final float y1) {
-        final StringBuilder sb = new StringBuilder();
-        sb.append("DUMP objects intersecting (").append(x0).append(',').append(y0)
-                .append(")-(").append(x1).append(',').append(y1).append(")\n");
-        dumpObjectsAt(root, 0, 0, 0, x0, y0, x1, y1, sb);
-        System.out.println(sb);
-    }
-
-    private static void dumpObjectsAt(final FDisplayObject obj, final float ox, final float oy,
-            final int depth, final float x0, final float y0, final float x1, final float y1,
-            final StringBuilder sb) {
-        if (obj == null) {
-            return;
-        }
-        final float sx = ox + obj.getLeft();
-        final float sy = oy + obj.getTop();
-        final float sw = obj.getWidth();
-        final float sh = obj.getHeight();
-        final boolean hit = sw > 0 && sh > 0
-                && sx < x1 && sy < y1 && sx + sw > x0 && sy + sh > y0;
-        if (hit) {
-            for (int i = 0; i < depth; i++) {
-                sb.append("  ");
-            }
-            sb.append(obj.getClass().getSimpleName())
-                    .append(obj.isVisible() ? "" : " [hidden]")
-                    .append(" @").append(Math.round(sx)).append(',').append(Math.round(sy))
-                    .append(' ').append(Math.round(sw)).append('x').append(Math.round(sh));
-            if (obj instanceof forge.menu.FMenuTab) {
-                sb.append(" text=").append(((forge.menu.FMenuTab) obj).getText());
-            }
-            if (obj instanceof forge.screens.match.views.VPhaseIndicator.PhaseLabel) {
-                sb.append(" phaseLabel");
-            }
-            sb.append('\n');
-        }
-        if (obj instanceof forge.toolbox.FContainer) {
-            for (final FDisplayObject child : ((forge.toolbox.FContainer) obj).getChildren()) {
-                dumpObjectsAt(child, sx, sy, depth + (hit ? 1 : 0), x0, y0, x1, y1, sb);
-            }
-        }
     }
 
     private static void captureScreen(final Path file, final int w, final int h) {

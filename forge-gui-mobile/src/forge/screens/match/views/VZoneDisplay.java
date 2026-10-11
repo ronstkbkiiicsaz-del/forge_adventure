@@ -211,9 +211,7 @@ public class VZoneDisplay extends VCardDisplayArea {
     protected void drawBackground(Graphics g) {
         // Arena hand: opaque band above the field's unclipped match plate and below
         // the fanned card children (must write alpha=1 so the GL capture keeps it).
-        if (zoneType == ZoneType.Hand
-                && MatchController.getView() != null
-                && MatchController.getView().isArenaDuelScreen()) {
+        if (zoneType == ZoneType.Hand && isArenaDuelScreen()) {
             g.resetAlphaComposite();
             g.fillRect(new com.badlogic.gdx.graphics.Color(0.16f, 0.18f, 0.22f, 1f),
                     0, 0, getWidth(), getHeight());
@@ -221,13 +219,18 @@ public class VZoneDisplay extends VCardDisplayArea {
         }
     }
 
+    private static boolean isArenaDuelScreen() {
+        if (Forge.getCurrentScreen() instanceof forge.screens.match.ArenaDuelScreen) {
+            return true;
+        }
+        return MatchController.getView() != null && MatchController.getView().isArenaDuelScreen();
+    }
+
     @Override
     protected void startClip(Graphics g) {
         // Classic landscape stacks zones in a side column (tight clip). DS1 Arena hand
         // is a bottom band like portrait — use the expanded clip so fanned cards paint.
-        final boolean arenaHand = zoneType == ZoneType.Hand
-                && MatchController.getView() != null
-                && MatchController.getView().isArenaDuelScreen();
+        final boolean arenaHand = zoneType == ZoneType.Hand && isArenaDuelScreen();
         if (Forge.isLandscapeMode() && !arenaHand) {
             g.startClip(0, 0, getWidth(), getHeight());
         }
