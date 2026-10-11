@@ -360,6 +360,79 @@ public class SeasonsSn1Test {
         assertSeasonHudClearOfLayout(resolveUi("hud_portrait.json"), false);
     }
 
+    /**
+     * Season HUD must not collide with QL1 tracking line or the minimap in either
+     * orientation. MX1's "Collection exported" line is Status/Inventory (not GameHUD).
+     */
+    @Test
+    public void seasonHudClearOfQl1TrackingAndMinimapBothOrientations() throws Exception {
+        assertSeasonHudClearOfQl1AndMinimap(resolveUi("hud.json"), true, 480f, 270f);
+        assertSeasonHudClearOfQl1AndMinimap(resolveUi("hud_portrait.json"), false, 270f, 480f);
+    }
+
+    private static void assertSeasonHudClearOfQl1AndMinimap(Path layoutFile, boolean landscape,
+            float layoutW, float layoutH) {
+        UIData data = new Json().fromJson(UIData.class, new FileHandle(layoutFile.toFile()));
+        Assert.assertEquals(data.width, layoutW, 0.01f);
+        Assert.assertEquals(data.height, layoutH, 0.01f);
+        float[] season = GameHUD.seasonHudStageBounds(landscape, layoutH);
+        float[] quest = trackedQuestHudBounds(landscape, layoutW, layoutH);
+        float[] map = minimapStageBounds(data, layoutH);
+        Assert.assertFalse(rectsOverlap(season, quest),
+                "seasonHud " + Arrays.toString(season) + " overlaps QL1 trackedQuestHud "
+                        + Arrays.toString(quest) + " in " + layoutFile.getFileName());
+        Assert.assertFalse(rectsOverlap(season, map),
+                "seasonHud " + Arrays.toString(season) + " overlaps minimap "
+                        + Arrays.toString(map) + " in " + layoutFile.getFileName());
+        // Party status sits above the quest line; season is below — still assert clearance.
+        float[] party = partyStatusHudBounds(landscape, layoutH);
+        Assert.assertFalse(rectsOverlap(season, party),
+                "seasonHud " + Arrays.toString(season) + " overlaps partyStatus "
+                        + Arrays.toString(party) + " in " + layoutFile.getFileName());
+    }
+
+    /** Mirrors GameHUD trackedQuestHud placement (width/height for a single HUD line). */
+    private static float[] trackedQuestHudBounds(boolean landscape, float layoutW, float layoutH) {
+        float x = 5f;
+        float y = landscape ? 78f : layoutH - 145f;
+        float w = Math.min(220f, layoutW * 0.45f);
+        float h = 20f;
+        return new float[] { x, y, w, h };
+    }
+
+    private static float[] partyStatusHudBounds(boolean landscape, float layoutH) {
+        float x = 5f;
+        float y = landscape ? 102f : layoutH - 120f;
+        return new float[] { x, y, 160f, 20f };
+    }
+
+    private static float[] minimapStageBounds(UIData data, float layoutH) {
+        for (OrderedMap<String, String> el : data.elements) {
+            if (el == null)
+                continue;
+            String name = null;
+            Float x = null, y = null, w = null, h = null;
+            for (ObjectMap.Entry property : new OrderedMap.OrderedMapEntries<>(el)) {
+                String key = property.key == null ? null : property.key.toString();
+                Object val = property.value;
+                if ("name".equals(key))
+                    name = val == null ? null : val.toString();
+                else if ("x".equals(key))
+                    x = parseFloat(val);
+                else if ("y".equals(key))
+                    y = parseFloat(val);
+                else if ("width".equals(key))
+                    w = parseFloat(val);
+                else if ("height".equals(key))
+                    h = parseFloat(val);
+            }
+            if (!"map".equals(name) || x == null || y == null || w == null || h == null)
+                continue;
+            return new float[] { x, layoutH - y - h, w, h };
+        }
+        throw new IllegalStateException("minimap 'map' actor missing from HUD layout");
+    }
+
     @Test
     public void stockStatisticAndHudJsonUnchangedNoSeasonActors() throws Exception {
         for (String file : new String[] {
