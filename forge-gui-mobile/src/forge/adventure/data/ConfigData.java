@@ -676,8 +676,9 @@ public class ConfigData {
     /** Seconds between footstep clips while walking (Ascendant overworld / maps). */
     public float au1FootstepInterval = 0.35f;
     /**
-     * Default for mute-overworld-ambience when the player has not set
+     * Default for "mute biome music" when the player has not set
      * {@code SettingData.muteOverworldAmbience}. Player setting wins when present.
+     * (Field name kept for save compat; the option mutes overworld biome playlists.)
      */
     public boolean au1MuteOverworldAmbienceDefault = false;
 

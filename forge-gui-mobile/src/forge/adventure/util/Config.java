@@ -84,7 +84,10 @@ public class Config {
         }
     }
 
-    /** AU1: Ascendant sound overhaul (layered duel/overworld/UI clips). */
+    /**
+     * AU1: Ascendant sound overhaul configured on. Prefer {@link forge.adventure.sound.Au1Sounds#enabled()}
+     * for playback (also requires Adventure mode so constructed/quest/draft stay stock).
+     */
     public static boolean au1SoundOverhaul() {
         return ascendant() && instance().configData != null && instance().configData.au1SoundOverhaul;
     }

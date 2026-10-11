@@ -168,7 +168,7 @@ public class WorldStage extends GameStage implements SaveFileContent {
         // Enemies keep chasing while the player channels so a touch can cancel gathering.
         boolean updateEnemies = moving || channeling;
 
-        if (moving && Config.au1SoundOverhaul()) {
+        if (moving && forge.adventure.sound.Au1Sounds.enabled()) {
             footstepCooldown -= delta;
             if (footstepCooldown <= 0f) {
                 float interval = 0.35f;
@@ -265,7 +265,7 @@ public class WorldStage extends GameStage implements SaveFileContent {
                     player.setAnimation(CharacterSprite.AnimationTypes.Attack);
                     player.playEffect(Paths.EFFECT_SPARKS, 0.5f);
                     mob.setAnimation(CharacterSprite.AnimationTypes.Attack);
-                    if (Config.au1SoundOverhaul()) {
+                    if (forge.adventure.sound.Au1Sounds.enabled()) {
                         forge.adventure.sound.Au1Sounds.playEnemyNotice();
                     } else {
                         SoundSystem.instance.play(SoundEffectType.Block, false);
@@ -1002,7 +1002,7 @@ public class WorldStage extends GameStage implements SaveFileContent {
 
     private static void playGatherFinishSound(MaterialData mat) {
         SoundSystem.instance.play(gatherSoundSet(mat)[2], false);
-        if (Config.au1SoundOverhaul()) {
+        if (forge.adventure.sound.Au1Sounds.enabled()) {
             forge.adventure.sound.Au1Sounds.playNodeDepleted();
         }
     }
@@ -1270,7 +1270,7 @@ public class WorldStage extends GameStage implements SaveFileContent {
                     .append(" → ").append(dust).append(" dust");
         } else {
             ap.addMaterial(grantMat.id, amount);
-            if (Config.au1SoundOverhaul() && primary) {
+            if (forge.adventure.sound.Au1Sounds.enabled() && primary) {
                 forge.adventure.sound.Au1Sounds.playItemPickup();
             }
             msg.append("Gathered ").append(amount).append("× ").append(grantMat.getDisplayName());

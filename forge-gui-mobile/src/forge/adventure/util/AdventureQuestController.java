@@ -307,7 +307,7 @@ public class AdventureQuestController implements Serializable {
             if (!toRemove.failed && locationHasMoreQuests()){
                 nextQuestDate.remove(toRemove.sourceID);
             }
-            if (!toRemove.failed && Config.au1SoundOverhaul()) {
+            if (!toRemove.failed && forge.adventure.sound.Au1Sounds.enabled()) {
                 forge.adventure.sound.Au1Sounds.playQuestComplete();
             }
 

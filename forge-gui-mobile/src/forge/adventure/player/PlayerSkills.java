@@ -194,7 +194,7 @@ public class PlayerSkills {
         showXpDrop(skill, amount);
         if (after > before) {
             notify("[GOLD]" + skill.displayName + " level " + after + "![]");
-            if (Config.au1SoundOverhaul()) {
+            if (forge.adventure.sound.Au1Sounds.enabled()) {
                 if (skill == Skill.DUELING) {
                     forge.adventure.sound.Au1Sounds.playLevelUp();
                 } else {

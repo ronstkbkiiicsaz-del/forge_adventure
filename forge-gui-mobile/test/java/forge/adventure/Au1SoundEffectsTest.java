@@ -2,11 +2,18 @@ package forge.adventure;
 
 import com.badlogic.gdx.files.FileHandle;
 import com.badlogic.gdx.utils.Json;
+import com.google.common.collect.HashMultimap;
+import com.google.common.collect.Multimap;
 import forge.adventure.data.ConfigData;
 import forge.adventure.sound.Au1SoundEnrichment;
 import forge.adventure.sound.Au1SoundId;
 import forge.adventure.sound.Au1Sounds;
 import forge.adventure.util.Config;
+import forge.card.CardRarity;
+import forge.game.GameEntityView;
+import forge.game.card.CardView;
+import forge.game.event.GameEventAttackersDeclared;
+import forge.game.event.GameEventCardChangeZone;
 import forge.game.event.GameEventCardDamaged;
 import forge.game.event.GameEventCardDamaged.DamageType;
 import forge.game.event.GameEventMulligan;
@@ -15,10 +22,14 @@ import forge.game.event.GameEventSpellCountered;
 import forge.game.event.GameEventSpellResolved;
 import forge.game.player.PlayerView;
 import forge.game.spellability.SpellAbilityView;
+import forge.game.zone.ZoneType;
+import forge.game.zone.ZoneView;
+import forge.gui.events.UiEventAttackerDeclared;
 import forge.localinstance.properties.ForgePreferences.FPref;
 import forge.model.FModel;
 import forge.sound.ISoundPlaybackHooks;
 import forge.sound.SoundCategory;
+import forge.sound.SoundEffectType;
 import forge.sound.SoundSystem;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -94,6 +105,7 @@ public class Au1SoundEffectsTest {
     @AfterClass(alwaysRun = true)
     public void restoreAndAssertRealUserDirUntouched() throws Exception {
         try {
+            Au1Sounds.setAdventureModeForTest(null);
             Config.resetInstanceForTest();
             SoundSystem.setPlaybackHooks(null);
         } finally {
@@ -119,6 +131,8 @@ public class Au1SoundEffectsTest {
         previousVolSounds = FModel.getPreferences().getPref(FPref.UI_VOL_SOUNDS);
         previousVolUi = FModel.getPreferences().getPref(FPref.UI_VOL_UI);
 
+        // AU1 requires Adventure + Ascendant; tests force the Adventure gate.
+        Au1Sounds.setAdventureModeForTest(true);
         Au1Sounds.refreshRegistration();
         Au1Sounds.setRecording(true);
         SoundSystem.instance.setIgnorePlayRequests(true);
@@ -127,6 +141,7 @@ public class Au1SoundEffectsTest {
     @AfterMethod(alwaysRun = true)
     public void tearDown() {
         Au1Sounds.setRecording(false);
+        Au1Sounds.setAdventureModeForTest(null);
         SoundSystem.instance.setIgnorePlayRequests(false);
         Config.instance().getSettingData().muteOverworldAmbience = previousMute;
         FModel.getPreferences().setPref(FPref.UI_VOL_SOUNDS, previousVolSounds);
@@ -302,6 +317,9 @@ public class Au1SoundEffectsTest {
     public void settingsMuteAndVolumeRespected() {
         FModel.getPreferences().setPref(FPref.UI_VOL_SOUNDS, "0");
         Assert.assertEquals(Au1Sounds.categoryVolume(SoundCategory.EFFECTS), 0f, 0.001f);
+        // UI volume is independent — still audible when effects are 0.
+        FModel.getPreferences().setPref(FPref.UI_VOL_UI, "40");
+        Assert.assertEquals(Au1Sounds.categoryVolume(SoundCategory.UI), 0.4f, 0.001f);
 
         FModel.getPreferences().setPref(FPref.UI_VOL_SOUNDS, "50");
         Assert.assertEquals(Au1Sounds.categoryVolume(SoundCategory.EFFECTS), 0.5f, 0.001f);
@@ -315,6 +333,145 @@ public class Au1SoundEffectsTest {
         Assert.assertTrue(Au1Sounds.muteOverworldAmbience());
         Assert.assertEquals(Au1Sounds.categoryVolume(SoundCategory.AMBIENCE), 0f, 0.001f);
         Assert.assertTrue(Au1SoundEnrichment.INSTANCE.muteAmbience());
+    }
+
+    @Test
+    public void adventureGateKeepsConstructedMatchesOnStockSounds() {
+        Assert.assertTrue(Au1Sounds.enabled());
+        Au1Sounds.drainRecordedPlays();
+        Au1Sounds.playDraw();
+        Assert.assertEquals(Au1Sounds.drainRecordedPlays(), List.of("au1_draw"));
+
+        // Outside Adventure (constructed / quest / draft): AU1 off even with Ascendant config.
+        Au1Sounds.setAdventureModeForTest(false);
+        Au1Sounds.refreshRegistration();
+        Assert.assertFalse(Au1Sounds.enabled());
+        Au1Sounds.playDraw();
+        Au1Sounds.playAttackDeclared();
+        Assert.assertTrue(Au1Sounds.drainRecordedPlays().isEmpty(),
+                "Non-Adventure matches must keep stock sounds");
+        Assert.assertFalse(Au1SoundEnrichment.INSTANCE.handleGameEvent(
+                new GameEventShuffle((PlayerView) null)));
+
+        Au1Sounds.setAdventureModeForTest(true);
+        Au1Sounds.refreshRegistration();
+        Assert.assertTrue(Au1Sounds.enabled());
+    }
+
+    @Test
+    public void attackSoundOncePerDeclareNotOnClickOrUndeclare() {
+        Au1Sounds.drainRecordedPlays();
+        CardView attacker = new CardView(1, null, "Bear");
+        PlayerView defender = new PlayerView(2, null);
+
+        // Click declare / un-declare: silent.
+        Assert.assertFalse(Au1SoundEnrichment.INSTANCE.handleUiEvent(
+                new UiEventAttackerDeclared(attacker, defender)));
+        Assert.assertFalse(Au1SoundEnrichment.INSTANCE.handleUiEvent(
+                new UiEventAttackerDeclared(attacker, null)));
+        Assert.assertTrue(Au1Sounds.drainRecordedPlays().isEmpty(),
+                "Attacker click/un-declare must not play au1_attack");
+
+        // Committed declare: exactly one.
+        Multimap<GameEntityView, CardView> map = HashMultimap.create();
+        map.put(defender, attacker);
+        Assert.assertTrue(Au1SoundEnrichment.INSTANCE.handleGameEvent(
+                new GameEventAttackersDeclared(defender, map)));
+        Assert.assertEquals(Au1Sounds.drainRecordedPlays(), List.of("au1_attack"));
+    }
+
+    @Test
+    public void drawExileDamageBurstPlayOnceScaledByCount() {
+        Au1Sounds.drainRecordedPlays();
+        ZoneView library = new ZoneView(null, ZoneType.Library);
+        ZoneView hand = new ZoneView(null, ZoneType.Hand);
+        ZoneView exile = new ZoneView(null, ZoneType.Exile);
+        ZoneView battlefield = new ZoneView(null, ZoneType.Battlefield);
+
+        // Seven cards drawn → one draw clip.
+        for (int i = 0; i < 7; i++) {
+            Assert.assertTrue(Au1SoundEnrichment.INSTANCE.handleGameEvent(
+                    new GameEventCardChangeZone(new CardView(10 + i, null, "Card" + i), library, hand)));
+        }
+        Assert.assertEquals(Au1Sounds.drainRecordedPlays(), List.of("au1_draw"));
+
+        // Three exiles → one exile clip.
+        for (int i = 0; i < 3; i++) {
+            Assert.assertTrue(Au1SoundEnrichment.INSTANCE.handleGameEvent(
+                    new GameEventCardChangeZone(new CardView(20 + i, null, "X" + i), battlefield, exile)));
+        }
+        Assert.assertEquals(Au1Sounds.drainRecordedPlays(), List.of("au1_exile"));
+
+        // Damage 2 + 3 + 4 = 9 → one heavy clip (scaled by total).
+        Assert.assertTrue(Au1SoundEnrichment.INSTANCE.handleGameEvent(
+                new GameEventCardDamaged(null, null, 2, DamageType.Normal)));
+        Assert.assertTrue(Au1SoundEnrichment.INSTANCE.handleGameEvent(
+                new GameEventCardDamaged(null, null, 3, DamageType.Normal)));
+        Assert.assertTrue(Au1SoundEnrichment.INSTANCE.handleGameEvent(
+                new GameEventCardDamaged(null, null, 4, DamageType.Normal)));
+        Assert.assertEquals(Au1Sounds.drainRecordedPlays(), List.of("au1_combat_damage_heavy"));
+    }
+
+    @Test
+    public void controllerConfirmAndRewardFlipPlayOnce() {
+        Au1Sounds.resetUiDebounceForTest();
+        Au1Sounds.drainRecordedPlays();
+
+        // Controller Use + button click share one latch cycle → one confirm.
+        Au1Sounds.playUiConfirmOnPress();
+        Au1Sounds.playUiConfirmOnPress();
+        Au1Sounds.playUiConfirm();
+        Assert.assertEquals(Au1Sounds.drainRecordedPlays(), List.of("au1_ui_confirm"));
+        Au1Sounds.releaseUiConfirmLatch();
+
+        // Reward flip: exactly one sting (not pack+flip+reveal).
+        Au1Sounds.playRewardFlipOnce(true, null);
+        Assert.assertEquals(Au1Sounds.drainRecordedPlays(), List.of("au1_pack_rip"));
+        Au1Sounds.playRewardFlipOnce(false, CardRarity.MythicRare);
+        Assert.assertEquals(Au1Sounds.drainRecordedPlays(), List.of("au1_rare_reveal"));
+        Au1Sounds.playRewardFlipOnce(false, CardRarity.Common);
+        Assert.assertEquals(Au1Sounds.drainRecordedPlays(), List.of("au1_card_flip"));
+        Au1Sounds.playRewardFlipOnce(false, null);
+        Assert.assertEquals(Au1Sounds.drainRecordedPlays(), List.of("au1_reward_reveal"));
+    }
+
+    @Test
+    public void syncedCatalogIdsAndScriptedEffectLeftToStock() {
+        Assert.assertTrue(Au1SoundId.DRAW.isSynced());
+        Assert.assertTrue(Au1SoundId.COMBAT_DAMAGE_MEDIUM.isSynced());
+        Assert.assertTrue(Au1SoundId.CREATURE_DIES.isSynced());
+        Assert.assertTrue(Au1SoundId.EXILE.isSynced());
+        Assert.assertTrue(Au1SoundId.TOKEN.isSynced());
+        Assert.assertTrue(Au1SoundId.LIFE_GAIN.isSynced());
+        Assert.assertTrue(Au1SoundId.UI_CONFIRM.isSynced());
+
+        // No scripted resource for a normal resolve → AU1 resolve once.
+        SpellAbilityView noSa = null;
+        Au1Sounds.drainRecordedPlays();
+        // Null spell ability: enrichment declines (stock would also no-op).
+        Assert.assertFalse(Au1SoundEnrichment.INSTANCE.handleGameEvent(
+                new GameEventSpellResolved(noSa, false, "Lightning Bolt")));
+        Assert.assertTrue(Au1Sounds.drainRecordedPlays().isEmpty());
+
+        // hasScriptedCardSound is false for names without a resource file.
+        Assert.assertFalse(Au1SoundEnrichment.hasScriptedCardSound(
+                new CardView(99, null, "Definitely No Scripted Sound XYZ")));
+        Assert.assertEquals(SoundEffectType.ScriptedEffect.getResourceFileName(), "");
+    }
+
+    @Test
+    public void coinsDropAtPriceZeroAndLoadedScriptClipsIsConcurrent() throws Exception {
+        // price 0 must still make a sound (stock CoinsDrop). Recording AU1 shop path:
+        Au1Sounds.drainRecordedPlays();
+        Au1Sounds.playShopBuy();
+        Assert.assertEquals(Au1Sounds.drainRecordedPlays().size(), 1);
+
+        // Reflect: loadedScriptClips must be a ConcurrentHashMap.
+        var field = SoundSystem.class.getDeclaredField("loadedScriptClips");
+        field.setAccessible(true);
+        Object map = field.get(null);
+        Assert.assertTrue(map instanceof java.util.concurrent.ConcurrentHashMap,
+                "loadedScriptClips must be ConcurrentHashMap, was " + map.getClass().getName());
     }
 
     @Test

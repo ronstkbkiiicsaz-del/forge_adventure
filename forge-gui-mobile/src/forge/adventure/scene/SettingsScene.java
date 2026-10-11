@@ -330,10 +330,12 @@ public class SettingsScene extends UIScene {
         addCheckBox(localizer.getMessage("lblCardName"), ForgePreferences.FPref.UI_OVERLAY_CARD_NAME);
         addSettingSlider(localizer.getMessage("cbAdjustMusicVolume"), ForgePreferences.FPref.UI_VOL_MUSIC, 0, 100);
         addSettingSlider(localizer.getMessage("cbAdjustSoundsVolume"), ForgePreferences.FPref.UI_VOL_SOUNDS, 0, 100);
-        addSettingSlider(localizer.getMessageorUseDefault("cbAdjustUiVolume", "Adjust UI Volume"),
-                ForgePreferences.FPref.UI_VOL_UI, 0, 100);
+        // AU1: UI volume slider only in Ascendant (independent of effects volume).
         if (Config.ascendant() && Config.au1SoundOverhaul()) {
-            addSettingField(localizer.getMessageorUseDefault("lblMuteOverworldAmbience", "Mute overworld ambience"),
+            addSettingSlider(localizer.getMessageorUseDefault("cbAdjustUiVolume", "Adjust UI Volume"),
+                    ForgePreferences.FPref.UI_VOL_UI, 0, 100);
+            addSettingField(localizer.getMessageorUseDefault("lblMuteBiomeMusic",
+                            "Mute biome music"),
                     Config.instance().getSettingData().muteOverworldAmbience, new ChangeListener() {
                         @Override
                         public void changed(ChangeEvent event, Actor actor) {

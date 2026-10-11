@@ -742,10 +742,15 @@ public class SettingsPage extends TabPage<SettingsScreen> {
             Forge.getLocalizer().getMessage("cbAdjustSoundsVolume"),
             Forge.getLocalizer().getMessage("nlAdjustSoundsVolume"),
             new String[] { "0", "10", "20", "30", "40", "50", "60", "70", "80", "90", "100" }), 7);
-        lstSettings.addItem(new CustomSelectSetting(FPref.UI_VOL_UI,
-            Forge.getLocalizer().getMessageorUseDefault("cbAdjustUiVolume", "Adjust UI Volume"),
-            Forge.getLocalizer().getMessageorUseDefault("nlAdjustUiVolume", "Volume for menus, toasts and UI clicks."),
-            new String[] { "0", "10", "20", "30", "40", "50", "60", "70", "80", "90", "100" }), 7);
+        // AU1: UI volume slider only when Ascendant adventure rules are loaded.
+        if (forge.adventure.util.Config.ascendant()
+                && forge.adventure.util.Config.au1SoundOverhaul()) {
+            lstSettings.addItem(new CustomSelectSetting(FPref.UI_VOL_UI,
+                Forge.getLocalizer().getMessageorUseDefault("cbAdjustUiVolume", "Adjust UI Volume"),
+                Forge.getLocalizer().getMessageorUseDefault("nlAdjustUiVolume",
+                        "Volume for menus, toasts and UI clicks (independent of effects volume)."),
+                new String[] { "0", "10", "20", "30", "40", "50", "60", "70", "80", "90", "100" }), 7);
+        }
         lstSettings.addItem(new CustomSelectSetting(FPref.UI_VOL_MUSIC,
             Forge.getLocalizer().getMessage("cbAdjustMusicVolume"),
             Forge.getLocalizer().getMessage("nlAdjustMusicVolume"),

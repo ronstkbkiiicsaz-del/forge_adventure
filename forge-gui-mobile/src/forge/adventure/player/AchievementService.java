@@ -685,7 +685,7 @@ public final class AchievementService {
     private void emitToast(String msg) {
         final String text = msg;
         Runnable show = () -> {
-            if (forge.adventure.util.Config.au1SoundOverhaul()) {
+            if (forge.adventure.sound.Au1Sounds.enabled()) {
                 forge.adventure.sound.Au1Sounds.playAchievement();
             }
             if (toastSink != null) {

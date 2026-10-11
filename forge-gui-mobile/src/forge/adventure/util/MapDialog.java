@@ -245,7 +245,7 @@ public class MapDialog {
         } else {
             fadeIn();
         }
-        if (Config.au1SoundOverhaul() && text != null && !text.isEmpty()) {
+        if (forge.adventure.sound.Au1Sounds.enabled() && text != null && !text.isEmpty()) {
             forge.adventure.sound.Au1Sounds.playDialogBlip();
         }
         TypingLabel A = Controls.newTypingLabel(text);
@@ -341,7 +341,7 @@ public class MapDialog {
     }
 
     private void emitQuestAccepted(){
-        if (Config.au1SoundOverhaul()) {
+        if (forge.adventure.sound.Au1Sounds.enabled()) {
             forge.adventure.sound.Au1Sounds.playQuestAccept();
         }
         if (questAcceptedList != null && questAcceptedList.size() > 0) {

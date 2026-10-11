@@ -2635,12 +2635,14 @@ public class AdventurePlayer implements Serializable, SaveFileContent {
     public void takeGold(int price) {
         gold -= price;
         onGoldChangeList.emit();
-        //play sfx
-        if (Config.au1SoundOverhaul()) {
+        //play sfx — price 0 still plays CoinsDrop (shop restock / free grant feedback)
+        if (forge.adventure.sound.Au1Sounds.enabled()) {
             if (price > 0) {
                 forge.adventure.sound.Au1Sounds.playShopBuy();
             } else if (price < 0) {
                 forge.adventure.sound.Au1Sounds.playShopSell();
+            } else {
+                SoundSystem.instance.play(SoundEffectType.CoinsDrop, false);
             }
         } else {
             SoundSystem.instance.play(SoundEffectType.CoinsDrop, false);

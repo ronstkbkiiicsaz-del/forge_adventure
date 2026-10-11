@@ -12,6 +12,7 @@ import forge.player.GamePlayerUtil;
 import java.io.File;
 import java.io.FilenameFilter;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Manages playback of all sounds for the client.
@@ -26,7 +27,8 @@ public class SoundSystem {
 
     private static final IAudioClip emptySound = new NoSoundClip();
     private static final Map<SoundEffectType, IAudioClip> loadedClips = new EnumMap<>(SoundEffectType.class);
-    private static final Map<String, IAudioClip> loadedScriptClips = new HashMap<>();
+    /** Concurrent: scripted SVar:SoundEffect clips can load from game + UI threads. */
+    private static final Map<String, IAudioClip> loadedScriptClips = new ConcurrentHashMap<>();
 
     private final EventVisualizer visualizer;
 
@@ -62,11 +64,10 @@ public class SoundSystem {
      *         was unavailable or failed to load.
      */
     protected IAudioClip fetchResource(final SoundEffectType type) {
-        if (GuiBase.getInterface().isLibgdxPort()) {
-            if (FModel.getPreferences().getPrefInt(FPref.UI_VOL_SOUNDS)<1) {
-                return emptySound;
-            }
-        } else if (!FModel.getPreferences().getPrefBoolean(FPref.UI_ENABLE_SOUNDS)) {
+        // Volume gating lives in play()/resolveCategoryVolume so UI clips can still
+        // load and play when effects volume is 0 (AU1 UI slider is independent).
+        if (!GuiBase.getInterface().isLibgdxPort()
+                && !FModel.getPreferences().getPrefBoolean(FPref.UI_ENABLE_SOUNDS)) {
             return emptySound;
         }
 
@@ -89,11 +90,9 @@ public class SoundSystem {
      *         was unavailable or failed to load.
      */
     protected IAudioClip fetchResource(final String fileName) {
-        if (GuiBase.getInterface().isLibgdxPort()) {
-            if (FModel.getPreferences().getPrefInt(FPref.UI_VOL_SOUNDS)<1) {
-                return emptySound;
-            }
-        } else if (!FModel.getPreferences().getPrefBoolean(FPref.UI_ENABLE_SOUNDS)) {
+        // Do not gate on UI_VOL_SOUNDS here — UI category uses UI_VOL_UI independently.
+        if (!GuiBase.getInterface().isLibgdxPort()
+                && !FModel.getPreferences().getPrefBoolean(FPref.UI_ENABLE_SOUNDS)) {
             return emptySound;
         }
 
@@ -402,7 +401,7 @@ public class SoundSystem {
                 : !FModel.getPreferences().getPrefBoolean(FPref.UI_ENABLE_MUSIC);
     }
 
-    /** AU1: mute overworld biome playlists when the ambience mute option is on. */
+    /** AU1: mute overworld biome music playlists when "Mute biome music" is on. */
     private boolean isAmbienceMutedFor(final MusicPlaylist playlist) {
         if (playlist == null) {
             return false;

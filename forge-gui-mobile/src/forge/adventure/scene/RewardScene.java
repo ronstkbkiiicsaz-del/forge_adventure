@@ -250,7 +250,7 @@ public class RewardScene extends UIScene {
             }
         }
         // AU1: one item-pickup sting when loot is taken into the inventory (not per card).
-        if (grantedLoot && Config.au1SoundOverhaul()) {
+        if (grantedLoot && forge.adventure.sound.Au1Sounds.enabled()) {
             forge.adventure.sound.Au1Sounds.playItemPickup();
         }
     }

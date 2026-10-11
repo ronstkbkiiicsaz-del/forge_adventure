@@ -1048,21 +1048,13 @@ public class RewardActor extends Actor implements Disposable, ImageFetcher.Callb
             return;
         clicked = true;
         flipProcess = 0;
-        if (Config.au1SoundOverhaul()) {
-            if (reward != null && (reward.type == Reward.Type.CardPack || reward.type == Reward.Type.Item)) {
-                forge.adventure.sound.Au1Sounds.playPackRip();
-            }
-            forge.adventure.sound.Au1Sounds.playCardFlip();
-            if (reward != null && reward.type == Reward.Type.Card && reward.getCard() != null) {
-                forge.card.CardRarity rarity = reward.getCard().getRarity();
-                if (rarity == forge.card.CardRarity.Rare || rarity == forge.card.CardRarity.MythicRare) {
-                    forge.adventure.sound.Au1Sounds.playRareReveal();
-                } else {
-                    forge.adventure.sound.Au1Sounds.playRewardReveal();
-                }
-            } else {
-                forge.adventure.sound.Au1Sounds.playRewardReveal();
-            }
+        if (forge.adventure.sound.Au1Sounds.enabled()) {
+            boolean packOrItem = reward != null
+                    && (reward.type == Reward.Type.CardPack || reward.type == Reward.Type.Item);
+            forge.card.CardRarity rarity = (reward != null && reward.type == Reward.Type.Card
+                    && reward.getCard() != null) ? reward.getCard().getRarity() : null;
+            // Exactly one sting per flip (not pack + flip + reveal).
+            forge.adventure.sound.Au1Sounds.playRewardFlipOnce(packOrItem, rarity);
         } else {
             SoundSystem.instance.play(SoundEffectType.FlipCard, false);
         }

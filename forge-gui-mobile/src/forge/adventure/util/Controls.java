@@ -71,8 +71,9 @@ public class Controls {
                 @Override
                 public void clicked(InputEvent event, float x, float y) {
                     super.clicked(event, x, y);
-                    if (Config.au1SoundOverhaul()) {
-                        forge.adventure.sound.Au1Sounds.playUiConfirm();
+                    // Latch-aware: controller Use + click must not double-fire.
+                    if (forge.adventure.sound.Au1Sounds.enabled()) {
+                        forge.adventure.sound.Au1Sounds.playUiConfirmOnPress();
                     } else {
                         SoundSystem.instance.play(SoundEffectType.ButtonPress, false);
                     }
@@ -110,8 +111,8 @@ public class Controls {
                 @Override
                 public void clicked(InputEvent event, float x, float y) {
                     super.clicked(event, x, y);
-                    if (Config.au1SoundOverhaul()) {
-                        forge.adventure.sound.Au1Sounds.playUiConfirm();
+                    if (forge.adventure.sound.Au1Sounds.enabled()) {
+                        forge.adventure.sound.Au1Sounds.playUiConfirmOnPress();
                     } else {
                         SoundSystem.instance.play(SoundEffectType.ButtonPress, false);
                     }
