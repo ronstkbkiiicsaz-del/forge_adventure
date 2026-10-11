@@ -6,6 +6,7 @@ import com.badlogic.gdx.utils.Json;
 import forge.ImageKeys;
 import forge.StaticData;
 import forge.adventure.character.EnemySprite;
+import forge.adventure.coop.CoopSession;
 import forge.adventure.data.ConfigData;
 import forge.adventure.data.RewardData;
 import forge.adventure.player.AccountStore;
@@ -13,9 +14,13 @@ import forge.adventure.player.AdventurePlayer;
 import forge.adventure.player.StandardWindow;
 import forge.adventure.util.CardUtil;
 import forge.adventure.util.Config;
+import forge.adventure.util.Current;
 import forge.adventure.util.GymUtil;
 import forge.adventure.util.Reward;
 import forge.adventure.util.SourcePrintings;
+import forge.adventure.util.AdventureModes;
+import forge.adventure.world.PlaneFormat;
+import forge.adventure.world.PlaneMeta;
 import forge.adventure.world.WorldSave;
 import forge.card.CardEdition;
 import forge.deck.Deck;
@@ -37,6 +42,7 @@ import java.lang.reflect.Field;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -67,6 +73,10 @@ public class SourcePrintingsCs0Test {
     private static ConfigData stockConfig;
     private static String initError;
     private static boolean savedUseAllCardVariants;
+    /** Pristine Ascendant catalogue fields restored every method (suite-order ownership). */
+    private static String[] pristineRestrictedEditions;
+    private static String[] pristineRestrictedCards;
+    private static final List<String> CS0_ROTATION = List.of("ZEN", "WWK", "ROE");
 
     @BeforeClass
     public void bootstrapConfigAndCardDb() {
@@ -115,6 +125,8 @@ public class SourcePrintingsCs0Test {
             Assert.assertTrue(ascendantConfig.cs0SourcePrintings, "Ascendant config must enable CS0");
             Assert.assertTrue(containsIgnoreCase(ascendantConfig.restrictedEditions, "UST"),
                     "Ascendant restrictedEditions must list UST");
+            pristineRestrictedEditions = cloneArray(ascendantConfig.restrictedEditions);
+            pristineRestrictedCards = cloneArray(ascendantConfig.restrictedCards);
 
             stockConfig = new ConfigData();
             stockConfig.ascendantRules = false;
@@ -123,10 +135,9 @@ public class SourcePrintingsCs0Test {
             // RW1/AC1 AfterClass calls Config.resetInstanceForTest() — reinstall ourselves.
             Config.resetInstanceForTest();
             Config.instance();
-            Config.installConfigDataForTest(ascendantConfig);
+            installOwnedAscendantConfig();
             Assert.assertTrue(Config.ascendant());
             Assert.assertTrue(SourcePrintings.enabled());
-            SourcePrintings.clearCaches();
 
             // Eagerly prove the printings these tests assert on (no silent skips later).
             warmRequiredPrintings();
@@ -226,13 +237,11 @@ public class SourcePrintingsCs0Test {
             Assert.assertNotNull(ascendantConfig, "Ascendant config missing from BeforeClass");
             Config.resetInstanceForTest();
             Config.instance();
-            Config.installConfigDataForTest(ascendantConfig);
+            installOwnedAscendantConfig();
             Config.instance().getSettingData().useAllCardVariants = false;
             Assert.assertTrue(Config.ascendant());
             Assert.assertTrue(SourcePrintings.enabled());
-            SourcePrintings.clearCaches();
-            RewardData.invalidateCardPool();
-            ensurePlayerWithRotation(List.of("ZEN", "WWK", "ROE"));
+            ownPlaneRotationAndCaches();
         } catch (RuntimeException e) {
             LOCK.unlock();
             throw e;
@@ -245,16 +254,12 @@ public class SourcePrintingsCs0Test {
     @AfterMethod(alwaysRun = true)
     public void tearDown() {
         try {
-            if (ascendantConfig != null) {
-                // Tests may temporarily set allowedEditions; always restore the open catalogue.
-                ascendantConfig.allowedEditions = null;
-                Config.installConfigDataForTest(ascendantConfig);
-            }
+            // alwaysRun: restore owned config / rotation / caches even when a method fails.
+            installOwnedAscendantConfig();
             if (Config.instance() != null && Config.instance().getSettingData() != null) {
                 Config.instance().getSettingData().useAllCardVariants = false;
             }
-            SourcePrintings.clearCaches();
-            RewardData.invalidateCardPool();
+            ownPlaneRotationAndCaches();
             pinStaticData(magicDb);
         } finally {
             if (LOCK.isHeldByCurrentThread()) {
@@ -934,6 +939,71 @@ public class SourcePrintingsCs0Test {
         return out;
     }
 
+    /**
+     * Reinstall the open Ascendant catalogue this class owns (no allow-list;
+     * pristine restricted lists). Clears SourcePrintings + RewardData caches via
+     * {@link Config#installConfigDataForTest}.
+     */
+    private static void installOwnedAscendantConfig() {
+        Assert.assertNotNull(ascendantConfig, "Ascendant config missing");
+        ascendantConfig.ascendantRules = true;
+        ascendantConfig.cs0SourcePrintings = true;
+        ascendantConfig.allowedEditions = null;
+        ascendantConfig.restrictedEditions = cloneArray(pristineRestrictedEditions);
+        ascendantConfig.restrictedCards = cloneArray(pristineRestrictedCards);
+        Config.installConfigDataForTest(ascendantConfig);
+        SourcePrintings.clearCaches();
+        RewardData.invalidateCardPool();
+        RewardData.invalidateRewardFilterCache();
+    }
+
+    /**
+     * Own plane format, co-op guest follow, Standard window rotation, and caches so
+     * earlier suite classes (RW1 Pauper legacy format, PlaneFormat guest follow,
+     * lazy card-DB warm-ups) cannot change shop fallback rematches.
+     */
+    private static void ownPlaneRotationAndCaches() {
+        try {
+            CoopSession.get().testClearGuestPlaneFollow();
+        } catch (Throwable ignored) {
+            // Headless / no session.
+        }
+        AdventurePlayer player = null;
+        try {
+            player = WorldSave.getCurrentSave() != null
+                    ? WorldSave.getCurrentSave().getPlayer() : null;
+            if (player == null) {
+                player = Current.player();
+            }
+        } catch (Throwable ignored) {
+        }
+        Assert.assertNotNull(player, "WorldSave player required");
+        try {
+            Field mode = AdventurePlayer.class.getDeclaredField("adventureMode");
+            mode.setAccessible(true);
+            mode.set(player, AdventureModes.Standard);
+        } catch (ReflectiveOperationException e) {
+            throw new RuntimeException(e);
+        }
+        player.setLegacyRunFormat(GymUtil.FORMAT_STANDARD);
+        try {
+            if (WorldSave.getCurrentSave() != null
+                    && WorldSave.getCurrentSave().getMultiverse() != null) {
+                PlaneMeta meta = WorldSave.getCurrentSave().getMultiverse().getCurrentMeta();
+                if (meta != null) {
+                    PlaneFormat.setPlaneFormat(meta, GymUtil.FORMAT_STANDARD);
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        Assert.assertEquals(PlaneFormat.resolveCurrent(), GymUtil.FORMAT_STANDARD,
+                "CS0 shop tests require Shandalar Standard plane format");
+        ensurePlayerWithRotation(CS0_ROTATION);
+        SourcePrintings.clearCaches();
+        RewardData.invalidateCardPool();
+        RewardData.invalidateRewardFilterCache();
+    }
+
     private static void ensurePlayerWithRotation(List<String> sets) {
         AdventurePlayer player = WorldSave.getCurrentSave().getPlayer();
         Assert.assertNotNull(player, "WorldSave player required");
@@ -943,6 +1013,10 @@ public class SourcePrintingsCs0Test {
         Assert.assertTrue(window.isActive());
         Assert.assertEquals(new HashSet<>(window.getSets()), new HashSet<>(sets));
         RewardData.invalidateCardPool();
+    }
+
+    private static String[] cloneArray(String[] src) {
+        return src == null ? null : Arrays.copyOf(src, src.length);
     }
 
     private static boolean containsIgnoreCase(String[] arr, String needle) {

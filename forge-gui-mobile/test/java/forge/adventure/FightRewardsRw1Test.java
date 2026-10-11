@@ -576,18 +576,26 @@ public class FightRewardsRw1Test {
     @Test
     public void pauperPlaneSetPoolIsCommonsOnly() {
         assumeCardDb();
-        AdventurePlayer.current().setLegacyRunFormat(GymUtil.FORMAT_PAUPER);
-        RewardData.invalidateCardPool();
-        Assert.assertEquals(PlaneFormat.resolveCurrent(), GymUtil.FORMAT_PAUPER);
-        Assert.assertTrue(PlaneFormat.favorsPauperPool());
+        String previousFormat = AdventurePlayer.current().getLegacyRunFormat();
+        try {
+            AdventurePlayer.current().setLegacyRunFormat(GymUtil.FORMAT_PAUPER);
+            RewardData.invalidateCardPool();
+            Assert.assertEquals(PlaneFormat.resolveCurrent(), GymUtil.FORMAT_PAUPER);
+            Assert.assertTrue(PlaneFormat.favorsPauperPool());
 
-        List<PaperCard> pool = FightRewards.formatAwareSetPool("ZEN", Collections.emptySet());
-        Assert.assertFalse(pool.isEmpty(), "Pauper ZEN pool must be non-empty");
-        for (PaperCard pc : pool) {
-            Assert.assertEquals(pc.getRarity(), CardRarity.Common,
-                    "Pauper set pool must not pay out set rares/mythics: "
-                            + pc.getName() + "[" + pc.getEdition() + "/" + pc.getRarity() + "]");
-            Assert.assertTrue(FightRewards.isEdition(pc, "ZEN"), pc.getEdition());
+            List<PaperCard> pool = FightRewards.formatAwareSetPool("ZEN", Collections.emptySet());
+            Assert.assertFalse(pool.isEmpty(), "Pauper ZEN pool must be non-empty");
+            for (PaperCard pc : pool) {
+                Assert.assertEquals(pc.getRarity(), CardRarity.Common,
+                        "Pauper set pool must not pay out set rares/mythics: "
+                                + pc.getName() + "[" + pc.getEdition() + "/" + pc.getRarity() + "]");
+                Assert.assertTrue(FightRewards.isEdition(pc, "ZEN"), pc.getEdition());
+            }
+        } finally {
+            AdventurePlayer.current().setLegacyRunFormat(
+                    previousFormat != null && !previousFormat.isEmpty()
+                            ? previousFormat : GymUtil.FORMAT_STANDARD);
+            RewardData.invalidateCardPool();
         }
     }
 
@@ -614,14 +622,24 @@ public class FightRewardsRw1Test {
 
         // Ban a live ZEN name via restrictedCards and confirm the rebuild drops it.
         String banned = pool.get(0).getName();
-        List<String> extended = new ArrayList<>(restricted);
-        extended.add(banned);
-        ascendantConfig.restrictedCards = extended.toArray(new String[0]);
-        Config.installConfigDataForTest(ascendantConfig);
-        RewardData.invalidateCardPool();
-        List<PaperCard> after = FightRewards.formatAwareSetPool("ZEN", Collections.emptySet());
-        Assert.assertTrue(after.stream().noneMatch(pc -> banned.equals(pc.getName())),
-                "newly restricted name must leave the set pool: " + banned);
+        String[] previousRestricted = ascendantConfig.restrictedCards;
+        try {
+            List<String> extended = new ArrayList<>(restricted);
+            extended.add(banned);
+            ascendantConfig.restrictedCards = extended.toArray(new String[0]);
+            Config.installConfigDataForTest(ascendantConfig);
+            RewardData.invalidateCardPool();
+            List<PaperCard> after = FightRewards.formatAwareSetPool("ZEN", Collections.emptySet());
+            Assert.assertTrue(after.stream().noneMatch(pc -> banned.equals(pc.getName())),
+                    "newly restricted name must leave the set pool: " + banned);
+        } finally {
+            ascendantConfig.restrictedCards = previousRestricted;
+            if (classAscendantConfig != null) {
+                classAscendantConfig.restrictedCards = previousRestricted;
+            }
+            Config.installConfigDataForTest(ascendantConfig);
+            RewardData.invalidateCardPool();
+        }
     }
 
     @Test
