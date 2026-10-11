@@ -39,6 +39,32 @@ public class PointOfInterestMap implements SaveFileContent {
             return;
         mapObjects[chunkX][chunkY].add(obj);
     }
+
+    /**
+     * SN1 undo: remove every POI whose portal target is {@code targetPlaneId}.
+     * @return number of POIs removed
+     */
+    public int removeByTargetPlane(String targetPlaneId) {
+        if (targetPlaneId == null || targetPlaneId.isEmpty() || mapObjects == null)
+            return 0;
+        int removed = 0;
+        for (List<PointOfInterest>[] poiList1 : mapObjects) {
+            if (poiList1 == null)
+                continue;
+            for (List<PointOfInterest> poiList : poiList1) {
+                if (poiList == null || poiList.isEmpty())
+                    continue;
+                for (int i = poiList.size() - 1; i >= 0; i--) {
+                    PointOfInterest poi = poiList.get(i);
+                    if (poi != null && targetPlaneId.equals(poi.getTargetPlane())) {
+                        poiList.remove(i);
+                        removed++;
+                    }
+                }
+            }
+        }
+        return removed;
+    }
     public PointOfInterest findPointsOfInterest(String name) {
         for(List<PointOfInterest>[] poiList1:mapObjects)
         {

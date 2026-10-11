@@ -711,6 +711,13 @@ public class InventoryScene extends UIScene {
         RewardScene.instance().loadRewards(data, RewardScene.Type.EventReward, null, data.getTags().contains("noSell"));
         Forge.switchScene(RewardScene.instance());
         Current.player().getBoostersOwned().removeValue(data, true);
+        // SN1: opening a pack locks the free season set-pick undo.
+        if (Config.ascendant()) {
+            try {
+                Current.player().lockSeasonPickUndo();
+            } catch (Throwable ignored) {
+            }
+        }
     }
 
     /** The next unopened pack: same name as the last one if possible, otherwise any. */

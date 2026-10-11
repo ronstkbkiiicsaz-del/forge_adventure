@@ -352,6 +352,8 @@ public class WorldSave {
         starterDeck.setName(FModel.getMagicDb().getEditions().get(setCode).getName() + " Sealed");
         currentSave.player.create(name, starterDeck, male, race, avatarIndex, false, false, diff, AdventureModes.Sealed);
         currentSave.player.getStandardWindow().init(coreCode == null ? List.of(setCode) : List.of(coreCode, setCode));
+        if (Config.ascendant())
+            currentSave.player.getSeason().initNewGame(currentSave.player.getStandardWindow());
         RewardData.invalidateCardPool();
         // MV2: Planar Gates on the home plane for the starting Standard window.
         try {

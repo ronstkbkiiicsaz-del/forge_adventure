@@ -226,6 +226,26 @@ public final class MultiverseState {
         }
     }
 
+    /**
+     * SN1 undo: drop a set-plane registration that was never materialized (no blob)
+     * and is not the current plane. Also clears a pending home gate for it.
+     * @return true when a pending meta was removed
+     */
+    public boolean removePendingSetPlane(String planeId) {
+        if (planeId == null || planeId.isEmpty() || PlaneMeta.HOME_ID.equals(planeId)) {
+            return false;
+        }
+        clearPendingHomeGate(planeId);
+        if (planeId.equals(getCurrentPlaneId())) {
+            return false;
+        }
+        if (hasCompressedBlob(planeId) || inactivePlaneIds.contains(planeId)) {
+            // Already generated — leave the plane; only the pending gate was cleared.
+            return false;
+        }
+        return metas.remove(planeId) != null;
+    }
+
     public Set<String> getPendingHomeGatePlaneIds() {
         return Collections.unmodifiableSet(new LinkedHashSet<>(pendingHomeGatePlaneIds));
     }
