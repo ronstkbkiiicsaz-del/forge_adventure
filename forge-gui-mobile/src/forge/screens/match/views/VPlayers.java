@@ -19,6 +19,9 @@ import forge.util.Utils;
 
 public class VPlayers extends FDropDown {
     public VPlayers() {
+        if (MatchController.instance == null || MatchController.instance.getGameView() == null) {
+            return; // match not open yet (e.g. GL layout screenshot / early construct)
+        }
         for (final PlayerView p : MatchController.instance.getGameView().getPlayers()) {
             add(new PlayerInfoPanel(p));
         }
