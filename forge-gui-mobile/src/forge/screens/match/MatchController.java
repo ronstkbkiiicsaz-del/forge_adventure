@@ -229,9 +229,13 @@ public class MatchController extends NetworkGuiGame {
                     playerPanel.setBottomPlayer(true);
             }
         }
-        view = new MatchScreen(playerPanels);
-        // Per-match gate: Adventure flag / Ascendant may differ from the previous match.
+        // DS1: Ascendant (Auto) / Always + ds1ArenaDuelScreen → Arena skeleton;
+        // Never / stock / flag off → classic MatchScreen (gestures still follow enabled()).
         ModernDuelScreen.invalidate();
+        view = ModernDuelScreen.useArenaLayout()
+                ? new ArenaDuelScreen(playerPanels)
+                : new MatchScreen(playerPanels);
+        // Per-match gate: Adventure flag / Ascendant may differ from the previous match.
         ModernDuelController.get().reset();
         if(GuiBase.isNetPlay(this))
             view.resetFields();

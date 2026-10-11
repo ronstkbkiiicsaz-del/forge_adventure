@@ -24,8 +24,40 @@ public class VPhaseIndicator extends FContainer {
     public static final float PADDING_X = Utils.scale(1);
     public static final float PADDING_Y = Utils.scale(2);
 
+    /** True when ArenaDuelScreen hosts this indicator in the phaseRail band. */
+    private boolean arenaRailHosted;
+
+    public boolean isArenaRailHosted() {
+        return arenaRailHosted;
+    }
+
+    public void setArenaRailHosted(final boolean hosted) {
+        arenaRailHosted = hosted;
+    }
+
+    private boolean arenaPhaseChromeSuppressed() {
+        // Skip classic leftover strip when Arena is active but this indicator is
+        // still zero-sized inside a player panel (not yet / never hosted on the rail).
+        return forge.screens.match.ArenaDuelUi.isActive()
+                && !arenaRailHosted
+                && (getWidth() < 1f || getHeight() < 1f);
+    }
+
+    @Override
+    public void draw(final Graphics g) {
+        if (arenaPhaseChromeSuppressed()) {
+            return;
+        }
+        super.draw(g);
+    }
+
     private static final Color YIELD_MARKER_COLOR = new Color(0xFFA528FF);
     private static final Color PAD_FOCUS_BORDER = new Color(1f, 1f, 1f, 0.95f);
+    private static final Color ARENA_LABEL_INK = new Color(0.96f, 0.97f, 0.99f, 1f);
+    private static final Color ARENA_ACTIVE_FILL = new Color(0.92f, 0.72f, 0.28f, 1f);
+    private static final Color ARENA_ACTIVE_BORDER = new Color(1f, 0.92f, 0.55f, 1f);
+    private static final Color ARENA_STOP_FILL = new Color(0.28f, 0.55f, 0.72f, 1f);
+    private static final Color ARENA_IDLE_FILL = new Color(0.22f, 0.24f, 0.28f, 1f);
 
     /** Rail order for controller cycling (matches visual left-to-right / top-to-bottom). */
     public static final PhaseType[] PHASE_ORDER = {
@@ -40,6 +72,7 @@ public class VPhaseIndicator extends FContainer {
     private int padFocusIndex = -1;
 
     public VPhaseIndicator() {
+        resetFont();
         addPhaseLabel("UP", PhaseType.UPKEEP);
         addPhaseLabel("DR", PhaseType.DRAW);
         addPhaseLabel("M1", PhaseType.MAIN1);
@@ -220,15 +253,38 @@ public class VPhaseIndicator extends FContainer {
 
         @Override
         public void draw(final Graphics g) {
+            if (arenaPhaseChromeSuppressed()) {
+                return;
+            }
+            if (font == null) {
+                resetFont();
+            }
             float x = PADDING_X;
             float w = getWidth() - 2 * PADDING_X;
             float h = getHeight();
+            final boolean arenaRail = arenaRailHosted;
 
             //determine back color according to skip or active state of label
             if (yieldMarked) {
                 g.fillRect(YIELD_MARKER_COLOR, x, 0, w, h);
                 drawChevron(g, x, w, h);
                 // Skip the caption when marked — chevron replaces the phase abbreviation.
+            } else if (arenaRail) {
+                // High-contrast Arena rail: idle / stop / active with white captions.
+                final Color fill;
+                if (active) {
+                    fill = ARENA_ACTIVE_FILL;
+                } else if (stopAtPhase) {
+                    fill = ARENA_STOP_FILL;
+                } else {
+                    fill = ARENA_IDLE_FILL;
+                }
+                g.fillRect(isHovered() || padFocused ? brighter(fill) : fill, x, 0, w, h);
+                if (active) {
+                    g.drawRect(Math.max(2f, Utils.scale(2)), ARENA_ACTIVE_BORDER, x, 0, w, h);
+                }
+                final FSkinFont labelFont = h >= 18f ? FSkinFont._get(12) : FSkinFont._get(10);
+                g.drawText(caption, labelFont, ARENA_LABEL_INK, x, 0, w, h, false, Align.center, true);
             } else {
                 FSkinColor backColor;
                 if (active && stopAtPhase) {
@@ -249,6 +305,14 @@ public class VPhaseIndicator extends FContainer {
             if (padFocused) {
                 g.drawRect(Utils.scale(2), PAD_FOCUS_BORDER, x, 0, w, h);
             }
+        }
+
+        private static final Color BRIGHT_SCRATCH = new Color();
+
+        private static Color brighter(final Color c) {
+            // Reuse one scratch Color — never allocate per frame.
+            return BRIGHT_SCRATCH.set(Math.min(1f, c.r * 1.15f), Math.min(1f, c.g * 1.15f),
+                    Math.min(1f, c.b * 1.15f), c.a);
         }
 
         private void drawChevron(final Graphics g, float x, float w, float h) {

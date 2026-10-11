@@ -23,6 +23,9 @@ license. **Add an entry here whenever a new asset, library or data source is add
   - Clickable floating mana pips near the player field (`PlayerBar` mana pool)
   - All inputs still go through `IGameController.selectCard` / `selectPlayer` so co-op
     (`RemoteClientGuiGame` / CO3) stays on the existing network path
+- **MTG Arena** — layout and feel reference only for the DS1 Arena duel screen skeleton
+  (`ArenaDuelScreen`, fanned hand, centre stack column, auto-arranged battlefield, context button).
+  No Arena art, assets, fonts, or code are used.
 
 ## Sound effects
 

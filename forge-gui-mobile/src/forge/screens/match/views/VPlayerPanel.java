@@ -23,12 +23,14 @@ import forge.localinstance.skin.FSkinProp;
 import forge.menu.FMenuBar;
 import forge.menu.FMenuItem;
 import forge.menu.FPopupMenu;
+import forge.screens.match.ArenaDuelUi;
 import forge.screens.match.MatchController;
 import forge.screens.match.MatchScreen;
 import forge.screens.match.ModernDuelScreen;
 import forge.toolbox.FCardPanel;
 import forge.toolbox.FContainer;
 import forge.toolbox.FDisplayObject;
+import forge.toolbox.FLabel;
 import forge.toolbox.FScrollPane;
 import forge.util.Utils;
 import org.apache.commons.text.WordUtils;
@@ -65,6 +67,18 @@ public class VPlayerPanel extends FContainer {
 
     private static final float INFO_TAB_PADDING_X = Utils.scale(2);
     private static final float INFO_TAB_PADDING_Y = Utils.scale(2);
+    private static final Color ARENA_PANEL_PLATE = new Color(0.10f, 0.16f, 0.12f, 1f);
+    private static final Color ARENA_HAND_SCRIM = new Color(0.16f, 0.18f, 0.22f, 1f);
+    private static final Color ARENA_LIFE_BADGE_FILL = new Color(0.02f, 0.02f, 0.04f, 1f);
+    private static final Color ARENA_LIFE_BADGE_BORDER = new Color(0.95f, 0.82f, 0.28f, 1f);
+    private static final Color ARENA_LIFE_BADGE_INK = new Color(1f, 0.98f, 0.88f, 1f);
+    private static final FSkinFont ARENA_LIFE_FONT = FSkinFont._get(28);
+    private static final FSkinFont ARENA_LIFE_COUNTER_FONT = FSkinFont._get(14);
+    private static final FSkinFont ARENA_PILE_TITLE_FONT = FSkinFont._get(16);
+    private static final Color ARENA_PILE_TITLE_INK = new Color(0.96f, 0.97f, 0.99f, 1f);
+    private static final Color ARENA_PILE_CLOSE_FACE = new Color(0.28f, 0.34f, 0.44f, 1f);
+    /** Title + Hand button strip above an opened Arena pile fan. */
+    private static final float ARENA_PILE_CHROME_H = 32f;
 
     /**
      * Zones to include in the extra zones dropdown.
@@ -92,6 +106,8 @@ public class VPlayerPanel extends FContainer {
     public int adjustHeight = 1;
     private int selected = 0;
     private boolean isBottomPlayer = false;
+    private final FLabel arenaPileTitle;
+    private final FLabel arenaPileClose;
 
     public VPlayerPanel(PlayerView player0, boolean showHand, int playerCount) {
         player = player0;
@@ -121,6 +137,22 @@ public class VPlayerPanel extends FContainer {
         tabs.add(extraTab);
 
         commandZone = add(new CommandZoneDisplay(player));
+
+        arenaPileTitle = add(new FLabel.Builder()
+                .text("")
+                .font(ARENA_PILE_TITLE_FONT)
+                .textColor(FSkinColor.getStandardColor(ARENA_PILE_TITLE_INK))
+                .align(Align.left)
+                .build());
+        arenaPileTitle.setVisible(false);
+        arenaPileClose = add(new FLabel.ButtonBuilder()
+                .text("Hand")
+                .font(ARENA_PILE_TITLE_FONT)
+                .pressedColor(FSkinColor.getStandardColor(ARENA_PILE_CLOSE_FACE))
+                .textColor(FSkinColor.getStandardColor(ARENA_PILE_TITLE_INK))
+                .command(e -> closeArenaPileToHand())
+                .build());
+        arenaPileClose.setVisible(false);
 
         if (showHand) {
             setSelectedZone(ZoneType.Hand);
@@ -254,6 +286,21 @@ public class VPlayerPanel extends FContainer {
 
     @Override
     public void setRotate180(boolean b0) {
+        // DS1 Arena: keep both halves upright. Classic 180° on the opponent field
+        // rows + clips punches FBO alpha and leaves a flat dark void over the
+        // shared forest backdrop.
+        if (isArenaDuelLayout()) {
+            avatar.setRotate180(false);
+            lblLife.setRotate180(false);
+            phaseIndicator.setRotate180(false);
+            for (InfoTab tab : tabs) {
+                tab.setRotate180(false);
+            }
+            field.getRow1().setRotate180(false);
+            field.getRow2().setRotate180(false);
+            field.getRowSide().setRotate180(false);
+            return;
+        }
         //only rotate certain parts of panel
         avatar.setRotate180(b0);
         lblLife.setRotate180(b0);
@@ -335,37 +382,51 @@ public class VPlayerPanel extends FContainer {
 
     @Override
     protected void doLayout(float width, float height) {
+        // DS1 Arena: keep hand/field stacked (portrait-style) even in landscape so the
+        // ArenaDuelLayout playerHand / playerField bands stay readable.
+        if (isArenaDuelLayout()) {
+            doArenaLayout(width, height);
+            return;
+        }
+        // Restore classic chrome if we previously hid it for Arena.
+        setArenaChromeVisible(true);
         if (Forge.isLandscapeMode()) {
             doLandscapeLayout(width, height);
             return;
         }
 
         //layout for bottom panel by default
-        float x = avatarHeight;
-        float w = width - avatarHeight;
+        final float chromeH = avatarHeight;
+        float x = chromeH;
+        float w = width - chromeH;
         float indicatorScale = 1f;
-        if (avatarHeight < VAvatar.HEIGHT) {
+        if (chromeH < VAvatar.HEIGHT) {
             indicatorScale = 0.6f;
         }
-        float h = phaseIndicator.getPreferredHeight(w) * indicatorScale;
-        phaseIndicator.setBounds(x, height - h, w, h);
+        phaseIndicator.setVisible(true);
+        float phaseH = phaseIndicator.getPreferredHeight(w) * indicatorScale;
+        phaseIndicator.setBounds(x, height - phaseH, w, phaseH);
 
-        float y = height - avatarHeight;
+        float y = height - chromeH;
         float displayAreaHeight = displayAreaHeightFactor * y / 3;
         y -= displayAreaHeight;
         for (InfoTab tab : tabs) {
             tab.setDisplayBounds(0, y, width, displayAreaHeight);
         }
 
-        y = height - avatarHeight;
+        y = height - chromeH;
+        avatar.setSize(chromeH, chromeH);
         avatar.setPosition(0, y);
 
         float lifeLabelWidth = LIFE_FONT.getBounds("99").width * 1.2f * indicatorScale; //make just wide enough for 2-digit life totals
-        float infoLabelHeight = avatarHeight - phaseIndicator.getHeight();
+        float infoLabelHeight = chromeH - (!phaseIndicator.isVisible() ? 0f : phaseIndicator.getHeight());
+        if (infoLabelHeight < chromeH * 0.55f) {
+            infoLabelHeight = chromeH;
+        }
         lblLife.setBounds(x, y, lifeLabelWidth, infoLabelHeight);
         x += lifeLabelWidth;
 
-        float infoTabWidth = (getWidth() - x) / tabs.size();
+        float infoTabWidth = (getWidth() - x) / Math.max(1, tabs.size());
         for (InfoTab tab : tabs) {
             tab.setBounds(x, y, infoTabWidth, infoLabelHeight);
             x += infoTabWidth;
@@ -398,6 +459,331 @@ public class VPlayerPanel extends FContainer {
 
         //this is used for landscape so set this to 0
         field.setFieldModifier(0);
+    }
+
+    /** Panel-local Arena slots from {@link forge.screens.match.ArenaDuelScreen}. */
+    private forge.screens.match.ArenaDuelLayout.Rect arenaAvatarSlot;
+    private forge.screens.match.ArenaDuelLayout.Rect arenaPilesSlot;
+    private forge.screens.match.ArenaDuelLayout.Rect arenaFieldSlot;
+    private forge.screens.match.ArenaDuelLayout.Rect arenaHandSlot;
+    /** Full FieldScroller height — used for continuous backdrop UV mapping. */
+    private float arenaScrollerHeight;
+
+    /**
+     * Apply panel-local avatar / piles / field / hand rects from ArenaDuelLayout.
+     * Called after the panel is sized inside the field scroller.
+     */
+    public void applyArenaSlots(final forge.screens.match.ArenaDuelLayout.Rect avatarSlot,
+            final forge.screens.match.ArenaDuelLayout.Rect pilesSlot,
+            final forge.screens.match.ArenaDuelLayout.Rect fieldSlot,
+            final forge.screens.match.ArenaDuelLayout.Rect handSlot) {
+        applyArenaSlots(avatarSlot, pilesSlot, fieldSlot, handSlot, 0f);
+    }
+
+    public void applyArenaSlots(final forge.screens.match.ArenaDuelLayout.Rect avatarSlot,
+            final forge.screens.match.ArenaDuelLayout.Rect pilesSlot,
+            final forge.screens.match.ArenaDuelLayout.Rect fieldSlot,
+            final forge.screens.match.ArenaDuelLayout.Rect handSlot,
+            final float scrollerHeight) {
+        arenaAvatarSlot = avatarSlot;
+        arenaPilesSlot = pilesSlot;
+        arenaFieldSlot = fieldSlot;
+        arenaHandSlot = handSlot;
+        arenaScrollerHeight = scrollerHeight;
+        // Clear any classic opponent 180° that was applied before Arena layout.
+        setRotate180(false);
+        if (getWidth() > 0 && getHeight() > 0) {
+            doArenaLayout(getWidth(), getHeight());
+        }
+    }
+
+    /**
+     * DS1 Arena panel layout: place avatars/life, GY/exile/library piles, command
+     * zone and floating mana into ArenaDuelLayout slots. Phase indicator is hosted
+     * on the screen in the phaseRail band (not inside the panel).
+     */
+    private void doArenaLayout(final float width, final float height) {
+        // Phase lives on ArenaDuelScreen's phaseRail — never paint classic panel chrome.
+        if (!phaseIndicator.isArenaRailHosted()) {
+            phaseIndicator.setVisible(false);
+            phaseIndicator.setBounds(0, 0, 0, 0);
+        }
+
+        final forge.screens.match.ArenaDuelLayout.Rect av = arenaAvatarSlot;
+        final forge.screens.match.ArenaDuelLayout.Rect piles = arenaPilesSlot;
+        final forge.screens.match.ArenaDuelLayout.Rect fieldR = arenaFieldSlot;
+        final forge.screens.match.ArenaDuelLayout.Rect handR = arenaHandSlot;
+
+        // Avatar + Arena life badge beside it (MTG Arena-style high-contrast total).
+        // Absolute dp (not Utils.scale) so xvfb AVG_FINGER cannot collapse the badge.
+        if (av != null && av.w > 1f && av.h > 1f) {
+            avatar.setVisible(true);
+            avatar.setBounds(av.x, av.y, av.w, av.h);
+            final float badgeH = Math.min(Math.max(40f, av.h * 0.55f), Math.max(40f, av.h * 0.85f));
+            final float badgeW = Math.min(Math.max(52f, av.w * 0.70f), 72f);
+            // Prefer overlapping the avatar's lower-right (Arena-style), clamped in-panel.
+            float badgeX = av.x + Math.max(0f, av.w - badgeW * 0.85f);
+            float badgeY = av.y + Math.max(0f, av.h - badgeH * 0.92f);
+            if (badgeX + badgeW > width - 2f) {
+                badgeX = Math.max(0f, width - badgeW - 2f);
+            }
+            if (badgeY + badgeH > height - 2f) {
+                badgeY = Math.max(0f, height - badgeH - 2f);
+            }
+            lblLife.setVisible(true);
+            lblLife.setBounds(badgeX, badgeY, badgeW, badgeH);
+            updateLife();
+        } else {
+            avatar.setVisible(false);
+            lblLife.setVisible(false);
+        }
+
+        // Pile tabs (graveyard / exile / library) — open on tap via InfoTab.
+        final List<InfoTab> pileTabs = new ArrayList<>();
+        for (final ZoneType zt : new ZoneType[]{ZoneType.Graveyard, ZoneType.Exile, ZoneType.Library}) {
+            final InfoTabZone tab = zoneTabs.get(zt);
+            if (tab != null) {
+                pileTabs.add(tab);
+            }
+        }
+        if (piles != null && piles.w > 1f && piles.h > 1f && !pileTabs.isEmpty()) {
+            final float tabH = piles.h / pileTabs.size();
+            float y = piles.y;
+            for (final InfoTab tab : pileTabs) {
+                tab.setVisible(true);
+                tab.setBounds(piles.x, y, piles.w, tabH);
+                y += tabH;
+            }
+        } else {
+            for (final InfoTab tab : pileTabs) {
+                tab.setVisible(false);
+            }
+        }
+
+        // Hide non-pile chrome tabs (hand/flashback/mana/extra stay off the strip).
+        for (final InfoTab tab : tabs) {
+            if (!pileTabs.contains(tab)) {
+                tab.setVisible(false);
+            }
+        }
+
+        // Field / hand bands.
+        float fieldX = 0f;
+        float fieldY = 0f;
+        float fieldW = width;
+        float fieldH = height;
+        if (fieldR != null && fieldR.w > 1f && fieldR.h > 1f) {
+            fieldX = fieldR.x;
+            fieldY = fieldR.y;
+            fieldW = fieldR.w;
+            fieldH = fieldR.h;
+        } else if (!isFlipped() && handR != null) {
+            fieldH = Math.max(1f, height - handR.h);
+        }
+
+        // Command zone: bottom-right of the field slot (castable commanders).
+        int commandZoneCount = commandZone == null ? 0 : commandZone.getCount();
+        if (commandZone != null && commandZoneCount > 0) {
+            final float czH = Math.min(fieldH / 2f, Utils.scale(90));
+            final float czW = Math.min(commandZoneCount, 2) * commandZone.getCardWidth(czH);
+            commandZone.setVisible(true);
+            commandZone.setBounds(fieldX + fieldW - czW, fieldY + fieldH - czH, czW, czH);
+            field.setCommandZoneWidth(czW + 1);
+        } else if (commandZone != null) {
+            commandZone.setVisible(false);
+            field.setCommandZoneWidth(0);
+        }
+        field.setFieldModifier(0);
+        field.setBounds(fieldX, fieldY, fieldW, fieldH);
+
+        // Floating mana along the field edge.
+        if (floatingMana != null && ModernDuelScreen.enabled()) {
+            final float barH = Utils.scale(28);
+            final float barW = Math.min(fieldW * 0.55f, Utils.scale(220));
+            final float mx = fieldX + (fieldW - barW) / 2f;
+            final float my = isFlipped()
+                    ? fieldY + Utils.scale(2)
+                    : Math.max(fieldY, fieldY + fieldH - barH - Utils.scale(2));
+            floatingMana.setVisible(true);
+            floatingMana.setBounds(mx, my, barW, barH);
+            floatingMana.update();
+        } else if (floatingMana != null) {
+            floatingMana.setVisible(false);
+        }
+
+        // Zone displays: hand band for the local player; opponent piles open over the field.
+        for (InfoTab tab : tabs) {
+            tab.setDisplayVisible(false);
+        }
+        if (handR != null) {
+            // Local player: hand / opened pile share the hand band. Chrome (title + Hand)
+            // overlays the top of the fan — it must not shrink card height or landscape
+            // piles collapse to unreadably tiny thumbnails.
+            final VZoneDisplay handZone = getZoneDisplay(ZoneType.Hand);
+            final boolean pileOpen = selectedTab != null && isArenaPileTab(selectedTab);
+            float bandX = handR.x;
+            float bandY = handR.y;
+            float bandW = handR.w;
+            float bandH = handR.h;
+            if (pileOpen) {
+                // Grow the pile fan upward into the field so landscape cards stay hand-sized
+                // (stock handH≈90px collapses to unreadably tiny faces once chrome overlays).
+                final float wantH = Math.max(bandH, Math.min(height * 0.42f, 200f));
+                final float grow = Math.max(0f, wantH - bandH);
+                if (grow > 0.5f) {
+                    final float maxGrow = fieldR != null ? Math.max(0f, fieldR.h * 0.55f) : grow;
+                    final float useGrow = Math.min(grow, maxGrow);
+                    bandY = Math.max(0f, bandY - useGrow);
+                    bandH = bandH + useGrow;
+                    if (fieldR != null) {
+                        field.setBounds(fieldX, fieldY, fieldW, Math.max(1f, fieldH - useGrow));
+                    }
+                }
+            }
+            for (InfoTab tab : tabs) {
+                tab.setDisplayBounds(bandX, bandY, bandW, bandH);
+            }
+            if (selectedTab != null) {
+                selectedTab.setDisplayVisible(true);
+            } else if (handZone != null) {
+                handZone.setVisible(true);
+            }
+            if (handZone != null) {
+                handZone.setBounds(bandX, bandY, bandW, bandH);
+                if (selectedTab == null || selectedTab.getDisplayArea() == handZone) {
+                    handZone.setVisible(true);
+                }
+            }
+            layoutArenaPileChrome(pileOpen, bandX, bandY, bandW, ARENA_PILE_CHROME_H);
+            return;
+        }
+        // Opponent (flipped, no hand band): show an opened pile over the field slot.
+        // Chrome overlays the fan; cards keep the full field height.
+        if (fieldR != null && selectedTab != null && isArenaPileTab(selectedTab)) {
+            selectedTab.setDisplayBounds(fieldR.x, fieldR.y, fieldR.w, fieldR.h);
+            selectedTab.setDisplayVisible(true);
+            layoutArenaPileChrome(true, fieldR.x, fieldR.y, fieldR.w, ARENA_PILE_CHROME_H);
+        } else {
+            layoutArenaPileChrome(false, 0, 0, 0, 0);
+        }
+    }
+
+    /** Graveyard / exile / library tabs — openable piles in Arena layout. */
+    private boolean isArenaPileTab(final InfoTab tab) {
+        if (!(tab instanceof InfoTabZone)) {
+            return false;
+        }
+        final ZoneType zt = ((InfoTabZone) tab).zoneType;
+        return zt == ZoneType.Graveyard || zt == ZoneType.Exile || zt == ZoneType.Library;
+    }
+
+    /** True when an Arena pile (GY / exile / library) is the selected zone display. */
+    public boolean isArenaPileOpen() {
+        return ArenaDuelUi.isActive() && selectedTab != null && isArenaPileTab(selectedTab);
+    }
+
+    /** Close an opened Arena pile and restore the local hand band. */
+    public void closeArenaPileToHand() {
+        setSelectedZone(ZoneType.Hand);
+    }
+
+    /** Title shown above an opened Arena pile (empty when hand is showing). */
+    public String getArenaPileTitle() {
+        if (!isArenaPileOpen() || !(selectedTab instanceof InfoTabZone)) {
+            return "";
+        }
+        return buildArenaPileTitle(((InfoTabZone) selectedTab).zoneType);
+    }
+
+    private void layoutArenaPileChrome(final boolean show, final float x, final float y,
+            final float w, final float chromeH) {
+        if (arenaPileTitle == null || arenaPileClose == null) {
+            return;
+        }
+        if (!show || w < 8f || chromeH < 8f) {
+            arenaPileTitle.setVisible(false);
+            arenaPileClose.setVisible(false);
+            return;
+        }
+        final ZoneType zt = selectedTab instanceof InfoTabZone
+                ? ((InfoTabZone) selectedTab).zoneType : null;
+        final String title = zt == null ? "" : buildArenaPileTitle(zt);
+        arenaPileTitle.setText(title);
+        arenaPileTitle.setVisible(true);
+        final float btnW = Math.min(88f, w * 0.22f);
+        final float pad = 4f;
+        final float h = Math.min(chromeH, Math.max(24f, chromeH));
+        arenaPileClose.setVisible(true);
+        arenaPileClose.setBounds(x + w - btnW - pad, y + pad, btnW, h - 2f * pad);
+        arenaPileTitle.setBounds(x + pad, y, w - btnW - 3f * pad, h);
+        // Draw above the zone cards (overlay — fan keeps full band height).
+        remove(arenaPileTitle);
+        remove(arenaPileClose);
+        add(arenaPileTitle);
+        add(arenaPileClose);
+    }
+
+    private String buildArenaPileTitle(final ZoneType zt) {
+        final int n = player.getCards(zt) == null ? 0 : player.getCards(zt).size();
+        final boolean local = MatchController.instance != null
+                && MatchController.instance.isLocalPlayer(player);
+        final String owner = local ? "Your" : "Opponent's";
+        final String zone;
+        if (zt == ZoneType.Graveyard) {
+            zone = "graveyard";
+        } else if (zt == ZoneType.Exile) {
+            zone = "exile";
+        } else if (zt == ZoneType.Library) {
+            zone = "library";
+        } else {
+            zone = zt.name().toLowerCase();
+        }
+        return owner + " " + zone + " (" + n + ")";
+    }
+
+    private void setArenaChromeVisible(final boolean visible) {
+        avatar.setVisible(visible);
+        lblLife.setVisible(visible);
+        // Phase may be hosted on ArenaDuelScreen's rail — only toggle when still ours.
+        if (!phaseIndicator.isArenaRailHosted()) {
+            phaseIndicator.setVisible(visible);
+        }
+        for (InfoTab tab : tabs) {
+            tab.setVisible(visible);
+        }
+    }
+
+    /**
+     * Paint this panel's slice of the continuous Arena scroller backdrop.
+     * Uses scroller-relative Y so opponent and local halves share one forest-
+     * biased ADV_BG_MATCH mapping (no per-panel full-image stretch).
+     */
+    private void paintArenaPanelBackdrop(final Graphics g) {
+        forge.assets.FSkinTexture plate = forge.assets.FSkinTexture.ADV_BG_MATCH;
+        if (plate.getWidth() <= 0) {
+            plate = forge.assets.FSkinTexture.BG_MATCH;
+        }
+        final float w = getWidth();
+        final float h = getHeight();
+        // Scroller-relative top: opponent panel at 0, local below centre gap.
+        final float scrollerY = getTop();
+        final float fullH = arenaScrollerHeight > 1f
+                ? arenaScrollerHeight : Math.max(h, scrollerY + h);
+        g.resetAlphaComposite();
+        g.startClip(0, 0, w, h);
+        try {
+            g.fillRect(ARENA_PANEL_PLATE, 0, 0, w, h);
+            if (plate.getWidth() > 0 && fullH > 1f) {
+                // Skip the texture's dark top band; stretch the forest/meadow slice
+                // across the full scroller so opponent and local halves match.
+                final float imgH = fullH / 0.42f;
+                final float imgY = -scrollerY - fullH * 0.08f;
+                g.drawImage(plate, 0, imgY, w, imgH);
+            }
+        } finally {
+            g.endClip();
+        }
+        g.resetAlphaComposite();
     }
 
     private void layoutFloatingMana(float panelWidth, float fieldBottom) {
@@ -434,6 +820,23 @@ public class VPlayerPanel extends FContainer {
 
     private float initW, initH, commandZoneWidth, commandZoneCount, avatarWidth, prefWidth;
     private final float mod = 2.4f;
+
+    /** True when the active match view is the DS1 Arena skeleton (hand stays bottom-stacked). */
+    private static boolean isArenaDuelLayout() {
+        return forge.screens.match.ArenaDuelUi.isActive();
+    }
+
+    private static float arenaHandFraction() {
+        try {
+            if (forge.adventure.util.Config.instance() != null
+                    && forge.adventure.util.Config.instance().getConfigData() != null) {
+                return forge.adventure.util.Config.instance().getConfigData().ds1HandFraction;
+            }
+        } catch (final RuntimeException ignored) {
+            // Config may be unavailable in some headless paths
+        }
+        return 0.28f;
+    }
 
     private void doLandscapeLayout(float width, float height) {
         initW = width;
@@ -475,6 +878,11 @@ public class VPlayerPanel extends FContainer {
     }
 
     private void updateTabLayout(float width, float height) {
+        // Arena keeps portrait-stacked field/hand; never re-apply classic landscape chrome.
+        if (isArenaDuelLayout()) {
+            doArenaLayout(width, height);
+            return;
+        }
         float x = avatar.getRight();
         phaseIndicator.resetFont();
         phaseIndicator.setBounds(x, 0, avatar.getWidth() * 0.6f, height);
@@ -555,12 +963,41 @@ public class VPlayerPanel extends FContainer {
     }
 
     @Override
+    public void draw(Graphics g) {
+        // Arena: scissor the whole panel so field-row / zone clips cannot paint into the
+        // other half and zero FBO alpha (reads as a flat dark void in captures).
+        if (isArenaDuelLayout()) {
+            g.startClip(0, 0, getWidth(), getHeight());
+            try {
+                super.draw(g);
+            } finally {
+                g.endClip();
+            }
+            return;
+        }
+        super.draw(g);
+    }
+
+    @Override
     public void drawBackground(Graphics g) {
         float y;
         InfoTab infoTab = selectedTab;
         float pad = Forge.isHorizontalTabLayout() ? avatarWidth / 16f : 0f;
+        final VDisplayArea selectedDisplayArea = infoTab == null ? null : infoTab.getDisplayArea();
+        // Arena: opaque scroller-relative forest plate so child alpha cannot punch
+        // FBO voids; same UV mapping as FieldScroller so both halves match.
+        if (isArenaDuelLayout()) {
+            g.resetAlphaComposite();
+            paintArenaPanelBackdrop(g);
+            final VZoneDisplay handZone = getZoneDisplay(ZoneType.Hand);
+            if (handZone != null && handZone.isVisible() && handZone.getHeight() > 1f) {
+                g.fillRect(ARENA_HAND_SCRIM,
+                        handZone.getLeft(), handZone.getTop(), handZone.getWidth(), handZone.getHeight());
+            }
+            g.resetAlphaComposite();
+            return; // no classic zone-tab borders in Arena
+        }
         if (infoTab != null) { //draw background and border for selected zone if needed
-            VDisplayArea selectedDisplayArea = infoTab.getDisplayArea();
             float x = selectedDisplayArea == null ? 0 : selectedDisplayArea.getLeft();
             float w = selectedDisplayArea == null ? 0 : selectedDisplayArea.getWidth();
             float top = selectedDisplayArea == null ? 0 : selectedDisplayArea.getTop();
@@ -705,6 +1142,8 @@ public class VPlayerPanel extends FContainer {
                     }
                     adjustHeight = (mod > 2) && (avatar.getHeight() < halfHeight * mod) ? mod : 1;
                 }
+            } else if (isArenaDuelLayout()) {
+                paintArenaLifeBadge(g);
             } else {
                 if (poisonCounters == 0 && energyCounters == 0 && manaShards == 0) {
                     g.drawText(lifeStr, Forge.altZoneTabs ? LIFE_FONT_ALT : LIFE_FONT, getInfoForeColor(), 0, 0, getWidth(), getHeight(), false, Align.center, true);
@@ -727,6 +1166,59 @@ public class VPlayerPanel extends FContainer {
                 }
             }
         }
+
+        /** Arena-style opaque life badge: large cream total + poison/energy when non-zero. */
+        private void paintArenaLifeBadge(final Graphics g) {
+            final float w = getWidth();
+            final float h = getHeight();
+            g.resetAlphaComposite();
+            g.fillRect(ARENA_LIFE_BADGE_FILL, 0, 0, w, h);
+            g.drawRect(3f, ARENA_LIFE_BADGE_BORDER, 0, 0, w, h);
+            final boolean showCounters = poisonCounters > 0 || energyCounters > 0;
+            final float lifeH = showCounters ? h * 0.62f : h;
+            // Outlined cream digits so the total stays readable on any backdrop.
+            g.drawOutlinedText(lifeStr, ARENA_LIFE_FONT, ARENA_LIFE_BADGE_INK, Color.BLACK,
+                    2f, 1f, w - 4f, lifeH, false, Align.center, true);
+            if (showCounters) {
+                final float cy = lifeH;
+                final float ch = h - lifeH;
+                final float icon = Math.min(ch - 2f, 14f);
+                float x = 3f;
+                if (poisonCounters > 0) {
+                    g.drawImage(FSkinImage.POISON, x, cy + (ch - icon) / 2f, icon, icon);
+                    g.drawText(String.valueOf(poisonCounters), ARENA_LIFE_COUNTER_FONT, ARENA_LIFE_BADGE_INK,
+                            x + icon + 1f, cy, w - x - icon - 2f, ch, false, Align.left, true);
+                    x += icon + ARENA_LIFE_COUNTER_FONT.getBounds(String.valueOf(poisonCounters)).width + Utils.scale(6);
+                }
+                if (energyCounters > 0) {
+                    g.drawImage(FSkinImage.ENERGY, x, cy + (ch - icon) / 2f, icon, icon);
+                    g.drawText(String.valueOf(energyCounters), ARENA_LIFE_COUNTER_FONT, ARENA_LIFE_BADGE_INK,
+                            x + icon + 1f, cy, w - x - icon - 2f, ch, false, Align.left, true);
+                }
+            }
+        }
+
+        /** Life total shown on the Arena badge (for GL pixel/text asserts). */
+        String getArenaLifeLabel() {
+            return lifeStr;
+        }
+    }
+
+    /** Screen-space bounds of the Arena life badge, or null when hidden. */
+    public float[] getArenaLifeBadgeScreenBounds() {
+        if (!isArenaDuelLayout() || lblLife == null || !lblLife.isVisible()
+                || lblLife.getWidth() < 2f || lblLife.getHeight() < 2f) {
+            return null;
+        }
+        return new float[] {
+                lblLife.screenPos.x, lblLife.screenPos.y,
+                lblLife.getWidth(), lblLife.getHeight()
+        };
+    }
+
+    /** Label text currently painted on the Arena life badge. */
+    public String getArenaLifeLabel() {
+        return lblLife == null ? null : lblLife.getArenaLifeLabel();
     }
 
     /**

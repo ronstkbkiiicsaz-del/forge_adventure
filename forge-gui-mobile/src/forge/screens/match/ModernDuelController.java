@@ -254,7 +254,7 @@ public final class ModernDuelController {
             return false;
         }
         if (!dragActive) {
-            if (Math.hypot(dx, dy) < ModernDuelScreen.DRAG_SLOP_PX) {
+            if (Math.hypot(dx, dy) < ModernDuelScreen.dragSlopPx()) {
                 return false;
             }
             dragActive = true;
@@ -342,7 +342,8 @@ public final class ModernDuelController {
             Gdx.graphics.requestRendering();
             return true;
         }
-        if (padFocus == ModernDuelPad.Focus.MANA || padFocus == ModernDuelPad.Focus.PHASE) {
+        if (padFocus == ModernDuelPad.Focus.MANA || padFocus == ModernDuelPad.Focus.PHASE
+                || padFocus == ModernDuelPad.Focus.CONTEXT || padFocus == ModernDuelPad.Focus.CANCEL) {
             clearPadFocus();
             Gdx.graphics.requestRendering();
             return true;
@@ -350,7 +351,8 @@ public final class ModernDuelController {
         final boolean handFocused = focusedCard != null && focusedCard.getZone() == ZoneType.Hand;
         final VFloatingMana mana = localFloatingMana();
         final boolean manaAvailable = mana != null && mana.hasManaAvailable();
-        final ModernDuelPad.Focus next = ModernDuelPad.chooseXTarget(handFocused, manaAvailable);
+        final ModernDuelPad.Focus next = ModernDuelPad.chooseXTarget(
+                handFocused, manaAvailable, ArenaDuelUi.isActive());
         switch (next) {
             case PEEK -> {
                 if (focusedCard == null) {
@@ -374,6 +376,10 @@ public final class ModernDuelController {
                 if (pi != null) {
                     pi.setPadFocusIndex(phaseFocusIndex);
                 }
+            }
+            case CONTEXT, CANCEL -> {
+                padFocus = next;
+                applyArenaChromeFocus();
             }
             default -> {
                 return false;
@@ -414,12 +420,37 @@ public final class ModernDuelController {
             return true;
         }
         if (padFocus == ModernDuelPad.Focus.PHASE && dx != 0) {
+            // On Arena, L/R leaves phase stops and cycles chrome; otherwise cycle phases.
+            if (ArenaDuelUi.isActive()) {
+                padFocus = ModernDuelPad.cycleArenaChrome(padFocus, dx);
+                final VPhaseIndicator pi = localPhaseIndicator();
+                if (pi != null && padFocus != ModernDuelPad.Focus.PHASE) {
+                    pi.setPadFocusIndex(-1);
+                }
+                applyArenaChromeFocus();
+                Gdx.graphics.requestRendering();
+                return true;
+            }
             final VPhaseIndicator pi = localPhaseIndicator();
             if (pi == null) {
                 return false;
             }
             phaseFocusIndex = ModernDuelPad.cycle(phaseFocusIndex, VPhaseIndicator.PHASE_ORDER.length, dx);
             pi.setPadFocusIndex(phaseFocusIndex);
+            Gdx.graphics.requestRendering();
+            return true;
+        }
+        if ((padFocus == ModernDuelPad.Focus.CONTEXT || padFocus == ModernDuelPad.Focus.CANCEL)
+                && dx != 0 && ArenaDuelUi.isActive()) {
+            padFocus = ModernDuelPad.cycleArenaChrome(padFocus, dx);
+            if (padFocus == ModernDuelPad.Focus.PHASE) {
+                phaseFocusIndex = 0;
+                final VPhaseIndicator pi = localPhaseIndicator();
+                if (pi != null) {
+                    pi.setPadFocusIndex(phaseFocusIndex);
+                }
+            }
+            applyArenaChromeFocus();
             Gdx.graphics.requestRendering();
             return true;
         }
@@ -432,6 +463,23 @@ public final class ModernDuelController {
      *         false if stock confirm/select should run (e.g. targeting).
      */
     private boolean onPadA(final CardView focusedCard, final PlayerView focusedPlayer) {
+        if (padFocus == ModernDuelPad.Focus.CONTEXT) {
+            final IGameController gc = MatchController.instance == null
+                    ? null : MatchController.instance.getGameController();
+            if (gc != null) {
+                gc.selectButtonOk();
+            }
+            return true;
+        }
+        if (padFocus == ModernDuelPad.Focus.CANCEL) {
+            if (MatchController.getView() instanceof ArenaDuelScreen arena
+                    && ArenaDuelUi.isCancelPromptArmed(arena.getActivePrompt())
+                    && MatchController.instance != null
+                    && MatchController.instance.getGameController() != null) {
+                MatchController.instance.getGameController().selectButtonCancel();
+            }
+            return true;
+        }
         if (padFocus == ModernDuelPad.Focus.MANA) {
             final VFloatingMana mana = localFloatingMana();
             if (mana != null && mana.activateFocused()) {
@@ -603,7 +651,52 @@ public final class ModernDuelController {
             Gdx.graphics.requestRendering();
             return true;
         }
+        // Arena: B closes an opened pile (GY/exile/library) back to hand before Cancel.
+        if (ArenaDuelUi.isActive() && closeOpenArenaPile()) {
+            Gdx.graphics.requestRendering();
+            return true;
+        }
+        // Arena: free B press reaches Cancel only when the prompt's Cancel is armed
+        // (same test as the Arena Cancel chrome — enabled + non-empty label).
+        if (ArenaDuelUi.isActive() && MatchController.instance != null
+                && MatchController.getView() instanceof ArenaDuelScreen arena
+                && ArenaDuelUi.isCancelPromptArmed(arena.getActivePrompt())) {
+            final IGameController gc = MatchController.instance.getGameController();
+            if (gc != null) {
+                gc.selectButtonCancel();
+                return true;
+            }
+        }
         return false;
+    }
+
+    /** Close any open Arena pile on either player panel; returns true if one was closed. */
+    private static boolean closeOpenArenaPile() {
+        final MatchScreen screen = MatchController.getView();
+        if (screen == null) {
+            return false;
+        }
+        for (final VPlayerPanel panel : screen.getPlayerPanelsList()) {
+            if (panel != null && panel.isArenaPileOpen()) {
+                panel.closeArenaPileToHand();
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void applyArenaChromeFocus() {
+        if (!(MatchController.getView() instanceof ArenaDuelScreen arena)) {
+            return;
+        }
+        final FDisplayObject ctx = arena.arenaContextControl();
+        final FDisplayObject cancel = arena.arenaCancelControl();
+        if (ctx != null) {
+            ctx.setHovered(padFocus == ModernDuelPad.Focus.CONTEXT);
+        }
+        if (cancel != null) {
+            cancel.setHovered(padFocus == ModernDuelPad.Focus.CANCEL);
+        }
     }
 
     public CardView getHeldCard() {
@@ -1018,6 +1111,16 @@ public final class ModernDuelController {
         final VPhaseIndicator pi = localPhaseIndicator();
         if (pi != null) {
             pi.setPadFocusIndex(-1);
+        }
+        if (MatchController.getView() instanceof ArenaDuelScreen arena) {
+            final FDisplayObject ctx = arena.arenaContextControl();
+            final FDisplayObject cancel = arena.arenaCancelControl();
+            if (ctx != null) {
+                ctx.setHovered(false);
+            }
+            if (cancel != null) {
+                cancel.setHovered(false);
+            }
         }
     }
 

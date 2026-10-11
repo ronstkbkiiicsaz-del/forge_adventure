@@ -379,6 +379,23 @@ public class ModernDuelScreenTest {
         Assert.assertFalse(ModernDuelController.get().isPeeking());
     }
 
+    @Test
+    public void cancelPromptArmedMatchesArenaButtonGate() {
+        // Same arming test pad B / Arena Cancel chrome use (enabled + non-empty label).
+        // ArenaDuelUi stays loadable without GL — do not touch ArenaDuelScreen/VPrompt here.
+        Assert.assertFalse(ArenaDuelUi.isCancelPromptArmed(false, "Mulligan"),
+                "disabled Cancel (e.g. before first prompt / some attack windows) must not arm B");
+        Assert.assertTrue(ArenaDuelUi.isCancelPromptArmed(true, "Mulligan"),
+                "enabled Cancel with a label (mulligan) arms B");
+        Assert.assertFalse(ArenaDuelUi.isCancelPromptArmed(true, ""),
+                "empty Cancel label must not arm B");
+        Assert.assertFalse(ArenaDuelUi.isCancelPromptArmed(true, null),
+                "null Cancel label must not arm B");
+        // Attack declaration often leaves Cancel disabled until a legal choice exists.
+        Assert.assertFalse(ArenaDuelUi.isCancelPromptArmed(false, "OK"),
+                "disabled Cancel during attack declaration must not arm B");
+    }
+
     private static PlayerView opponentPlayer() {
         return new PlayerView(101, new Tracker());
     }
