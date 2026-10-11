@@ -966,35 +966,48 @@ public class Game {
     public void forEachCardInGame(Visitor<Card> visitor) {
         forEachCardInGame(visitor, false);
     }
-    // Allows visiting cards in game without allocating a temporary list.
+
+    /**
+     * Visit every card in the game. Zone card lists are live mutable collections;
+     * snapshot each before iterating so a concurrent or re-entrant zone change
+     * (e.g. {@link #onPlayerLost} racing a net/EDT concede) cannot throw
+     * {@link java.util.ConcurrentModificationException}.
+     */
     public void forEachCardInGame(Visitor<Card> visitor, boolean withSideboard) {
-        for (final Player player : getPlayers()) {
-            if (!visitor.visitAll(player.getZone(ZoneType.Graveyard).getCards())) {
+        // Copy the player list too: onPlayerLost removes from ingamePlayers.
+        final List<Player> players = Lists.newArrayList(getPlayers());
+        for (final Player player : players) {
+            if (!visitor.visitAll(snapshotCards(player.getZone(ZoneType.Graveyard).getCards()))) {
                 return;
             }
-            if (!visitor.visitAll(player.getZone(ZoneType.Hand).getCards())) {
+            if (!visitor.visitAll(snapshotCards(player.getZone(ZoneType.Hand).getCards()))) {
                 return;
             }
-            if (!visitor.visitAll(player.getZone(ZoneType.Library).getCards())) {
+            if (!visitor.visitAll(snapshotCards(player.getZone(ZoneType.Library).getCards()))) {
                 return;
             }
-            if (!visitor.visitAll(player.getZone(ZoneType.Battlefield).getCards(false))) {
+            if (!visitor.visitAll(snapshotCards(player.getZone(ZoneType.Battlefield).getCards(false)))) {
                 return;
             }
-            if (!visitor.visitAll(player.getZone(ZoneType.Exile).getCards())) {
+            if (!visitor.visitAll(snapshotCards(player.getZone(ZoneType.Exile).getCards()))) {
                 return;
             }
-            if (!visitor.visitAll(player.getCardsIn(ZoneType.PART_OF_COMMAND_ZONE))) {
+            if (!visitor.visitAll(snapshotCards(player.getCardsIn(ZoneType.PART_OF_COMMAND_ZONE)))) {
                 return;
             }
-            if (withSideboard && !visitor.visitAll(player.getZone(ZoneType.Sideboard).getCards())) {
+            if (withSideboard && !visitor.visitAll(snapshotCards(player.getZone(ZoneType.Sideboard).getCards()))) {
                 return;
             }
-            if (!visitor.visitAll(player.getInboundTokens())) {
+            if (!visitor.visitAll(snapshotCards(player.getInboundTokens()))) {
                 return;
             }
         }
-        visitor.visitAll(getStackZone().getCards());
+        visitor.visitAll(snapshotCards(getStackZone().getCards()));
+    }
+
+    /** Shallow copy so iteration is independent of later zone mutations. */
+    private static CardCollectionView snapshotCards(final CardCollectionView cards) {
+        return CardCollection.getView(cards, true);
     }
     public CardCollectionView getCardsInGame() {
         final CardCollection all = new CardCollection();

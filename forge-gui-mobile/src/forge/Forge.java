@@ -414,7 +414,8 @@ public class Forge implements ApplicationListener {
         clearScreenStack();
         openHomeScreen(-1, null); //default for startup
         isMobileAdventureMode = false;
-        forge.adventure.sound.Au1Sounds.refreshRegistration();
+        // Full clear: leaving Adventure must not leave AU1 hooks for constructed matches.
+        forge.adventure.sound.Au1Sounds.resetAllStaticState();
         MusicPlaylist.invalidateMusicPlaylist();
         SoundSystem.instance.setBackgroundMusic(MusicPlaylist.MENUS);
         if (isLandscapeMode()) { //open preferred new game screen by default if landscape mode

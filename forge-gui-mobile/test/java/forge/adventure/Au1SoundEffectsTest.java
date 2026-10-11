@@ -105,9 +105,8 @@ public class Au1SoundEffectsTest {
     @AfterClass(alwaysRun = true)
     public void restoreAndAssertRealUserDirUntouched() throws Exception {
         try {
-            Au1Sounds.setAdventureModeForTest(null);
+            Au1Sounds.resetAllStaticState();
             Config.resetInstanceForTest();
-            SoundSystem.setPlaybackHooks(null);
         } finally {
             if (realUserDirSnapshot != null) {
                 AdventureTestUserDir.assertUnchanged(realUserDir, realUserDirSnapshot,
@@ -140,12 +139,13 @@ public class Au1SoundEffectsTest {
 
     @AfterMethod(alwaysRun = true)
     public void tearDown() {
-        Au1Sounds.setRecording(false);
-        Au1Sounds.setAdventureModeForTest(null);
         SoundSystem.instance.setIgnorePlayRequests(false);
         Config.instance().getSettingData().muteOverworldAmbience = previousMute;
         FModel.getPreferences().setPref(FPref.UI_VOL_SOUNDS, previousVolSounds);
         FModel.getPreferences().setPref(FPref.UI_VOL_UI, previousVolUi);
+        // Drop AU1 static hooks / burst / adventure override so later modules (desktop
+        // CoopDuelInProcessTest) never inherit leftover SoundSystem playback hooks.
+        Au1Sounds.resetAllStaticState();
         SoundSystem.setPlaybackHooks(previousHooks);
     }
 

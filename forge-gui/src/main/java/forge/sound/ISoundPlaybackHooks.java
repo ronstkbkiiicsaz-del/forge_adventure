@@ -37,4 +37,11 @@ public interface ISoundPlaybackHooks {
     default boolean muteAmbience() {
         return false;
     }
+
+    /**
+     * Called when a match/game ends so clients can drop per-match burst state
+     * without unregistering hooks for the next Adventure duel.
+     */
+    default void onMatchEnded() {
+    }
 }

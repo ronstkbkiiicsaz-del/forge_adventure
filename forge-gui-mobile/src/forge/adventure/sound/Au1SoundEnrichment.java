@@ -214,6 +214,12 @@ public final class Au1SoundEnrichment implements ISoundPlaybackHooks {
         return Au1Sounds.muteOverworldAmbience();
     }
 
+    @Override
+    public void onMatchEnded() {
+        // Clear coalesced draw/damage/exile bursts and UI latches — never hold game refs.
+        Au1Sounds.onMatchEnded();
+    }
+
     /** True when a per-card SoundEffect resource exists (stock ScriptedEffect path). */
     public static boolean hasScriptedCardSound(CardView card) {
         if (card == null || card.getName() == null) {
