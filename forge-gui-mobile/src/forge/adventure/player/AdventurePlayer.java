@@ -1676,6 +1676,8 @@ public class AdventurePlayer implements Serializable, SaveFileContent {
                 for (Object itsReallyAQuest : q)
                     quests.add((AdventureQuestData) itsReallyAQuest);
             }
+            // QL1 / legacy: old saves without a tracking flag track the first active quest.
+            AdventureQuestController.ensureTrackedQuest();
         }
         if (data.containsKey("events")) {
             events.clear();
@@ -4234,7 +4236,6 @@ public class AdventurePlayer implements Serializable, SaveFileContent {
     }
 
     public void addQuest(AdventureQuestData q, boolean isNewGame) {
-        //TODO: add a config flag for this
         boolean noTrackedQuests = true;
         for (AdventureQuestData existing : quests) {
             if (noTrackedQuests && existing.isTracked) {
@@ -4243,8 +4244,13 @@ public class AdventurePlayer implements Serializable, SaveFileContent {
             }
         }
         quests.add(q);
-        if (noTrackedQuests || q.autoTrack)
+        // QL1: new quests never steal tracking unless nothing is tracked (autoTrack included).
+        // Stock: keep legacy autoTrack steal when ql1 is off.
+        if (noTrackedQuests) {
             AdventureQuestController.trackQuest(q);
+        } else if (q.autoTrack && !forge.adventure.util.Config.ql1QuestTracking()) {
+            AdventureQuestController.trackQuest(q);
+        }
         q.activateNextStages();
         if (!isNewGame)
             AdventureQuestController.instance().showQuestDialogs(MapStage.getInstance());
@@ -4280,7 +4286,11 @@ public class AdventurePlayer implements Serializable, SaveFileContent {
     }
 
     public void removeQuest(AdventureQuestData quest) {
+        boolean wasTracked = quest != null && quest.isTracked;
         quests.remove(quest);
+        if (wasTracked) {
+            AdventureQuestController.trackNextAfterRemoval();
+        }
     }
 
     /**

@@ -109,6 +109,7 @@ public class QuestLogScene extends UIScene {
         backToList();
 
         scrollContainer.clear();
+        clearSelectable();
 
         for (AdventureQuestData quest : Current.player().getQuests()) {
             String headerCode = quest.isTracked ? "{GRADIENT=CYAN;BLUE;1;1}•{ENDGRADIENT}[BLACK]" : "[BLACK]";
@@ -116,6 +117,20 @@ public class QuestLogScene extends UIScene {
             nameLabel.skipToTheEnd();
             nameLabel.setWrap(true);
             scrollContainer.add(nameLabel).align(Align.left).expandX();
+
+            // QL1: Track reachable from the quest list (controller + mouse), not only details.
+            String trackLabel = quest.isTracked
+                    ? Forge.getLocalizer().getMessage("lblUntrackQuest")
+                    : Forge.getLocalizer().getMessageorUseDefault("lblTrack", "Track");
+            Button track = Controls.newTextButton(trackLabel);
+            track.addListener(new ClickListener() {
+                public void clicked(InputEvent event, float x, float y) {
+                    toggleTracked(quest);
+                    buildList();
+                }
+            });
+            scrollContainer.add(track).align(Align.center).padRight(6);
+
             Button details = Controls.newTextButton(Forge.getLocalizer().getMessage("lblDetails"));
             details.addListener(new ClickListener() {
                 public void clicked(InputEvent event, float x, float y){
@@ -124,6 +139,7 @@ public class QuestLogScene extends UIScene {
             });
             scrollContainer.add(details).align(Align.center).padRight(10);
             scrollContainer.row().padTop(5);
+            addToSelectable(track);
             addToSelectable(details);
         }
         performTouch(scrollPaneOfActor(scrollContainer)); //can use mouse wheel if available to scroll
@@ -150,6 +166,7 @@ public class QuestLogScene extends UIScene {
         trackButton.addListener(new ClickListener() {
             public void clicked(InputEvent event, float x, float y) {
                 toggleTracked(quest);
+                updateTrackButton(quest.isTracked);
             }
         });
 
@@ -157,6 +174,7 @@ public class QuestLogScene extends UIScene {
         abandonQuestButton.clearListeners();
         abandonQuestButton.addListener(new ClickListener() {
             public void clicked(InputEvent event, float x, float y) {
+                // Adventure scenes: use scene/MapStage dialogs — FOptionPane does not draw here.
                 Dialog confirm = createGenericDialog("", Forge.getLocalizer().getMessage("lblAbandonQuestConfirm"),Forge.getLocalizer().getMessage("lblYes"),Forge.getLocalizer().getMessage("lblNo"), () -> abandonQuest(quest), null);
                 showDialog(confirm);
             }
@@ -209,11 +227,17 @@ public class QuestLogScene extends UIScene {
             detailScrollContainer.row();
         }
         updateTrackButton(quest.isTracked);
+        addToSelectable(trackButton);
+        addToSelectable(backToListButton);
+        if (abandonQuestButton.isVisible()) {
+            addToSelectable(abandonQuestButton);
+        }
     }
 
     private void toggleTracked(AdventureQuestData quest) {
-        quest.isTracked = !quest.isTracked;
         if (quest.isTracked) {
+            quest.isTracked = false;
+        } else {
             AdventureQuestController.trackQuest(quest);
         }
         updateTrackButton(quest.isTracked);

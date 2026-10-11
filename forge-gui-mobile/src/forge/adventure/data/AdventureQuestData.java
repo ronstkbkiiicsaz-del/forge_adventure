@@ -12,6 +12,7 @@ import forge.adventure.stage.MapStage;
 import forge.adventure.util.AdventureQuestController;
 import forge.adventure.util.AdventureQuestEvent;
 import forge.adventure.util.Current;
+import forge.adventure.util.QuestNavigationTarget;
 import forge.adventure.world.WorldSave;
 import forge.util.Aggregates;
 
@@ -461,14 +462,44 @@ public class AdventureQuestData implements Serializable {
     }
 
     public PointOfInterest getClosestValidPOI(Vector2 pos) {
+        QuestNavigationTarget target = resolveNavigationTarget(pos);
+        return target != null ? target.poi : null;
+    }
+
+    /**
+     * QL1: navigation for this quest (nearest valid POI, or "no known location" for Ascendant
+     * any-side-quest stages with no discovered QuestSource/Sidequest).
+     */
+    public QuestNavigationTarget resolveNavigationTarget(Vector2 pos) {
+        Vector2 from = pos != null ? pos : new Vector2();
+        boolean anySideQuestStage = false;
         List<PointOfInterest> validPOIs = new ArrayList<>();
         for (AdventureQuestStage stage : getActiveStages()) {
+            if (stage == null) {
+                continue;
+            }
+            if (stage.isAnySideQuestObjective()) {
+                anySideQuestStage = true;
+            }
             validPOIs.addAll(stage.getValidPOIs());
         }
-        if (validPOIs.isEmpty())
-            return null;
-        validPOIs.sort(Comparator.comparingInt(a -> (int) a.getPosition().dst(pos)));
-        return validPOIs.get(0);
+        // Deduplicate by id — stages can share the same tag set.
+        Map<String, PointOfInterest> unique = new LinkedHashMap<>();
+        for (PointOfInterest poi : validPOIs) {
+            if (poi != null && poi.getID() != null) {
+                unique.putIfAbsent(poi.getID(), poi);
+            }
+        }
+        validPOIs = new ArrayList<>(unique.values());
+        if (validPOIs.isEmpty()) {
+            if (anySideQuestStage && forge.adventure.util.Config.ql1QuestTracking()) {
+                String msg = forge.adventure.util.Config.instance().getConfigData().ql1NoKnownLocationMessage;
+                return QuestNavigationTarget.noKnownLocation(name, msg);
+            }
+            return QuestNavigationTarget.none();
+        }
+        validPOIs.sort(Comparator.comparingInt(a -> (int) a.getPosition().dst(from)));
+        return QuestNavigationTarget.ofPoi(validPOIs.get(0), name);
     }
 
     /* Check if the player created an On the Hunt quest, left the city,

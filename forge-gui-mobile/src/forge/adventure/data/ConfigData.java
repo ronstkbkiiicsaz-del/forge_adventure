@@ -593,4 +593,25 @@ public class ConfigData {
      */
     public boolean duelTakeBackEnabled = true;
 
+    // ---- Ascendant quest tracking (Package QL1): choose which quest the arrow tracks. ----
+
+    /**
+     * When true (Ascendant default), enable QL1 quest tracking behaviour: Track from the quest
+     * list, one tracked quest at a time (saved), new quests do not steal tracking, finishing
+     * the tracked quest moves tracking to the next active one, and "do any side quest" stages
+     * navigate to the nearest discovered QuestSource/Sidequest (or "no known location").
+     * Stock worlds leave this unused.
+     */
+    public boolean ql1QuestTracking = true;
+    /**
+     * When true with {@link #ql1QuestTracking}, CompleteQuest / any-side-quest navigation only
+     * considers visited (discovered) POIs. Undiscovered towns are never arrow targets.
+     */
+    public boolean ql1DiscoveredSideQuestTargetsOnly = true;
+    /**
+     * HUD / map line when a tracked "any side quest" stage has no discovered QuestSource or
+     * Sidequest POI. Not a town name — the arrow stays hidden.
+     */
+    public String ql1NoKnownLocationMessage = "no known location";
+
 }

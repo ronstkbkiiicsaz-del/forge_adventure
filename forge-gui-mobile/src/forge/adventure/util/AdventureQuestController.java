@@ -29,9 +29,60 @@ import static forge.adventure.util.AdventureQuestController.QuestStatus.*;
 public class AdventureQuestController implements Serializable {
 
     public static void trackQuest(AdventureQuestData quest) {
+        if (quest == null) {
+            return;
+        }
         for (AdventureQuestData q: Current.player().getQuests()){
             q.isTracked = q.equals(quest);
         }
+    }
+
+    /** Currently tracked quest, or null. */
+    public static AdventureQuestData getTrackedQuest() {
+        for (AdventureQuestData q : Current.player().getQuests()) {
+            if (q != null && q.isTracked) {
+                return q;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * QL1 / legacy: if nothing is tracked, track the first active quest (old saves without a
+     * tracking flag, or after finishing the last tracked quest with others still active).
+     */
+    public static void ensureTrackedQuest() {
+        if (getTrackedQuest() != null) {
+            return;
+        }
+        for (AdventureQuestData q : Current.player().getQuests()) {
+            if (q == null || q.completed || q.failed) {
+                continue;
+            }
+            if (!q.getActiveStages().isEmpty() || (q.stages != null && q.stages.length > 0)) {
+                trackQuest(q);
+                return;
+            }
+        }
+    }
+
+    /**
+     * After a tracked quest is removed (complete / fail / abandon), move tracking to the next
+     * remaining active quest. No-op when something else is already tracked.
+     */
+    public static void trackNextAfterRemoval() {
+        ensureTrackedQuest();
+    }
+
+    /**
+     * QL1: resolve where the arrow, map marker and HUD line should point for the tracked quest.
+     */
+    public static QuestNavigationTarget resolveTrackedNavigation(com.badlogic.gdx.math.Vector2 from) {
+        AdventureQuestData tracked = getTrackedQuest();
+        if (tracked == null) {
+            return QuestNavigationTarget.none();
+        }
+        return tracked.resolveNavigationTarget(from != null ? from : new com.badlogic.gdx.math.Vector2());
     }
 
     public List<EnemyData> getExtraQuestSpawns(float difficultyFactor){
