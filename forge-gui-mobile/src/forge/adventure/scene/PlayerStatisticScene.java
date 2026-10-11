@@ -24,6 +24,7 @@ import forge.adventure.stage.GameHUD;
 import forge.adventure.util.Config;
 import forge.adventure.util.Controls;
 import forge.adventure.util.Current;
+import forge.adventure.util.MoxfieldMx1;
 import forge.adventure.util.Paths;
 import forge.adventure.world.WorldSave;
 import forge.assets.FBufferedImage;
@@ -255,6 +256,7 @@ public class PlayerStatisticScene extends UIScene {
                 dust.setText("");
             }
         }
+        ensureMoxfieldExportStatus();
         if (totalWins != null) {
             totalWins.setText(String.valueOf(Current.player().getStatistic().totalWins()));
         }
@@ -348,6 +350,64 @@ public class PlayerStatisticScene extends UIScene {
      * JSON layout y is top-down ({@code yDown}); {@link Actor#setBounds} is y-up,
      * so positions use {@code layoutH - jsonY - h}.
      */
+    /**
+     * MX1: show "Collection exported &lt;time&gt;" on the Status screen with a How-to
+     * scene dialog (controller-reachable). Ascendant + {@code mx1ExportStatusUi} only.
+     */
+    private void ensureMoxfieldExportStatus() {
+        Actor existing = ui.findActor("mx1ExportStatus");
+        if (!MoxfieldMx1.statusUiEnabled()) {
+            if (existing != null) {
+                existing.setVisible(false);
+            }
+            Actor how = ui.findActor("mx1ExportHowTo");
+            if (how != null) {
+                how.setVisible(false);
+            }
+            return;
+        }
+        TypingLabel status;
+        if (existing instanceof TypingLabel) {
+            status = (TypingLabel) existing;
+        } else {
+            status = Controls.newTypingLabel("");
+            status.setName("mx1ExportStatus");
+            status.setWrap(true);
+            boolean landscape = Forge.isLandscapeMode();
+            if (landscape) {
+                status.setBounds(300, 210, 160, 28);
+            } else {
+                status.setBounds(8, 380, 200, 28);
+            }
+            ui.addActor(status);
+        }
+        status.setText("[BLACK]" + MoxfieldMx1.exportStatusLine());
+        status.setVisible(true);
+        status.skipToTheEnd();
+
+        Actor howActor = ui.findActor("mx1ExportHowTo");
+        TextraButton howTo;
+        if (howActor instanceof TextraButton) {
+            howTo = (TextraButton) howActor;
+        } else {
+            howTo = Controls.newTextButton("How-to", () -> showDialog(createGenericDialog(
+                    "Moxfield collection",
+                    MoxfieldMx1.moxfieldHowToBody(),
+                    Forge.getLocalizer().getMessage("lblOK"), null,
+                    PlayerStatisticScene.this::removeDialog, null)));
+            howTo.setName("mx1ExportHowTo");
+            boolean landscape = Forge.isLandscapeMode();
+            if (landscape) {
+                howTo.setBounds(300, 238, 70, 22);
+            } else {
+                howTo.setBounds(210, 380, 70, 28);
+            }
+            ui.addActor(howTo);
+            addToSelectable(howTo);
+        }
+        howTo.setVisible(true);
+    }
+
     private void addAscendantAwardsButton() {
         if (ui.findActor("achievements") != null) {
             ui.onButtonPress("achievements",
