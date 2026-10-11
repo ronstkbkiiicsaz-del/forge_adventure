@@ -126,6 +126,14 @@ public class VZoneDisplay extends VCardDisplayArea {
             return new ScrollBounds(visibleWidth, visibleHeight);
         }
 
+        // DS1 Arena hand: always use the fanned card-aspect layout from VCardDisplayArea,
+        // even in landscape (classic landscape stacks the hand in a side column).
+        if (zoneType == ZoneType.Hand
+                && MatchController.getView() != null
+                && MatchController.getView().isArenaDuelScreen()) {
+            return super.layoutAndGetScrollBounds(visibleWidth, visibleHeight);
+        }
+
         orderedCards.get().clear();
 
         if (Forge.isLandscapeMode() && layoutVerticallyForLandscapeMode()) {

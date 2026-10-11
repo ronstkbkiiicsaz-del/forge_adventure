@@ -27,6 +27,7 @@ import forge.Graphics;
 import forge.adventure.data.ConfigData;
 import forge.adventure.util.Config;
 import forge.assets.FSkinFont;
+import forge.assets.FSkinTexture;
 import forge.gamemodes.match.YieldController;
 import forge.interfaces.IGameController;
 import forge.menu.FMenuBar;
@@ -133,17 +134,28 @@ public class ArenaDuelScreen extends MatchScreen {
         if (eot != null) {
             btnPassUntilEot.setBounds(eot.x, eot.y, eot.w, eot.h);
         }
-        // Classic VPrompt still hosts OK/Cancel/Take back + message (fallback dialogs).
-        // Stretch it across promptBar+takeBack so DS4 Take back stays next to the context button.
+        // Classic VPrompt hosts message + DS4 Take back. Context / Pass-until-EOT replace
+        // the stock OK/Cancel buttons so they don't render as a tiny clipped widget row.
         final VPrompt bottom = getBottomPlayerPrompt();
         if (bottom != null && prompt != null && take != null) {
             final float x = take.x;
             final float w = (prompt.x + prompt.w) - take.x;
             bottom.setBounds(x, prompt.y, w, prompt.h);
+            if (bottom.getBtnOk() != null) {
+                bottom.getBtnOk().setVisible(false);
+            }
+            if (bottom.getBtnCancel() != null) {
+                bottom.getBtnCancel().setVisible(false);
+            }
         }
         final VPrompt top = getTopPlayerPrompt();
         if (top != null) {
             top.setVisible(false); // Arena is single-human layout for PR1
+        }
+
+        // Menu bar fills the Arena menuBand (not the classic rotated side strip).
+        if (getHeader() != null && menu != null) {
+            getHeader().setHeight(menu.h);
         }
 
         refreshContextLabel();
@@ -172,10 +184,26 @@ public class ArenaDuelScreen extends MatchScreen {
 
     @Override
     protected void drawBackground(final Graphics g) {
-        // Always paint an opaque base before MatchScreen/FieldScroller imagery so
-        // FBO captures (and devices without match BG) never show through as void.
-        g.fillRect(new Color(0.07f, 0.09f, 0.12f, 1f), 0, 0, getWidth(), getHeight());
-        super.drawBackground(g);
+        // Full-bleed match backdrop in both orientations. Skip FScreen's BG_TEXTURE
+        // path (it would cover this) and FieldScroller's classic geometry (often
+        // leaves landscape empty). Day/night follows MatchController when set.
+        final float w = getWidth();
+        final float h = getHeight();
+        g.fillRect(new Color(0.07f, 0.09f, 0.12f, 1f), 0, 0, w, h);
+        FSkinTexture matchBG = FSkinTexture.BG_MATCH;
+        if (MatchController.instance != null && MatchController.instance.getDayTime() != null) {
+            matchBG = "Day".equals(MatchController.instance.getDayTime())
+                    ? FSkinTexture.BG_MATCH_DAY : FSkinTexture.BG_MATCH_NIGHT;
+        }
+        final float imgAspect = matchBG.getWidth() / (float) Math.max(1, matchBG.getHeight());
+        float bgW = w;
+        float bgH = bgW / imgAspect;
+        if (bgH < h) {
+            bgH = h;
+            bgW = bgH * imgAspect;
+        }
+        g.drawImage(matchBG, (w - bgW) / 2f, (h - bgH) / 2f, bgW, bgH);
+        g.fillRect(new Color(0f, 0f, 0f, 0.28f), 0, 0, w, h);
     }
 
     @Override

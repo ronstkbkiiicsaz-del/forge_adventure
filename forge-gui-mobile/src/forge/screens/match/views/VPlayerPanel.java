@@ -343,37 +343,53 @@ public class VPlayerPanel extends FContainer {
         }
 
         //layout for bottom panel by default
-        float x = avatarHeight;
-        float w = width - avatarHeight;
+        // Arena: never let Utils.AVG_FINGER (tiny under a 64px GL window) collapse the
+        // avatar / zone-tab chrome into a clipped icon strip along the panel edge.
+        final boolean arena = isArenaDuelLayout();
+        final float chromeH = arena
+                ? Math.max(44f, Math.min(64f, height * 0.16f))
+                : avatarHeight;
+        float x = chromeH;
+        float w = width - chromeH;
         float indicatorScale = 1f;
-        if (avatarHeight < VAvatar.HEIGHT) {
+        if (chromeH < VAvatar.HEIGHT) {
             indicatorScale = 0.6f;
         }
-        float h = phaseIndicator.getPreferredHeight(w) * indicatorScale;
-        phaseIndicator.setBounds(x, height - h, w, h);
+        // Arena reserves a phase-rail region in ArenaDuelLayout; keep the classic
+        // phase strip out of the player panel so it doesn't form a second tiny bar.
+        if (arena) {
+            phaseIndicator.setVisible(false);
+        } else {
+            phaseIndicator.setVisible(true);
+            float h = phaseIndicator.getPreferredHeight(w) * indicatorScale;
+            phaseIndicator.setBounds(x, height - h, w, h);
+        }
 
-        float y = height - avatarHeight;
+        float y = height - chromeH;
         float displayAreaHeight = displayAreaHeightFactor * y / 3;
-        // Arena landscape: keep the hand band close to ArenaDuelLayout's handFraction
-        // so cards stay readable instead of filling a third of a short player panel.
-        if (isArenaDuelLayout() && Forge.isLandscapeMode()) {
+        // Arena: hand band tracks ds1HandFraction of the player panel (both orientations).
+        if (arena) {
             final float handFrac = arenaHandFraction();
-            displayAreaHeight = Math.max(Utils.scale(48), Math.min(y * 0.55f, height * handFrac));
+            displayAreaHeight = Math.max(72f, Math.min(y * 0.55f, height * handFrac));
         }
         y -= displayAreaHeight;
         for (InfoTab tab : tabs) {
             tab.setDisplayBounds(0, y, width, displayAreaHeight);
         }
 
-        y = height - avatarHeight;
+        y = height - chromeH;
+        avatar.setSize(chromeH, chromeH);
         avatar.setPosition(0, y);
 
         float lifeLabelWidth = LIFE_FONT.getBounds("99").width * 1.2f * indicatorScale; //make just wide enough for 2-digit life totals
-        float infoLabelHeight = avatarHeight - phaseIndicator.getHeight();
+        float infoLabelHeight = chromeH - (arena || !phaseIndicator.isVisible() ? 0f : phaseIndicator.getHeight());
+        if (infoLabelHeight < chromeH * 0.55f) {
+            infoLabelHeight = chromeH;
+        }
         lblLife.setBounds(x, y, lifeLabelWidth, infoLabelHeight);
         x += lifeLabelWidth;
 
-        float infoTabWidth = (getWidth() - x) / tabs.size();
+        float infoTabWidth = (getWidth() - x) / Math.max(1, tabs.size());
         for (InfoTab tab : tabs) {
             tab.setBounds(x, y, infoTabWidth, infoLabelHeight);
             x += infoTabWidth;

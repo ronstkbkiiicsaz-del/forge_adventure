@@ -252,6 +252,24 @@ public abstract class VCardDisplayArea extends VDisplayArea implements ActivateH
         float cardHeight = visibleHeight;
         float cardWidth = getCardWidth(cardHeight);
 
+        // Arena field rows: with a small board the cards naturally sit left in a
+        // wide lane. Center the group so the lane doesn't look empty on the right.
+        final boolean arenaField = this instanceof VField.FieldRow
+                && MatchController.getView() != null
+                && MatchController.getView().isArenaDuelScreen();
+        if (arenaField) {
+            float totalW = 0f;
+            for (CardAreaPanel cardPanel : new ArrayList<>(cardPanels.get())) {
+                if (cardPanel != null) {
+                    final int stack = 1 + countStackDepth(cardPanel);
+                    totalW += cardWidth + (stack - 1) * cardWidth * getCardStackOffset();
+                }
+            }
+            if (totalW > 0f && totalW < visibleWidth) {
+                x = (visibleWidth - totalW) / 2f;
+            }
+        }
+
         for (CardAreaPanel cardPanel : new ArrayList<>(cardPanels.get())) {
             if (cardPanel != null) {
                 int count = addCards(cardPanel, x, y, cardWidth, cardHeight);
@@ -259,7 +277,17 @@ public abstract class VCardDisplayArea extends VDisplayArea implements ActivateH
             }
         }
 
-        return new ScrollBounds(x, visibleHeight);
+        return new ScrollBounds(Math.max(x, visibleWidth), visibleHeight);
+    }
+
+    private int countStackDepth(final CardAreaPanel cardPanel) {
+        int n = 0;
+        CardAreaPanel p = cardPanel.getNextPanelInStack();
+        while (p != null) {
+            n++;
+            p = p.getNextPanelInStack();
+        }
+        return n;
     }
 
     private ScrollBounds layoutArenaHandFan(float visibleWidth, float visibleHeight) {

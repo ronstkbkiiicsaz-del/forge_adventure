@@ -144,31 +144,52 @@ public class VPrompt extends FContainer {
 
     @Override
     protected void doLayout(float width, float height) {
+        // Size buttons to the container so a stretched Arena prompt bar doesn't leave
+        // a  Utils.AVG_FINGER-tall strip of clipped widgets along the edge.
+        final float btnH = Math.max(HEIGHT, height);
+        final float btnW = Math.max(BTN_WIDTH, btnH * 1.5f);
+        btnOk.setSize(btnW, btnH);
+        btnCancel.setSize(btnW, btnH);
+        btnTakeBack.setSize(btnW, btnH);
+        lblMessage.setHeight(btnH);
+
         final boolean takeBack = btnTakeBack.isVisible();
-        final float takeW = takeBack ? BTN_WIDTH : 0f;
-        lblMessage.setWidth(width - 2 * BTN_WIDTH - takeW);
+        final float okW = btnOk.isVisible() ? btnW : 0f;
+        final float cancelW = btnCancel.isVisible() ? btnW : 0f;
+        final float takeW = takeBack ? btnW : 0f;
+        lblMessage.setWidth(Math.max(0f, width - okW - cancelW - takeW));
         if (Forge.reversedPrompt) {
             btnOk.setCorner(Corner.BottomRight);
             btnCancel.setCorner(Corner.BottomLeft);
-            btnCancel.setLeft(0);
-            if (takeBack) {
-                btnTakeBack.setLeft(btnCancel.getRight());
-                lblMessage.setLeft(btnTakeBack.getRight());
-            } else {
-                lblMessage.setLeft(btnCancel.getRight());
+            float left = 0f;
+            if (btnCancel.isVisible()) {
+                btnCancel.setLeft(left);
+                left = btnCancel.getRight();
             }
-            btnOk.setLeft(lblMessage.getRight());
+            if (takeBack) {
+                btnTakeBack.setLeft(left);
+                left = btnTakeBack.getRight();
+            }
+            lblMessage.setLeft(left);
+            if (btnOk.isVisible()) {
+                btnOk.setLeft(lblMessage.getRight());
+            }
         } else {
             btnOk.setCorner(Corner.BottomLeft);
             btnCancel.setCorner(Corner.BottomRight);
-            btnOk.setLeft(0);
-            if (takeBack) {
-                btnTakeBack.setLeft(btnOk.getRight());
-                lblMessage.setLeft(btnTakeBack.getRight());
-            } else {
-                lblMessage.setLeft(btnOk.getRight());
+            float left = 0f;
+            if (btnOk.isVisible()) {
+                btnOk.setLeft(left);
+                left = btnOk.getRight();
             }
-            btnCancel.setLeft(lblMessage.getRight());
+            if (takeBack) {
+                btnTakeBack.setLeft(left);
+                left = btnTakeBack.getRight();
+            }
+            lblMessage.setLeft(left);
+            if (btnCancel.isVisible()) {
+                btnCancel.setLeft(lblMessage.getRight());
+            }
         }
     }
 

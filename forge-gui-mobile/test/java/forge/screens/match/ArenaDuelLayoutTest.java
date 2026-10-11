@@ -121,6 +121,45 @@ public class ArenaDuelLayoutTest {
     }
 
     @Test
+    public void handFanCardsKeepAspectAndStayFullyOnScreenInBothOrientations() {
+        for (final boolean landscape : new boolean[] { true, false }) {
+            final float sw = landscape ? 1280f : 720f;
+            final float sh = landscape ? 720f : 1280f;
+            final ArenaDuelLayout.Result layout = ArenaDuelLayout.compute(sw, sh, landscape);
+            final ArenaDuelLayout.Rect hand = layout.get("playerHand");
+            Assert.assertNotNull(hand, landscape ? "landscape hand" : "portrait hand");
+            // Hand band itself must lie fully inside the screen.
+            Assert.assertTrue(hand.x >= -0.5f && hand.y >= -0.5f,
+                    "hand origin off-screen in " + (landscape ? "landscape" : "portrait"));
+            Assert.assertTrue(hand.x + hand.w <= sw + 0.5f && hand.y + hand.h <= sh + 0.5f,
+                    "hand extends past screen in " + (landscape ? "landscape" : "portrait"));
+            for (final int count : new int[] { 1, 2, 5, 7 }) {
+                final int hover = count > 1 ? 1 : -1;
+                final List<ArenaHandFan.CardPose> poses =
+                        ArenaHandFan.fan(count, hand.w, hand.h, hover, null);
+                Assert.assertEquals(poses.size(), count);
+                for (final ArenaHandFan.CardPose p : poses) {
+                    final float aspect = p.h / p.w;
+                    Assert.assertTrue(aspect > 1.2f && aspect < 1.6f,
+                            "card aspect " + aspect + " count=" + count
+                                    + " " + (landscape ? "landscape" : "portrait"));
+                    Assert.assertTrue(p.x >= -0.5f && p.y >= -0.5f,
+                            "card origin outside hand band");
+                    Assert.assertTrue(p.x + p.w <= hand.w + 0.5f,
+                            "card right edge past hand band");
+                    Assert.assertTrue(p.y + p.h <= hand.h + 0.5f,
+                            "card bottom edge past hand band (clipped)");
+                    // Fully on screen via the hand band.
+                    Assert.assertTrue(hand.x + p.x >= -0.5f);
+                    Assert.assertTrue(hand.y + p.y >= -0.5f);
+                    Assert.assertTrue(hand.x + p.x + p.w <= sw + 0.5f);
+                    Assert.assertTrue(hand.y + p.y + p.h <= sh + 0.5f);
+                }
+            }
+        }
+    }
+
+    @Test
     public void stackColumnTopItemIsLargest() {
         final List<ArenaStackColumnLayout.ItemRect> items =
                 ArenaStackColumnLayout.layout(4, 200f, 300f);
