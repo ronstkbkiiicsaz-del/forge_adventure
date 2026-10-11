@@ -307,6 +307,9 @@ public class AdventureQuestController implements Serializable {
             if (!toRemove.failed && locationHasMoreQuests()){
                 nextQuestDate.remove(toRemove.sourceID);
             }
+            if (!toRemove.failed && Config.au1SoundOverhaul()) {
+                forge.adventure.sound.Au1Sounds.playQuestComplete();
+            }
 
             Current.player().removeQuest(toRemove);
             //Todo: Add quest to a separate "completed / failed" log?

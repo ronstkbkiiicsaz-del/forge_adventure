@@ -30,6 +30,12 @@ license. **Add an entry here whenever a new asset, library or data source is add
   Kenney Vleugels, <https://kenney.nl>. CC0 1.0 (public domain); credited with thanks.
   License files: `LICENSE-kenney-impact-sounds.txt`, `LICENSE-kenney-rpg-audio.txt`.
 
+- **AU1 Ascendant sound overhaul** (`forge-gui/res/adventure/Shandalar Ascendant/sound/au1_*.ogg`) —
+  remapped clips from Kenney CC0 packs (Interface Sounds, UI Audio, Impact Sounds, RPG Audio,
+  Digital Audio, Casino Audio, Music Jingles). Kenney Vleugels, <https://kenney.nl>. CC0 1.0;
+  credited with thanks. Per-pack license stubs: `LICENSE-kenney-*.txt` in that folder.
+  Stock `forge-gui/res/sound/` is unchanged. Steve can replace any `au1_*.ogg` under the same name.
+
 ## Map tiles
 
 - **Kenney — Tiny Town, Tiny Battle, Tiny Dungeon** (16px tilesets in

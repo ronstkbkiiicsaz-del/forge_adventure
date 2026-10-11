@@ -245,6 +245,9 @@ public class MapDialog {
         } else {
             fadeIn();
         }
+        if (Config.au1SoundOverhaul() && text != null && !text.isEmpty()) {
+            forge.adventure.sound.Au1Sounds.playDialogBlip();
+        }
         TypingLabel A = Controls.newTypingLabel(text);
         A.setWrap(true);
         Array<TextraButton> buttons = new Array<>();
@@ -338,6 +341,9 @@ public class MapDialog {
     }
 
     private void emitQuestAccepted(){
+        if (Config.au1SoundOverhaul()) {
+            forge.adventure.sound.Au1Sounds.playQuestAccept();
+        }
         if (questAcceptedList != null && questAcceptedList.size() > 0) {
             ChangeListener.ChangeEvent evt = new ChangeListener.ChangeEvent();
             for (ChangeListener listener : questAcceptedList) {

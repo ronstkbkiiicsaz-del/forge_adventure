@@ -110,6 +110,9 @@ public class TileMapScene extends HudScene {
     @Override
     public void enter() {
         super.enter();
+        if (Config.au1SoundOverhaul()) {
+            forge.adventure.sound.Au1Sounds.playDoorOpen();
+        }
         if (isAutoHealLocation()) {
             // auto heal
             if (Current.player().fullHeal())
