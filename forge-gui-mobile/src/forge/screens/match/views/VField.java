@@ -19,6 +19,9 @@ import forge.toolbox.FDisplayObject;
 import forge.util.collect.FCollectionView;
 
 public class VField extends FContainer {
+    private static final com.badlogic.gdx.graphics.Color ARENA_FIELD_PLATE =
+            new com.badlogic.gdx.graphics.Color(0.10f, 0.16f, 0.12f, 1f);
+
     private final PlayerView player;
     private final FieldRow row1, row2;
     /** DS1 Arena: OTHER permanents sit in a side strip. */
@@ -285,7 +288,7 @@ public class VField extends FContainer {
         final float h = getHeight();
         g.startClip(0, 0, w, h);
         try {
-            g.fillRect(new com.badlogic.gdx.graphics.Color(0.10f, 0.16f, 0.12f, 1f), 0, 0, w, h);
+            g.fillRect(ARENA_FIELD_PLATE, 0, 0, w, h);
             if (plate.getWidth() > 0) {
                 // Local stretch of the forest slice — avoid depending on parent UV.
                 g.drawImage(plate, 0, -h * 0.15f, w, h / 0.55f);

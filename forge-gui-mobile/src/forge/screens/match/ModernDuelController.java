@@ -472,10 +472,11 @@ public final class ModernDuelController {
             return true;
         }
         if (padFocus == ModernDuelPad.Focus.CANCEL) {
-            final IGameController gc = MatchController.instance == null
-                    ? null : MatchController.instance.getGameController();
-            if (gc != null) {
-                gc.selectButtonCancel();
+            if (MatchController.getView() instanceof ArenaDuelScreen arena
+                    && ArenaDuelScreen.isCancelPromptArmed(arena.getActivePrompt())
+                    && MatchController.instance != null
+                    && MatchController.instance.getGameController() != null) {
+                MatchController.instance.getGameController().selectButtonCancel();
             }
             return true;
         }
@@ -650,8 +651,11 @@ public final class ModernDuelController {
             Gdx.graphics.requestRendering();
             return true;
         }
-        // Arena: free B press reaches the secondary context (selectButtonCancel).
-        if (ArenaDuelUi.isActive() && MatchController.instance != null) {
+        // Arena: free B press reaches Cancel only when the prompt's Cancel is armed
+        // (same test as the Arena Cancel chrome — enabled + non-empty label).
+        if (ArenaDuelUi.isActive() && MatchController.instance != null
+                && MatchController.getView() instanceof ArenaDuelScreen arena
+                && ArenaDuelScreen.isCancelPromptArmed(arena.getActivePrompt())) {
             final IGameController gc = MatchController.instance.getGameController();
             if (gc != null) {
                 gc.selectButtonCancel();

@@ -586,28 +586,43 @@ public class VPlayerPanel extends FContainer {
             floatingMana.setVisible(false);
         }
 
-        // Zone displays: only the hand band for the local player; hide others.
+        // Zone displays: hand band for the local player; opponent piles open over the field.
         for (InfoTab tab : tabs) {
             tab.setDisplayVisible(false);
         }
-        if (isFlipped() || handR == null) {
-            return;
-        }
-        final VZoneDisplay handZone = getZoneDisplay(ZoneType.Hand);
-        for (InfoTab tab : tabs) {
-            tab.setDisplayBounds(handR.x, handR.y, handR.w, handR.h);
-        }
-        if (selectedTab != null) {
-            selectedTab.setDisplayVisible(true);
-        } else if (handZone != null) {
-            handZone.setVisible(true);
-        }
-        if (handZone != null) {
-            handZone.setBounds(handR.x, handR.y, handR.w, handR.h);
-            if (selectedTab == null || selectedTab.getDisplayArea() == handZone) {
+        if (handR != null) {
+            // Local player: hand / opened pile share the hand band.
+            final VZoneDisplay handZone = getZoneDisplay(ZoneType.Hand);
+            for (InfoTab tab : tabs) {
+                tab.setDisplayBounds(handR.x, handR.y, handR.w, handR.h);
+            }
+            if (selectedTab != null) {
+                selectedTab.setDisplayVisible(true);
+            } else if (handZone != null) {
                 handZone.setVisible(true);
             }
+            if (handZone != null) {
+                handZone.setBounds(handR.x, handR.y, handR.w, handR.h);
+                if (selectedTab == null || selectedTab.getDisplayArea() == handZone) {
+                    handZone.setVisible(true);
+                }
+            }
+            return;
         }
+        // Opponent (flipped, no hand band): show an opened pile over the field slot.
+        if (fieldR != null && selectedTab != null && isArenaPileTab(selectedTab)) {
+            selectedTab.setDisplayBounds(fieldR.x, fieldR.y, fieldR.w, fieldR.h);
+            selectedTab.setDisplayVisible(true);
+        }
+    }
+
+    /** Graveyard / exile / library tabs — openable piles in Arena layout. */
+    private boolean isArenaPileTab(final InfoTab tab) {
+        if (!(tab instanceof InfoTabZone)) {
+            return false;
+        }
+        final ZoneType zt = ((InfoTabZone) tab).zoneType;
+        return zt == ZoneType.Graveyard || zt == ZoneType.Exile || zt == ZoneType.Library;
     }
 
     private void setArenaChromeVisible(final boolean visible) {

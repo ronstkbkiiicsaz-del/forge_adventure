@@ -379,6 +379,28 @@ public class ModernDuelScreenTest {
         Assert.assertFalse(ModernDuelController.get().isPeeking());
     }
 
+    @Test
+    public void cancelPromptArmedMatchesArenaButtonGate() {
+        // Same arming test pad B / Arena Cancel chrome use (enabled + non-empty label).
+        final forge.screens.match.views.VPrompt prompt =
+                new forge.screens.match.views.VPrompt("Keep", "Mulligan", e -> { }, e -> { });
+        // Constructor leaves Cancel disabled until a prompt is queued — B must no-op.
+        Assert.assertFalse(ArenaDuelScreen.isCancelPromptArmed(prompt),
+                "disabled Cancel (e.g. before first prompt / some attack windows) must not arm B");
+        prompt.getBtnCancel().setEnabled(true);
+        prompt.getBtnCancel().setText("Mulligan");
+        Assert.assertTrue(ArenaDuelScreen.isCancelPromptArmed(prompt),
+                "enabled Cancel with a label (mulligan) arms B");
+        prompt.getBtnCancel().setText("");
+        Assert.assertFalse(ArenaDuelScreen.isCancelPromptArmed(prompt),
+                "empty Cancel label must not arm B");
+        // Attack declaration often leaves Cancel disabled until a legal choice exists.
+        prompt.getBtnCancel().setText("OK");
+        prompt.getBtnCancel().setEnabled(false);
+        Assert.assertFalse(ArenaDuelScreen.isCancelPromptArmed(prompt),
+                "disabled Cancel during attack declaration must not arm B");
+    }
+
     private static PlayerView opponentPlayer() {
         return new PlayerView(101, new Tracker());
     }

@@ -207,14 +207,16 @@ public class VZoneDisplay extends VCardDisplayArea {
         return new ScrollBounds(visibleWidth, scrollHeight);
     }
 
+    private static final com.badlogic.gdx.graphics.Color ARENA_HAND_BAND =
+            new com.badlogic.gdx.graphics.Color(0.16f, 0.18f, 0.22f, 1f);
+
     @Override
     protected void drawBackground(Graphics g) {
         // Arena hand: opaque band above the field's unclipped match plate and below
         // the fanned card children (must write alpha=1 so the GL capture keeps it).
         if (zoneType == ZoneType.Hand && isArenaDuelScreen()) {
             g.resetAlphaComposite();
-            g.fillRect(new com.badlogic.gdx.graphics.Color(0.16f, 0.18f, 0.22f, 1f),
-                    0, 0, getWidth(), getHeight());
+            g.fillRect(ARENA_HAND_BAND, 0, 0, getWidth(), getHeight());
             g.resetAlphaComposite();
         }
     }

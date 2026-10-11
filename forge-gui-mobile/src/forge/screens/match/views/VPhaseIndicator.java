@@ -307,8 +307,11 @@ public class VPhaseIndicator extends FContainer {
             }
         }
 
+        private static final Color BRIGHT_SCRATCH = new Color();
+
         private static Color brighter(final Color c) {
-            return new Color(Math.min(1f, c.r * 1.15f), Math.min(1f, c.g * 1.15f),
+            // Reuse one scratch Color — never allocate per frame.
+            return BRIGHT_SCRATCH.set(Math.min(1f, c.r * 1.15f), Math.min(1f, c.g * 1.15f),
                     Math.min(1f, c.b * 1.15f), c.a);
         }
 

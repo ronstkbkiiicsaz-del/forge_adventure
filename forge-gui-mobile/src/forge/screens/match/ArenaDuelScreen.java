@@ -219,11 +219,9 @@ public class ArenaDuelScreen extends MatchScreen {
             getHeader().setHeight(menu.h);
         }
 
-        // Keep the local hand zone selected so the fanned hand band stays populated.
-        final VPlayerPanel bottomPanel = getBottomPlayerPanel();
-        if (bottomPanel != null) {
-            bottomPanel.setSelectedZone(forge.game.zone.ZoneType.Hand);
-        }
+        // Do NOT force Hand here — revalidate runs after every pile tab tap
+        // (setSelectedTab → revalidate) and would immediately close GY/exile/library.
+        // Hand is restored on prompt change via refreshContextLabels → maybeRestoreHand.
 
         // Classic VStack dropdown is replaced by VArenaStackColumn — keep it hidden so a
         // spell on the stack cannot reopen the leftover green card strip at top-left.
@@ -497,6 +495,8 @@ public class ArenaDuelScreen extends MatchScreen {
 
     private String contextCaption = "OK";
     private String cancelCaption = "Cancel";
+    /** Last prompt message seen — used to restore Hand only on prompt change. */
+    private String lastPromptMessageForHand;
 
     private void refreshStackIfChanged(final boolean force) {
         if (stackColumn == null || !stackColumn.isVisible()) {
@@ -529,13 +529,45 @@ public class ArenaDuelScreen extends MatchScreen {
 
         // Classic OK/Cancel are force-hidden for Arena layout, so do not trust
         // isVisible() — the game enables Cancel when mulligan/target/mana/etc. need it.
-        final boolean cancelWanted = prompt != null && prompt.getBtnCancel() != null
-                && prompt.getBtnCancel().isEnabled()
-                && cancel != null && !cancel.isEmpty();
+        final boolean cancelWanted = isCancelPromptArmed(prompt);
         btnCancel.setVisible(cancelWanted);
         if (cancelWanted) {
             cancelCaption = sanitizeCaption(cancel, "Cancel");
             btnCancel.setEnabled(true);
+        }
+
+        maybeRestoreHandOnPromptChange(prompt);
+    }
+
+    /**
+     * Same arming test as the Arena Cancel chrome / pad B: classic Cancel enabled
+     * with a non-empty label. Classic buttons stay hidden in Arena layout.
+     */
+    public static boolean isCancelPromptArmed(final VPrompt prompt) {
+        if (prompt == null || prompt.getBtnCancel() == null) {
+            return false;
+        }
+        final String text = prompt.getBtnCancel().getText();
+        return prompt.getBtnCancel().isEnabled()
+                && text != null && !text.isEmpty();
+    }
+
+    /** Restore the local hand band when the prompt message changes (new decision). */
+    private void maybeRestoreHandOnPromptChange(final VPrompt prompt) {
+        final String msg = prompt == null ? null : prompt.getMessage();
+        final String key = msg == null ? "" : msg;
+        if (lastPromptMessageForHand == null) {
+            // First observation only — never yank a pile open via setSelectedTab→revalidate.
+            lastPromptMessageForHand = key;
+            return;
+        }
+        if (key.equals(lastPromptMessageForHand)) {
+            return;
+        }
+        lastPromptMessageForHand = key;
+        final VPlayerPanel bottomPanel = getBottomPlayerPanel();
+        if (bottomPanel != null) {
+            bottomPanel.setSelectedZone(forge.game.zone.ZoneType.Hand);
         }
     }
 

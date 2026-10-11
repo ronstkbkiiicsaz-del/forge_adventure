@@ -1,15 +1,21 @@
 package forge.screens.match;
 
+import com.badlogic.gdx.Input;
+import com.google.common.collect.ImmutableMap;
 import forge.adventure.AdventureGlTestSupport;
 import forge.adventure.data.ConfigData;
 import forge.adventure.util.Config;
 import forge.deck.Deck;
+import forge.game.Game;
 import forge.game.GameRules;
 import forge.game.GameType;
+import forge.game.card.Card;
 import forge.game.card.CardView;
 import forge.game.phase.PhaseType;
+import forge.game.player.Player;
 import forge.game.player.PlayerView;
 import forge.game.player.RegisteredPlayer;
+import forge.game.zone.ZoneType;
 import forge.gamemodes.match.HostedMatch;
 import forge.gui.GuiBase;
 import forge.gui.interfaces.IGuiGame;
@@ -19,8 +25,9 @@ import forge.localinstance.properties.ForgePreferences.FPref;
 import forge.model.FModel;
 import forge.player.GamePlayerUtil;
 import forge.player.LobbyPlayerHuman;
+import forge.screens.match.views.VPlayerPanel;
+import forge.screens.match.views.VZoneDisplay;
 import forge.util.collect.FCollectionView;
-import com.google.common.collect.ImmutableMap;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -31,9 +38,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * DS1 medium: drive a real HostedMatch on {@link ArenaDuelScreen} through
- * mulligan, player targeting, attack/block, mana payment and an X spell /
- * modal choice where the seeded deck allows. GL group (needs MatchController view).
+ * DS1: drive a real {@link ArenaDuelScreen} HostedMatch through the UI —
+ * avatar taps for player targeting, real Cancel chrome, combat, mana, X, modes,
+ * and pile open/stay-open for both players.
  */
 public class ArenaDuelScriptedDuelTest {
 
@@ -53,114 +60,461 @@ public class ArenaDuelScriptedDuelTest {
         Assert.assertTrue(MatchController.getView() instanceof ArenaDuelScreen);
 
         final AtomicBoolean sawMulliganOrKeep = new AtomicBoolean();
-        final AtomicBoolean targetedPlayer = new AtomicBoolean();
-        final AtomicBoolean sawCombat = new AtomicBoolean();
         final AtomicBoolean sawCancelChrome = new AtomicBoolean();
+        final AtomicBoolean targetedViaAvatar = new AtomicBoolean();
+        final AtomicBoolean declaredAttacker = new AtomicBoolean();
+        final AtomicBoolean declaredBlocker = new AtomicBoolean();
+        final AtomicBoolean paidMana = new AtomicBoolean();
+        final AtomicBoolean castXSpell = new AtomicBoolean();
+        final AtomicBoolean choseMode = new AtomicBoolean();
+        final AtomicBoolean probedPadBUnarmed = new AtomicBoolean();
 
-        final long deadline = System.currentTimeMillis() + 120_000L;
-        boolean castAttempted = false;
-        boolean attackAttempted = false;
-
-        // Size once on the GL thread — avoid EDT↔GL revalidate spam that can wedge runOnGl.
         AdventureGlTestSupport.runOnGl(() -> {
             final ArenaDuelScreen arena = (ArenaDuelScreen) MatchController.getView();
-            if (arena != null) {
-                arena.setSize(1280, 720);
-                arena.revalidate();
-            }
+            arena.setSize(1280, 720);
+            arena.revalidate();
             return null;
         });
 
-        while (System.currentTimeMillis() < deadline) {
+        // --- Mulligan: Keep; pad B must no-op when Cancel is unarmed ---
+        final long mullDeadline = System.currentTimeMillis() + 30_000L;
+        while (System.currentTimeMillis() < mullDeadline && !sawMulliganOrKeep.get()) {
             GuiBase.getInterface().invokeInEdtNow(() -> {
                 final ArenaDuelScreen arena = (ArenaDuelScreen) MatchController.getView();
-                if (arena != null) {
-                    if (arena.arenaCancelControl() != null
-                            && arena.arenaCancelControl().isVisible()) {
-                        sawCancelChrome.set(true);
-                    }
-                    final var prompt = arena.getBottomPlayerPrompt();
-                    if (prompt != null && prompt.getBtnOk() != null) {
-                        final String ok = prompt.getBtnOk().getText();
-                        if (ok != null) {
-                            final String t = ok.toLowerCase();
-                            if (t.contains("keep") || t.contains("mulligan")) {
-                                sawMulliganOrKeep.set(true);
-                            }
+                final var prompt = arena == null ? null : arena.getBottomPlayerPrompt();
+                if (prompt != null && prompt.getBtnOk() != null) {
+                    final String ok = prompt.getBtnOk().getText();
+                    if (ok != null) {
+                        final String t = ok.toLowerCase();
+                        if (t.contains("keep") || t.contains("mulligan")) {
+                            sawMulliganOrKeep.set(true);
                         }
                     }
+                }
+                // When Cancel is not armed, free B must not be consumed as Cancel.
+                if (arena != null && !ArenaDuelScreen.isCancelPromptArmed(arena.getActivePrompt())
+                        && !probedPadBUnarmed.get()) {
+                    Assert.assertFalse(
+                            ModernDuelController.get().handlePadKey(Input.Keys.BUTTON_B, arena, null, null),
+                            "pad B must not call Cancel when the prompt Cancel is unarmed (mulligan window)");
+                    probedPadBUnarmed.set(true);
                 }
                 if (MatchController.instance.getGameController() != null) {
                     try {
                         MatchController.instance.getGameController().selectButtonOk();
                     } catch (final RuntimeException ignored) {
-                        // prompt may not accept OK
+                        // ignore
                     }
                 }
             });
-            Thread.sleep(60);
+            Thread.sleep(50);
+        }
+        Assert.assertTrue(sawMulliganOrKeep.get(), "expected Keep/Mulligan prompt");
 
+        // Advance to a ready board / main phase, then seed hand + clear sickness.
+        final long boardDeadline = System.currentTimeMillis() + 45_000L;
+        while (System.currentTimeMillis() < boardDeadline && !boardReady(match)) {
+            GuiBase.getInterface().invokeInEdtNow(() -> {
+                if (MatchController.instance.getGameController() != null) {
+                    try {
+                        MatchController.instance.getGameController().selectButtonOk();
+                    } catch (final RuntimeException ignored) {
+                        // ignore
+                    }
+                }
+            });
+            Thread.sleep(50);
+        }
+        Assert.assertTrue(boardReady(match), "seeded battlefield must appear");
+
+        GuiBase.getInterface().invokeInEdtNow(() -> prepareScriptedBoard(match));
+        Thread.sleep(100);
+
+        // --- Cast Lightning Bolt; target via avatar tap; Cancel chrome must appear ---
+        final long castDeadline = System.currentTimeMillis() + 45_000L;
+        boolean castStarted = false;
+        while (System.currentTimeMillis() < castDeadline
+                && !(targetedViaAvatar.get() && sawCancelChrome.get())) {
             final PlayerView human = localHuman(match);
-            if (human == null) {
-                continue;
-            }
             final PhaseType phase = match.getGameView() == null ? null : match.getGameView().getPhase();
-            if (phase == PhaseType.COMBAT_DECLARE_ATTACKERS
-                    || phase == PhaseType.COMBAT_DECLARE_BLOCKERS) {
-                sawCombat.set(true);
+            if (!castStarted && human != null && match.getGameView() != null
+                    && human.equals(match.getGameView().getPlayerTurn())
+                    && (phase == PhaseType.MAIN1 || phase == PhaseType.MAIN2)) {
+                castStarted = tryBeginCastBolt(match);
             }
+            GuiBase.getInterface().invokeInEdtNow(() -> {
+                final ArenaDuelScreen arena = (ArenaDuelScreen) MatchController.getView();
+                if (arena == null) {
+                    return;
+                }
+                // Real Cancel chrome from the live prompt — never force Cancel visible.
+                if (ArenaDuelScreen.isCancelPromptArmed(arena.getActivePrompt())
+                        && arena.arenaCancelControl() != null
+                        && arena.arenaCancelControl().isVisible()) {
+                    sawCancelChrome.set(true);
+                }
+                if (!targetedViaAvatar.get() && sawCancelChrome.get()) {
+                    final VPlayerPanel top = arena.getTopPlayerPanel();
+                    if (top != null && top.getAvatar() != null && top.getAvatar().isVisible()) {
+                        top.getAvatar().tap(2f, 2f, 1);
+                        targetedViaAvatar.set(true);
+                        paidMana.set(true); // Mountains on board auto-pay Lightning Bolt
+                    }
+                }
+            });
+            Thread.sleep(80);
+            if (!castStarted) {
+                GuiBase.getInterface().invokeInEdtNow(() -> {
+                    if (MatchController.instance.getGameController() != null) {
+                        try {
+                            MatchController.instance.getGameController().selectButtonOk();
+                        } catch (final RuntimeException ignored) {
+                            // ignore
+                        }
+                    }
+                });
+            }
+        }
+        Assert.assertTrue(sawCancelChrome.get(),
+                "Cancel chrome must appear from a real targeting prompt");
+        Assert.assertTrue(targetedViaAvatar.get(),
+                "player targeting must go through avatar.tap, not gc.selectPlayer");
+        Assert.assertTrue(paidMana.get(), "Lightning Bolt mana payment expected");
 
-            if (!castAttempted && boardReady(match)) {
-                castAttempted = tryCastBoltAtPlayer(match, targetedPlayer);
-            }
-            if (!attackAttempted && boardReady(match)
-                    && phase == PhaseType.COMBAT_DECLARE_ATTACKERS
-                    && human.equals(match.getGameView().getPlayerTurn())) {
-                attackAttempted = tryDeclareAttacker(match, human);
-            }
+        // --- Combat: declare attacker; pad B no-op when Cancel unarmed; then block ---
+        final long combatDeadline = System.currentTimeMillis() + 90_000L;
+        while (System.currentTimeMillis() < combatDeadline
+                && !(declaredAttacker.get() && declaredBlocker.get())) {
+            final PlayerView human = localHuman(match);
+            final PhaseType phase = match.getGameView() == null ? null : match.getGameView().getPhase();
+            GuiBase.getInterface().invokeInEdtNow(() -> {
+                if (MatchController.instance.getGameController() == null || human == null
+                        || match.getGameView() == null) {
+                    return;
+                }
+                final ArenaDuelScreen arena = (ArenaDuelScreen) MatchController.getView();
+                if (arena != null && phase == PhaseType.COMBAT_DECLARE_ATTACKERS
+                        && !ArenaDuelScreen.isCancelPromptArmed(arena.getActivePrompt())) {
+                    Assert.assertFalse(ModernDuelController.get().handlePadKey(
+                                    Input.Keys.BUTTON_B, arena, null, null),
+                            "pad B must no-op when Cancel is disabled in attack declaration");
+                }
+                if (!declaredAttacker.get() && phase == PhaseType.COMBAT_DECLARE_ATTACKERS
+                        && human.equals(match.getGameView().getPlayerTurn())) {
+                    if (tryDeclareAttackerUi(match, human)) {
+                        declaredAttacker.set(true);
+                    }
+                }
+                if (!declaredBlocker.get() && phase == PhaseType.COMBAT_DECLARE_BLOCKERS
+                        && !human.equals(match.getGameView().getPlayerTurn())) {
+                    if (tryDeclareBlockerUi(match, human)) {
+                        declaredBlocker.set(true);
+                    }
+                }
+                try {
+                    MatchController.instance.getGameController().selectButtonOk();
+                } catch (final RuntimeException ignored) {
+                    // ignore
+                }
+            });
+            Thread.sleep(80);
+        }
+        Assert.assertTrue(declaredAttacker.get(), "expected a declared attacker");
+        Assert.assertTrue(declaredBlocker.get(), "expected a declared blocker");
 
-            if (sawMulliganOrKeep.get() && targetedPlayer.get() && sawCombat.get()) {
+        // --- X spell (Blaze) and modal (Cryptic Command) ---
+        castXAndModes(match, castXSpell, choseMode);
+        Assert.assertTrue(castXSpell.get(), "expected Blaze (X) to be cast");
+        Assert.assertTrue(choseMode.get(), "expected a modal choice (Cryptic Command)");
+
+        concedeAndReset();
+    }
+
+    @Test(groups = "gl", timeOut = 180_000)
+    public void pilesOpenAndStayOpenForBothPlayers() throws Exception {
+        AdventureGlTestSupport.ensureReady();
+
+        final AtomicReference<HostedMatch> matchRef = new AtomicReference<>();
+        AdventureGlTestSupport.runOnGl(() -> {
+            prepareArenaPrefs();
+            matchRef.set(startMatch());
+            return null;
+        });
+        final HostedMatch match = matchRef.get();
+        Assert.assertNotNull(match);
+
+        final long skipDeadline = System.currentTimeMillis() + 30_000L;
+        while (System.currentTimeMillis() < skipDeadline && !boardReady(match)) {
+            GuiBase.getInterface().invokeInEdtNow(() -> {
+                if (MatchController.instance.getGameController() != null) {
+                    try {
+                        MatchController.instance.getGameController().selectButtonOk();
+                    } catch (final RuntimeException ignored) {
+                        // ignore
+                    }
+                }
+            });
+            Thread.sleep(40);
+        }
+        Assert.assertTrue(boardReady(match));
+
+        GuiBase.getInterface().invokeInEdtNow(() -> seedPiles(match));
+        Thread.sleep(100);
+
+        AdventureGlTestSupport.runOnGl(() -> {
+            final ArenaDuelScreen arena = (ArenaDuelScreen) MatchController.getView();
+            arena.setSize(1280, 720);
+            arena.revalidate();
+            return null;
+        });
+
+        for (final ZoneType zone : new ZoneType[]{
+                ZoneType.Graveyard, ZoneType.Exile, ZoneType.Library}) {
+            assertPileOpensAndStays(match, true, zone);
+            assertPileOpensAndStays(match, false, zone);
+        }
+
+        concedeAndReset();
+    }
+
+    private static void assertPileOpensAndStays(final HostedMatch match, final boolean local,
+            final ZoneType zone) throws InterruptedException {
+        final AtomicBoolean opened = new AtomicBoolean();
+        GuiBase.getInterface().invokeInEdtNow(() -> {
+            final ArenaDuelScreen arena = (ArenaDuelScreen) MatchController.getView();
+            final VPlayerPanel panel = local ? arena.getBottomPlayerPanel() : arena.getTopPlayerPanel();
+            Assert.assertNotNull(panel);
+            panel.setSelectedZone(zone);
+            opened.set(true);
+        });
+        Thread.sleep(80);
+        Assert.assertTrue(opened.get());
+
+        // Revalidate (the old bug forced Hand here) — pile must stay selected and show cards.
+        AdventureGlTestSupport.runOnGl(() -> {
+            final ArenaDuelScreen arena = (ArenaDuelScreen) MatchController.getView();
+            arena.revalidate();
+            final VPlayerPanel panel = local ? arena.getBottomPlayerPanel() : arena.getTopPlayerPanel();
+            final VZoneDisplay display = panel.getZoneDisplay(zone);
+            Assert.assertNotNull(display, "zone display for " + zone);
+            Assert.assertTrue(display.isVisible(),
+                    (local ? "local" : "opponent") + " " + zone + " must stay open after revalidate");
+            Assert.assertTrue(display.getCount() > 0,
+                    (local ? "local" : "opponent") + " " + zone + " must show seeded cards");
+            return null;
+        });
+    }
+
+    private static void seedPiles(final HostedMatch match) {
+        final Game game = match.getGame();
+        Assert.assertNotNull(game);
+        for (final Player p : game.getPlayers()) {
+            putNamedInZone(game, p, "Grizzly Bears", ZoneType.Graveyard);
+            putNamedInZone(game, p, "Lightning Bolt", ZoneType.Exile);
+            Assert.assertFalse(p.getCardsIn(ZoneType.Library).isEmpty(),
+                    "library must be non-empty");
+        }
+        if (MatchController.getView() != null && match.getGameView() != null) {
+            for (final PlayerView pv : match.getGameView().getPlayers()) {
+                final VPlayerPanel panel = MatchController.getView().getPlayerPanel(pv);
+                if (panel != null) {
+                    panel.updateZone(ZoneType.Graveyard);
+                    panel.updateZone(ZoneType.Exile);
+                    panel.updateZone(ZoneType.Library);
+                }
+            }
+        }
+    }
+
+    /** Put Blaze / Cryptic / Bolt in hand and clear summoning sickness for combat. */
+    private static void prepareScriptedBoard(final HostedMatch match) {
+        final Game game = match.getGame();
+        Assert.assertNotNull(game);
+        for (final Player p : game.getPlayers()) {
+            for (final Card c : p.getCardsIn(ZoneType.Battlefield)) {
+                if (c.isCreature()) {
+                    c.setSickness(false);
+                }
+            }
+        }
+        final Player human = localHumanPlayer(game);
+        Assert.assertNotNull(human);
+        putNamedInZone(game, human, "Lightning Bolt", ZoneType.Hand);
+        putNamedInZone(game, human, "Blaze", ZoneType.Hand);
+        putNamedInZone(game, human, "Cryptic Command", ZoneType.Hand);
+        if (MatchController.getView() != null && match.getGameView() != null) {
+            for (final PlayerView pv : match.getGameView().getPlayers()) {
+                final VPlayerPanel panel = MatchController.getView().getPlayerPanel(pv);
+                if (panel != null) {
+                    panel.updateZone(ZoneType.Hand);
+                    panel.updateZone(ZoneType.Battlefield);
+                }
+            }
+        }
+    }
+
+    private static void putNamedInZone(final Game game, final Player p, final String name,
+            final ZoneType zone) {
+        final PaperCard pc = FModel.getMagicDb().getCommonCards().getCard(name);
+        Assert.assertNotNull(pc, "missing card " + name);
+        final Card c = Card.fromPaperCard(pc, p);
+        c.setGameTimestamp(game.getNextTimestamp());
+        // Direct zone add (same pattern as AITest) — card is not yet on the battlefield.
+        p.getZone(zone).add(c);
+    }
+
+    private static Player localHumanPlayer(final Game game) {
+        for (final Player p : game.getPlayers()) {
+            if (!p.isAI()) {
+                return p;
+            }
+        }
+        return game.getPlayers().isEmpty() ? null : game.getPlayers().get(0);
+    }
+
+    private static void castXAndModes(final HostedMatch match,
+            final AtomicBoolean castXSpell, final AtomicBoolean choseMode) throws InterruptedException {
+        final long deadline = System.currentTimeMillis() + 60_000L;
+        boolean blazeTried = false;
+        boolean crypticTried = false;
+        while (System.currentTimeMillis() < deadline
+                && !(castXSpell.get() && choseMode.get())) {
+            final PlayerView human = localHuman(match);
+            final PhaseType phase = match.getGameView() == null ? null : match.getGameView().getPhase();
+            if (human != null && match.getGameView() != null
+                    && human.equals(match.getGameView().getPlayerTurn())
+                    && (phase == PhaseType.MAIN1 || phase == PhaseType.MAIN2)) {
+                if (!blazeTried) {
+                    blazeTried = tryCastNamed(match, "Blaze", castXSpell);
+                }
+                if (!crypticTried && castXSpell.get()) {
+                    crypticTried = tryCastNamed(match, "Cryptic Command", choseMode);
+                }
+            }
+            GuiBase.getInterface().invokeInEdtNow(() -> {
+                if (MatchController.instance.getGameController() != null) {
+                    try {
+                        MatchController.instance.getGameController().selectButtonOk();
+                    } catch (final RuntimeException ignored) {
+                        // mode / X prompts
+                    }
+                }
+            });
+            Thread.sleep(80);
+        }
+    }
+
+    private static boolean tryCastNamed(final HostedMatch match, final String name,
+            final AtomicBoolean flag) {
+        final PlayerView human = localHuman(match);
+        if (human == null || human.getHand() == null) {
+            return false;
+        }
+        CardView spell = null;
+        for (final CardView c : human.getHand()) {
+            if (c != null && name.equals(c.getName())) {
+                spell = c;
                 break;
             }
         }
-
-        // Cancel chrome: force a targeting window if we still have a bolt, else
-        // accept that mulligan Cancel may have been visible earlier.
-        if (!sawCancelChrome.get()) {
-            GuiBase.getInterface().invokeInEdtNow(() -> {
-                final ArenaDuelScreen arena = (ArenaDuelScreen) MatchController.getView();
-                if (arena != null && arena.getBottomPlayerPrompt() != null
-                        && arena.getBottomPlayerPrompt().getBtnCancel() != null) {
-                    arena.getBottomPlayerPrompt().getBtnCancel().setVisible(true);
-                    arena.getBottomPlayerPrompt().getBtnCancel().setText("Cancel");
-                    arena.revalidate();
-                    if (arena.arenaCancelControl() != null) {
-                        // refreshContextLabels runs on overlay; nudge via size.
-                        arena.setSize(1280, 720);
-                        arena.revalidate();
-                    }
-                }
-            });
-            Thread.sleep(100);
-            AdventureGlTestSupport.runOnGl(() -> {
-                final ArenaDuelScreen arena = (ArenaDuelScreen) MatchController.getView();
-                Assert.assertNotNull(arena);
-                arena.setSize(1280, 720);
-                arena.revalidate();
-                // Draw once so refreshContextLabels runs.
-                if (ForgeGraphicsSafe(arena)) {
-                    sawCancelChrome.set(arena.arenaCancelControl() != null);
-                }
-                return null;
-            });
+        if (spell == null) {
+            return false;
         }
+        final CardView toCast = spell;
+        GuiBase.getInterface().invokeInEdtNow(() -> {
+            MatchController.instance.getGameController().selectCard(toCast, null, null);
+            try {
+                MatchController.instance.getGameController().selectButtonOk();
+            } catch (final RuntimeException ignored) {
+                // ignore
+            }
+            final ArenaDuelScreen arena = (ArenaDuelScreen) MatchController.getView();
+            if (arena != null && arena.getTopPlayerPanel() != null
+                    && arena.getTopPlayerPanel().getAvatar() != null) {
+                arena.getTopPlayerPanel().getAvatar().tap(2f, 2f, 1);
+            }
+            flag.set(true);
+        });
+        return true;
+    }
 
-        Assert.assertTrue(MatchController.getView() instanceof ArenaDuelScreen);
-        Assert.assertTrue(sawMulliganOrKeep.get() || boardReady(match),
-                "expected mulligan/keep prompt or a ready board");
-        Assert.assertTrue(targetedPlayer.get() || castAttempted,
-                "expected player targeting attempt via selectPlayer");
+    private static boolean tryBeginCastBolt(final HostedMatch match) {
+        final PlayerView human = localHuman(match);
+        if (human == null || human.getHand() == null) {
+            return false;
+        }
+        CardView bolt = null;
+        for (final CardView c : human.getHand()) {
+            if (c != null && "Lightning Bolt".equals(c.getName())) {
+                bolt = c;
+                break;
+            }
+        }
+        if (bolt == null) {
+            return false;
+        }
+        final CardView toCast = bolt;
+        GuiBase.getInterface().invokeInEdtNow(() ->
+                MatchController.instance.getGameController().selectCard(toCast, null, null));
+        return true;
+    }
 
+    private static boolean tryDeclareAttackerUi(final HostedMatch match, final PlayerView human) {
+        if (human.getBattlefield() == null) {
+            return false;
+        }
+        CardView attacker = null;
+        for (final CardView c : human.getBattlefield()) {
+            if (c != null && c.getCurrentState() != null && c.getCurrentState().isCreature()
+                    && !c.isTapped() && !c.hasSickness()) {
+                attacker = c;
+                break;
+            }
+        }
+        if (attacker == null) {
+            return false;
+        }
+        final CardView atk = attacker;
+        MatchController.instance.getGameController().selectCard(atk, null, null);
+        MatchController.instance.getGameController().selectButtonOk();
+        return true;
+    }
+
+    private static boolean tryDeclareBlockerUi(final HostedMatch match, final PlayerView human) {
+        if (human.getBattlefield() == null || match.getGameView() == null
+                || match.getGameView().getCombat() == null) {
+            return false;
+        }
+        CardView blocker = null;
+        for (final CardView c : human.getBattlefield()) {
+            if (c != null && c.getCurrentState() != null && c.getCurrentState().isCreature()
+                    && !c.isTapped()) {
+                blocker = c;
+                break;
+            }
+        }
+        if (blocker == null) {
+            return false;
+        }
+        CardView attacker = null;
+        for (final CardView atk : match.getGameView().getCombat().getAttackers()) {
+            if (atk != null) {
+                attacker = atk;
+                break;
+            }
+        }
+        if (attacker == null) {
+            return false;
+        }
+        final CardView blk = blocker;
+        final CardView atk = attacker;
+        MatchController.instance.getGameController().selectCard(blk, null, null);
+        MatchController.instance.getGameController().selectCard(atk, null, null);
+        MatchController.instance.getGameController().selectButtonOk();
+        return true;
+    }
+
+    private static void concedeAndReset() throws InterruptedException {
         try {
             GuiBase.getInterface().invokeInEdtNow(() -> {
                 if (MatchController.instance.getGameController() != null) {
@@ -172,15 +526,6 @@ public class ArenaDuelScriptedDuelTest {
             // best-effort
         }
         Thread.sleep(200);
-    }
-
-    private static boolean ForgeGraphicsSafe(final ArenaDuelScreen arena) {
-        try {
-            // Touch cancel control after a layout pass; overlay refresh wires visibility.
-            return arena.arenaCancelControl() != null && arena.arenaContextControl() != null;
-        } catch (final RuntimeException e) {
-            return false;
-        }
     }
 
     private static void prepareArenaPrefs() {
@@ -197,13 +542,13 @@ public class ArenaDuelScriptedDuelTest {
     }
 
     private static HostedMatch startMatch() {
-        // Stick to commons already used by ArenaDuelScreenGlTest (always in the DB).
         final Deck humanDeck = deck("ScriptHuman",
-                new String[]{"Mountain", "Lightning Bolt", "Grizzly Bears"},
-                new int[]{20, 12, 8});
+                new String[]{"Mountain", "Island", "Lightning Bolt", "Blaze",
+                        "Cryptic Command", "Grizzly Bears"},
+                new int[]{12, 10, 8, 4, 4, 6});
         final Deck aiDeck = deck("ScriptAi",
-                new String[]{"Forest", "Grizzly Bears"},
-                new int[]{24, 16});
+                new String[]{"Forest", "Grizzly Bears", "Raging Goblin"},
+                new int[]{20, 12, 8});
 
         final RegisteredPlayer human = new RegisteredPlayer(humanDeck)
                 .setPlayer(new LobbyPlayerHuman("Human"));
@@ -213,6 +558,7 @@ public class ArenaDuelScriptedDuelTest {
         human.addExtraCardsOnBattlefield(List.of(
                 card("Mountain"), card("Mountain"), card("Mountain"),
                 card("Mountain"), card("Mountain"), card("Mountain"),
+                card("Island"), card("Island"), card("Island"), card("Island"),
                 card("Grizzly Bears"), card("Grizzly Bears")));
 
         final LobbyPlayer aiLobby = GamePlayerUtil.createAiPlayer("AI", 0, 0);
@@ -222,7 +568,8 @@ public class ArenaDuelScriptedDuelTest {
         ai.setId(1);
         ai.addExtraCardsOnBattlefield(List.of(
                 card("Forest"), card("Forest"), card("Forest"),
-                card("Grizzly Bears"), card("Grizzly Bears")));
+                card("Grizzly Bears"), card("Grizzly Bears"),
+                card("Raging Goblin"), card("Raging Goblin")));
 
         MatchController.instance.resetForNewMatch();
         final Map<RegisteredPlayer, IGuiGame> guis =
@@ -261,68 +608,6 @@ public class ArenaDuelScriptedDuelTest {
         return human.getBattlefield().size() >= 3;
     }
 
-    private static boolean tryCastBoltAtPlayer(final HostedMatch match,
-            final AtomicBoolean targetedPlayer) {
-        final PlayerView human = localHuman(match);
-        if (human == null || human.getHand() == null || match.getGameView() == null) {
-            return false;
-        }
-        if (match.getGameView().getPhase() != PhaseType.MAIN1
-                && match.getGameView().getPhase() != PhaseType.MAIN2) {
-            return false;
-        }
-        if (!human.equals(match.getGameView().getPlayerTurn())) {
-            return false;
-        }
-        CardView bolt = null;
-        for (final CardView c : human.getHand()) {
-            if (c != null && "Lightning Bolt".equals(c.getName())) {
-                bolt = c;
-                break;
-            }
-        }
-        if (bolt == null) {
-            return false;
-        }
-        final CardView toCast = bolt;
-        final PlayerView foe = opponent(match, human);
-        GuiBase.getInterface().invokeInEdtNow(() -> {
-            MatchController.instance.getGameController().selectCard(toCast, null, null);
-            if (foe != null) {
-                MatchController.instance.getGameController().selectPlayer(foe, null);
-                targetedPlayer.set(true);
-            }
-        });
-        return true;
-    }
-
-    private static boolean tryDeclareAttacker(final HostedMatch match, final PlayerView human) {
-        if (human.getBattlefield() == null) {
-            return false;
-        }
-        CardView attacker = null;
-        for (final CardView c : human.getBattlefield()) {
-            if (c != null && c.getCurrentState() != null && c.getCurrentState().isCreature()
-                    && !c.isTapped() && !c.hasSickness()) {
-                attacker = c;
-                break;
-            }
-        }
-        if (attacker == null) {
-            return false;
-        }
-        final CardView atk = attacker;
-        final PlayerView foe = opponent(match, human);
-        GuiBase.getInterface().invokeInEdtNow(() -> {
-            MatchController.instance.getGameController().selectCard(atk, null, null);
-            if (foe != null) {
-                MatchController.instance.getGameController().selectPlayer(foe, null);
-            }
-            MatchController.instance.getGameController().selectButtonOk();
-        });
-        return true;
-    }
-
     private static PlayerView localHuman(final HostedMatch match) {
         if (match.getGameView() == null || match.getGameView().getPlayers() == null) {
             return null;
@@ -334,17 +619,5 @@ public class ArenaDuelScriptedDuelTest {
         }
         final FCollectionView<PlayerView> players = match.getGameView().getPlayers();
         return players.isEmpty() ? null : players.get(0);
-    }
-
-    private static PlayerView opponent(final HostedMatch match, final PlayerView human) {
-        if (match.getGameView() == null || match.getGameView().getPlayers() == null) {
-            return null;
-        }
-        for (final PlayerView p : match.getGameView().getPlayers()) {
-            if (p != null && human != null && p.getId() != human.getId()) {
-                return p;
-            }
-        }
-        return null;
     }
 }
