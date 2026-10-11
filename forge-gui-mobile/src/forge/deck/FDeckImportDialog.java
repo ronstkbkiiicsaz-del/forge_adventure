@@ -6,12 +6,12 @@
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
@@ -26,6 +26,7 @@ import java.util.function.Function;
 import forge.Forge;
 import forge.Graphics;
 import forge.StaticData;
+import forge.adventure.util.MoxfieldMx1;
 import forge.deck.DeckRecognizer.TokenType;
 import forge.game.GameType;
 import forge.gui.FThreads;
@@ -36,6 +37,7 @@ import forge.toolbox.FComboBox;
 import forge.toolbox.FDialog;
 import forge.toolbox.FOptionPane;
 import forge.toolbox.FTextArea;
+import forge.toolbox.FTextField;
 import forge.util.ItemPool;
 import forge.util.Localizer;
 import org.apache.commons.lang3.StringUtils;
@@ -45,28 +47,27 @@ public class FDeckImportDialog extends FDialog {
     private Consumer<Deck> callback;
 
     private final FTextArea txtInput = add(new FTextArea(true));
+    private final FTextField txtDeckUrl = add(new FTextField());
     private final FCheckBox newEditionCheck = add(new FCheckBox(Forge.getLocalizer().getMessage("lblImportLatestVersionCard"), false));
     private final FCheckBox dateTimeCheck = add(new FCheckBox(Forge.getLocalizer().getMessage("lblUseOnlySetsReleasedBefore"), false));
     private final FCheckBox smartCardArtCheck = add(new FCheckBox(Forge.getLocalizer().getMessage("lblUseSmartCardArt"), false));
     private final FCheckBox createNewDeckCheck = add(new FCheckBox(Forge.getLocalizer().getMessage("lblReplaceDeckCheckbox"), false));
-//    private final FCheckBox importInDeck = add(new FCheckBox()
-    /*setting onlyCoreExpCheck to false allow the copied cards to pass the check of deck contents
-      forge-core\src\main\java\forge\deck\Deck.javaDeck.java starting @ Line 320 which is called by
-      forge-gui-mobile\src\forge\deck\FDeckEditor.java starting @ Line 373
-      (as of latest commit: 8e6655e3ee67688cff66b422d4722c58392eaa7e)
-    */
     private final FCheckBox onlyCoreExpCheck = add(new FCheckBox(Forge.getLocalizer().getMessage("lblUseOnlyCoreAndExpansionSets"), false));
 
     private final FComboBox<String> monthDropdown = add(new FComboBox<>()); //don't need wrappers since skin can't change while this dialog is open
     private final FComboBox<Integer> yearDropdown = add(new FComboBox<>());
 
     private boolean showOptions;
+    private final boolean mx1AscendantImport;
     private final Deck currentDeck;
     private boolean createNewDeckControl;
     private final DeckImportController controller;
     private final FDeckEditor.DeckEditorConfig editorConfig;
 
     private final static List<String> importOrCancel = List.of(Forge.getLocalizer().getMessage("lblImport"), Forge.getLocalizer().getMessage("lblCancel"));
+    private final static List<String> importOwnedOrCancel = List.of(
+            Forge.getLocalizer().getMessage("lblImportWhatIOwn"),
+            Forge.getLocalizer().getMessage("lblCancel"));
 
     public FDeckImportDialog(final Deck currentDeck, final FDeckEditor.DeckEditorConfig editorConfig) {
         super(Forge.getLocalizer().getMessage("lblImportFromClipboard"), 2);
@@ -74,12 +75,18 @@ public class FDeckImportDialog extends FDialog {
         boolean replacingDeck = !currentDeck.isEmpty() || usingInventory;
         this.currentDeck = currentDeck;
         this.editorConfig = editorConfig;
+        this.mx1AscendantImport = usingInventory && MoxfieldMx1.enabled();
         ItemPool<PaperCard> cardPool = editorConfig.getCardPool();
         controller = new DeckImportController(dateTimeCheck, monthDropdown, yearDropdown, replacingDeck);
         String contents = Forge.getClipboard().getContents();
         if (contents == null)
             contents = ""; //prevent NPE
         txtInput.setText(contents);
+        // MX1: URL field stays empty (never prefilled from the clipboard). Paste into the
+        // text area or type a public Moxfield / Archidekt / TappedOut / MTGGoldfish URL.
+        txtDeckUrl.setGhostText(Forge.getLocalizer().getMessage("lblMoxfieldDeckUrlGhost"));
+        txtDeckUrl.setText("");
+        txtDeckUrl.setVisible(mx1AscendantImport);
 
         GameType gameType = editorConfig.getGameType();
         controller.setGameFormat(gameType);
@@ -88,7 +95,7 @@ public class FDeckImportDialog extends FDialog {
         supportedSections.addAll(List.of(editorConfig.getExtraSections()));
         controller.setAllowedSections(supportedSections);
         controller.setCurrentDeckInEditor(currentDeck);
-        if(usingInventory)
+        if (usingInventory)
             controller.setPlayerInventory(cardPool);
 
         onlyCoreExpCheck.setSelected(StaticData.instance().isCoreExpansionOnlyFilterSet());
@@ -97,12 +104,15 @@ public class FDeckImportDialog extends FDialog {
         createNewDeckCheck.setSelected(replacingDeck);
         this.createNewDeckControl = replacingDeck;
 
-        if(usingInventory)
+        if (usingInventory)
             controller.setImportBehavior(DeckImportController.ImportBehavior.REPLACE_CURRENT);
         else
             controller.setImportBehavior(createNewDeckControl ? DeckImportController.ImportBehavior.CREATE_NEW : DeckImportController.ImportBehavior.MERGE);
 
-        initButton(0, Forge.getLocalizer().getMessage("lblImport"), e -> FThreads.invokeInBackgroundThread(this::performImport));
+        String importLabel = mx1AscendantImport
+                ? Forge.getLocalizer().getMessage("lblImportWhatIOwn")
+                : Forge.getLocalizer().getMessage("lblImport");
+        initButton(0, importLabel, e -> FThreads.invokeInBackgroundThread(this::performImport));
         initButton(1, Forge.getLocalizer().getMessage("lblCancel"), e -> hide());
 
         dateTimeCheck.setCommand(e -> updateDropDownEnabled());
@@ -157,17 +167,16 @@ public class FDeckImportDialog extends FDialog {
 
     public void initParse() {
         boolean usingInventory = editorConfig.usePlayerInventory();
+        // Do not hit the network during init — URL load happens on Import.
         List<DeckRecognizer.Token> tokens = controller.parseInput(txtInput.getText());
         if (usingInventory)
             tokens = controller.constrainTokensToInventory();
         else if (controller.isSmartCardArtEnabled())
             tokens = controller.optimiseCardArtInTokens();
-        //ensure at least one known card found on clipboard
         for (DeckRecognizer.Token token : tokens) {
             if (token.getType() == TokenType.LEGAL_CARD || token.getType() == TokenType.FREE_CARD_NOT_IN_INVENTORY) {
 
-                if(usingInventory) {
-                    //Settings aren't compatible with player inventories.
+                if (usingInventory) {
                     setShowOptions(false);
                     return;
                 }
@@ -178,6 +187,12 @@ public class FDeckImportDialog extends FDialog {
                 setArtPreferenceInController();
                 return;
             }
+        }
+
+        // Still allow Import when only a URL field is filled (Ascendant MX1).
+        if (mx1AscendantImport) {
+            setButtonEnabled(0, true);
+            return;
         }
 
         setButtonEnabled(0, false);
@@ -205,23 +220,30 @@ public class FDeckImportDialog extends FDialog {
             float fieldPadding = padding / 2;
 
             newEditionCheck.setBounds(x, y, w / 2, h);
-            onlyCoreExpCheck.setBounds(x + w/2, y, w/2, h);
+            onlyCoreExpCheck.setBounds(x + w / 2, y, w / 2, h);
             y += h + fieldPadding;
             dateTimeCheck.setBounds(x, y, w, h);
             y += h + fieldPadding;
-            
+
             float dropDownWidth = (w - fieldPadding) / 2;
             monthDropdown.setBounds(x, y, dropDownWidth, h);
             yearDropdown.setBounds(x + dropDownWidth + fieldPadding, y, dropDownWidth, h);
             y += h + fieldPadding;
 
-            if (!this.currentDeck.isEmpty()){
-                smartCardArtCheck.setBounds(x, y, w/2, h);
-                createNewDeckCheck.setBounds(x + w/2, y, w/2, h);
+            if (!this.currentDeck.isEmpty()) {
+                smartCardArtCheck.setBounds(x, y, w / 2, h);
+                createNewDeckCheck.setBounds(x + w / 2, y, w / 2, h);
             } else
                 smartCardArtCheck.setBounds(x, y, w, h);
 
             y += h + 2 * padding;
+        }
+        if (mx1AscendantImport && txtDeckUrl.isVisible()) {
+            h = txtDeckUrl.getHeight();
+            txtDeckUrl.setBounds(x, y, w, h);
+            y += h + padding / 2;
+        } else {
+            txtDeckUrl.setBounds(0, 0, 0, 0);
         }
         h = txtInput.getPreferredHeight(w);
         float maxTextBoxHeight = maxHeight - y - padding;
@@ -241,36 +263,83 @@ public class FDeckImportDialog extends FDialog {
             TokenType.WARNING_MESSAGE, TokenType.CARD_NOT_IN_INVENTORY);
 
     private void performImport() {
-        List<DeckRecognizer.Token> tokens = controller.parseInput(txtInput.getText()); //ensure deck updated based on any changes to options
+        final String input;
+        try {
+            input = loadInputText();
+        } catch (Exception ex) {
+            final String msg = ex.getMessage() == null
+                    ? Forge.getLocalizer().getMessage("lblCouldNotLoadDeckUrl")
+                    : ex.getMessage();
+            FThreads.invokeInEdtLater(() -> FOptionPane.showMessageDialog(msg,
+                    Forge.getLocalizer().getMessage("lblImport")));
+            return;
+        }
+
+        List<DeckRecognizer.Token> tokens = controller.parseInput(input);
 
         if (editorConfig.usePlayerInventory())
             tokens = controller.constrainTokensToInventory();
         else if (controller.isSmartCardArtEnabled())
             tokens = controller.optimiseCardArtInTokens();
 
-        //if there are any cards that cannot be imported, let user know this and give them the option to cancel
-        // Android API StringBuilder isEmpty() is unavailable. https://developer.android.com/reference/java/lang/StringBuilder
+        final List<DeckRecognizer.Token> finalTokens = tokens;
+        Localizer localizer = Forge.getLocalizer();
+
+        if (mx1AscendantImport && editorConfig.usePlayerInventory()) {
+            List<MoxfieldMx1.MissingCard> missing = MoxfieldMx1.missingFromTokens(finalTokens, editorConfig.getCardPool());
+            if (!missing.isEmpty()) {
+                String body = MoxfieldMx1.formatMissingList(missing)
+                        + "\n\n" + localizer.getMessage("lblImportOwnedCopiesConfirm");
+                // TODO(MX1/EC1): when EC1 game prices land, show dust cost per missing card and a
+                // "Craft missing" shortcut into Spell Smith / CraftingScene if that hooks cleanly.
+                if (SOptionPane.showOptionDialog(body, localizer.getMessage("lblMissingCards"),
+                        SOptionPane.WARNING_ICON, importOwnedOrCancel) == 1) {
+                    return;
+                }
+            }
+            String cannotImport = MoxfieldMx1.formatCannotImportList(finalTokens, controller);
+            if (!cannotImport.isEmpty()) {
+                if (SOptionPane.showOptionDialog(
+                        localizer.getMessage("lblFollowingCardsCannotBeImported") + "\n\n" + cannotImport,
+                        localizer.getMessage("lblImportRemainingCards"),
+                        SOptionPane.WARNING_ICON, importOrCancel) == 1) {
+                    return;
+                }
+            }
+            // Keep the stock replace/merge/new-deck confirm (and LIMITED_CARD skip) via accept().
+            final Deck deck = controller.accept(currentDeck.getName());
+            if (deck == null) {
+                return;
+            }
+            FThreads.invokeInEdtLater(() -> {
+                hide();
+                if (callback != null)
+                    callback.accept(deck);
+            });
+            return;
+        }
+
         StringBuilder sb = new StringBuilder();
-        for (DeckRecognizer.Token token : tokens) {
+        for (DeckRecognizer.Token token : finalTokens) {
             if (MISSING_TOKENS.contains(token.getType())) {
                 if (sb.length() != 0)
                     sb.append("\n");
                 String message = controller.getTokenMessage(token);
                 String statusMessage = controller.getTokenStatusMessage(token);
-                if(!StringUtils.isBlank(statusMessage))
+                if (!StringUtils.isBlank(statusMessage))
                     sb.append(String.format("%s - (%s)", message, statusMessage));
                 else
                     sb.append(statusMessage);
             }
         }
         if (sb.length() != 0) {
-            Localizer localizer = Forge.getLocalizer();
-            if (SOptionPane.showOptionDialog(localizer.getMessage("lblFollowingCardsCannotBeImported") + "\n\n" + sb, localizer.getMessage("lblImportRemainingCards"), SOptionPane.WARNING_ICON, importOrCancel) == 1) {
+            if (SOptionPane.showOptionDialog(localizer.getMessage("lblFollowingCardsCannotBeImported") + "\n\n" + sb,
+                    localizer.getMessage("lblImportRemainingCards"), SOptionPane.WARNING_ICON, importOrCancel) == 1) {
                 return;
             }
         }
 
-        final Deck deck = controller.accept(currentDeck.getName()); //must accept in background thread in case a dialog is shown
+        final Deck deck = controller.accept(currentDeck.getName());
         if (deck == null) {
             return;
         }
@@ -280,5 +349,19 @@ public class FDeckImportDialog extends FDialog {
             if (callback != null)
                 callback.accept(deck);
         });
+    }
+
+    private String loadInputText() throws Exception {
+        if (mx1AscendantImport && txtDeckUrl.isVisible()) {
+            String url = txtDeckUrl.getText();
+            if (url != null && !url.isBlank()) {
+                return MoxfieldMx1.resolveImportText(url.trim());
+            }
+        }
+        String text = txtInput.getText();
+        if (mx1AscendantImport && MoxfieldMx1.looksLikeDeckUrl(text)) {
+            return MoxfieldMx1.resolveImportText(text);
+        }
+        return text == null ? "" : text;
     }
 }

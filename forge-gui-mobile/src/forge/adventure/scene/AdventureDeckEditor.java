@@ -11,8 +11,10 @@ import forge.adventure.data.AdventureEventData;
 import forge.adventure.data.ItemData;
 import forge.adventure.player.AdventurePlayer;
 import forge.adventure.util.AdventureEventController;
+import forge.adventure.util.CollectionExporter;
 import forge.adventure.util.Config;
 import forge.adventure.util.Current;
+import forge.adventure.util.MoxfieldMx1;
 import forge.assets.FImage;
 import forge.assets.FSkinColor;
 import forge.assets.FSkinFont;
@@ -40,6 +42,7 @@ import forge.util.ItemPool;
 import forge.util.Localizer;
 import forge.util.Utils;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -1067,6 +1070,32 @@ public class AdventureDeckEditor extends FDeckEditor {
 
     private CollectionAutoSellPage getAutoSellPage() {
         return autoSellPage;
+    }
+
+    @Override
+    protected void addExtraDeckExportMenuItems(FPopupMenu menu) {
+        if (!MoxfieldMx1.exportActionsEnabled()) {
+            return;
+        }
+        Localizer localizer = Forge.getLocalizer();
+        menu.addItem(new FMenuItem(localizer.getMessage("lblCopyDeckForMoxfield"),
+                Forge.hdbuttons ? FSkinImage.HDEXPORT : FSkinImage.BLANK, e -> {
+            String text = MoxfieldMx1.copyDeckForMoxfield(getDeck());
+            Forge.getClipboard().setContents(text);
+            FOptionPane.showMessageDialog(localizer.getMessage("lblDeckListCopiedForMoxfield"));
+        }));
+        menu.addItem(new FMenuItem(localizer.getMessage("lblOpenExportFolder"),
+                Forge.hdbuttons ? FSkinImage.HDIMPORT : FSkinImage.OPEN, e -> openExportFolder()));
+    }
+
+    private static void openExportFolder() {
+        File dir = CollectionExporter.exportDir();
+        if (CollectionExporter.openDirectory(dir)) {
+            return;
+        }
+        Forge.getClipboard().setContents(dir.getAbsolutePath());
+        FOptionPane.showMessageDialog(Forge.getLocalizer().getMessage(
+                "lblExportFolderPathCopied", dir.getAbsolutePath()));
     }
 
     @Override
