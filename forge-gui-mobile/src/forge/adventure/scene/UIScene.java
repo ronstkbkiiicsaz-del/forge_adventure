@@ -341,9 +341,12 @@ public class UIScene extends Scene {
             }
         }
         if (KeyBinding.Use.isPressed(keycode)) {
+            // Release latch after click so Controls.clicked shares the same confirm cycle.
             if (getSelected() != null)
                 getSelected().onPressUp();//order is important, this might remove a dialog
-
+            if (forge.adventure.sound.Au1Sounds.enabled()) {
+                forge.adventure.sound.Au1Sounds.releaseUiConfirmLatch();
+            }
         }
 
         return true;
@@ -355,6 +358,10 @@ public class UIScene extends Scene {
         Selectable selection = getSelected();
         if (KeyBinding.Use.isPressed(keycode)) {
             if (selection != null) {
+                if (forge.adventure.sound.Au1Sounds.enabled()) {
+                    // Once per down/up cycle — held Use must not re-fire.
+                    forge.adventure.sound.Au1Sounds.playUiConfirmOnPress();
+                }
                 selection.onPressDown(this, keycode);
             }
         }
@@ -637,6 +644,10 @@ public class UIScene extends Scene {
         ScrollPane scrollPane = scrollPaneOfActor(actor.actor);
         if (scrollPane != null) {
             scrollPane.scrollTo(actor.actor.getX(), actor.actor.getY(), actor.actor.getWidth(), actor.actor.getHeight(), false, false);
+        }
+        // AU1: hover once per focus change (held d-pad re-select of same actor is silent).
+        if (forge.adventure.sound.Au1Sounds.enabled()) {
+            forge.adventure.sound.Au1Sounds.playUiHoverIfChanged(actor.actor);
         }
         actor.onSelect(this);
     }

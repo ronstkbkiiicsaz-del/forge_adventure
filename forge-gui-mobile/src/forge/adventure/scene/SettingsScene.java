@@ -330,6 +330,24 @@ public class SettingsScene extends UIScene {
         addCheckBox(localizer.getMessage("lblCardName"), ForgePreferences.FPref.UI_OVERLAY_CARD_NAME);
         addSettingSlider(localizer.getMessage("cbAdjustMusicVolume"), ForgePreferences.FPref.UI_VOL_MUSIC, 0, 100);
         addSettingSlider(localizer.getMessage("cbAdjustSoundsVolume"), ForgePreferences.FPref.UI_VOL_SOUNDS, 0, 100);
+        // AU1: UI volume slider only in Ascendant (independent of effects volume).
+        if (Config.ascendant() && Config.au1SoundOverhaul()) {
+            addSettingSlider(localizer.getMessageorUseDefault("cbAdjustUiVolume", "Adjust UI Volume"),
+                    ForgePreferences.FPref.UI_VOL_UI, 0, 100);
+            addSettingField(localizer.getMessageorUseDefault("lblMuteBiomeMusic",
+                            "Mute biome music"),
+                    Config.instance().getSettingData().muteOverworldAmbience, new ChangeListener() {
+                        @Override
+                        public void changed(ChangeEvent event, Actor actor) {
+                            Config.instance().getSettingData().muteOverworldAmbience = ((CheckBox) actor).isChecked();
+                            Config.instance().saveSettings();
+                            forge.adventure.sound.Au1Sounds.refreshRegistration();
+                            SoundSystem.instance.refreshVolume();
+                            // Restart biome track (or silence) under the new mute flag.
+                            SoundSystem.instance.changeBackgroundTrack();
+                        }
+                    });
+        }
         addCheckBox(localizer.getMessage("cbShowAutoTapPreview"), ForgePreferences.FPref.UI_SHOW_AUTOTAP_PREVIEW);
         addCheckBox(localizer.getMessage("lblManaCost"), ForgePreferences.FPref.UI_OVERLAY_CARD_MANA_COST);
         addCheckBox(localizer.getMessage("lblPerpetualManaCost"), ForgePreferences.FPref.UI_OVERLAY_CARD_PERPETUAL_MANA_COST);

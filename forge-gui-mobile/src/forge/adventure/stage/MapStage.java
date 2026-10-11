@@ -1628,6 +1628,9 @@ public class MapStage extends GameStage {
                     HapticEngine.vibrate(FPref.UI_VIBRATE_ON_ADVENTURE_REWARD, 100);
                     RewardSprite RS = (RewardSprite) actor;
                     Array<Reward> rewards = RS.getRewards();
+                    if (forge.adventure.sound.Au1Sounds.enabled()) {
+                        forge.adventure.sound.Au1Sounds.playChestOpen();
+                    }
 
                     if (rewards.size == 1) {
                         Reward reward = rewards.get(0);
@@ -1640,6 +1643,9 @@ public class MapStage extends GameStage {
                                 String message = Forge.getLocalizer().getMessageorUseDefault(reward.getType().getLabelKey(), rewardTypeName);
                                 AdventurePlayer.current().addStatusMessage(rewardTypeName, message, reward.getCount(), actor.getX(), actor.getY() + player.getHeight());
                                 AdventurePlayer.current().addReward(reward);
+                                if (forge.adventure.sound.Au1Sounds.enabled()) {
+                                    forge.adventure.sound.Au1Sounds.playItemPickup();
+                                }
                                 break;
                             default:
                                 showRewardScene(rewards);
