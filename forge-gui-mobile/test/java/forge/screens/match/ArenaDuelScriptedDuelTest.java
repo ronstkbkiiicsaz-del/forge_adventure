@@ -20,6 +20,7 @@ import forge.game.GameRules;
 import forge.game.GameType;
 import forge.game.card.Card;
 import forge.game.card.CardView;
+import forge.game.combat.Combat;
 import forge.game.phase.PhaseType;
 import forge.game.player.Player;
 import forge.game.player.PlayerView;
@@ -211,6 +212,7 @@ public class ArenaDuelScriptedDuelTest {
 
         // --- Combat: declare attacker; pad B no-op when Cancel unarmed; then block ---
         final long combatDeadline = System.currentTimeMillis() + 90_000L;
+        boolean forcedBlockWindow = false;
         while (System.currentTimeMillis() < combatDeadline
                 && !(declaredAttacker.get() && declaredBlocker.get())) {
             final PlayerView human = localHuman(match);
@@ -233,14 +235,9 @@ public class ArenaDuelScriptedDuelTest {
                         declaredAttacker.set(true);
                     }
                 }
-                // When AI is declaring attackers, nudge a creature into combat so we get a block window.
-                if (declaredAttacker.get() && !declaredBlocker.get()
-                        && phase == PhaseType.COMBAT_DECLARE_ATTACKERS
-                        && !human.equals(match.getGameView().getPlayerTurn())) {
-                    forceAiAttack(match);
-                }
-                if (!declaredBlocker.get() && phase == PhaseType.COMBAT_DECLARE_BLOCKERS
-                        && !human.equals(match.getGameView().getPlayerTurn())) {
+                if (!declaredBlocker.get() && (phase == PhaseType.COMBAT_DECLARE_BLOCKERS
+                        || (match.getGameView().getCombat() != null
+                        && match.getGameView().getCombat().getAttackers().iterator().hasNext()))) {
                     if (tryDeclareBlockerUi(match, human)) {
                         declaredBlocker.set(true);
                     }
@@ -251,6 +248,11 @@ public class ArenaDuelScriptedDuelTest {
                     // ignore
                 }
             });
+            if (declaredAttacker.get() && !declaredBlocker.get() && !forcedBlockWindow) {
+                GuiBase.getInterface().invokeInEdtNow(() -> forceBlockWindow(match));
+                forcedBlockWindow = true;
+                Thread.sleep(120);
+            }
             Thread.sleep(80);
         }
         Assert.assertTrue(declaredAttacker.get(), "expected a declared attacker");
@@ -568,29 +570,45 @@ public class ArenaDuelScriptedDuelTest {
         resetPriorMatch();
     }
 
-    /** Push an untapped AI creature into combat so the human gets a DECLARE_BLOCKERS window. */
-    private static void forceAiAttack(final HostedMatch match) {
+    /**
+     * Jump the live game to DECLARE_BLOCKERS with one AI attacker so the human UI
+     * gets a real block prompt (same pattern as BasicBlockTests).
+     */
+    private static void forceBlockWindow(final HostedMatch match) {
         final Game game = match.getGame();
-        if (game == null || game.getCombat() == null) {
+        if (game == null) {
             return;
         }
         final Player human = localHumanPlayer(game);
-        if (human == null) {
-            return;
-        }
+        Player ai = null;
         for (final Player p : game.getPlayers()) {
             if (p.isAI()) {
-                for (final Card c : p.getCreaturesInPlay()) {
-                    if (c != null && !c.isTapped() && !c.hasSickness()) {
-                        try {
-                            game.getCombat().addAttacker(c, human);
-                        } catch (final RuntimeException ignored) {
-                            // combat may reject mid-phase
-                        }
-                        return;
-                    }
-                }
+                ai = p;
+                break;
             }
+        }
+        if (human == null || ai == null) {
+            return;
+        }
+        Card threat = null;
+        for (final Card c : ai.getCreaturesInPlay()) {
+            if (c != null && !c.isTapped()) {
+                c.setSickness(false);
+                threat = c;
+                break;
+            }
+        }
+        if (threat == null) {
+            return;
+        }
+        try {
+            game.getPhaseHandler().devModeSet(PhaseType.COMBAT_DECLARE_BLOCKERS, ai, false);
+            final Combat combat = new Combat(ai);
+            combat.addAttacker(threat, human);
+            game.getPhaseHandler().setCombat(combat);
+            game.getAction().checkStateEffects(true);
+        } catch (final RuntimeException ignored) {
+            // phase/combat may reject mid-turn
         }
     }
 
