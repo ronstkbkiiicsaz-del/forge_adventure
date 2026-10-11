@@ -570,7 +570,8 @@ public class SetPlaneGeneratorTest {
         Assert.assertTrue(cCharge > 0 && cSwitch > cCharge && cRefund > cSwitch);
 
         StandardWindow window = new StandardWindow();
-        window.init(List.of("ONE", "BRO", "DMU"));
+        // SN1 window size is 4 — fill the window before the next add rotates the oldest out.
+        window.init(List.of("ONE", "BRO", "DMU", "NEO"));
         Assert.assertEquals(window.addSet("MOM"), "ONE");
         Assert.assertEquals(PlaneAlignment.of("ONE", window), PlaneAlignment.DRIFTED);
 

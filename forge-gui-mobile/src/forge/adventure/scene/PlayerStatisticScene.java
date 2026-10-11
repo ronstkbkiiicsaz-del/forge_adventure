@@ -78,6 +78,7 @@ public class PlayerStatisticScene extends UIScene {
         // AC1: Awards is Ascendant-only and added in code so stock statistic.json stays unchanged.
         if (Config.ascendant()) {
             addAscendantAwardsButton();
+            addAscendantSeasonLabel();
         }
         avatar = ui.findActor("avatar");
         avatarBorder = ui.findActor("avatarBorder");
@@ -232,6 +233,7 @@ public class PlayerStatisticScene extends UIScene {
             playerTitle.setVisible(titleText != null && !titleText.isEmpty());
             playerTitle.skipToTheEnd();
         }
+        refreshAscendantSeasonLabel();
         if (avatar != null) {
             avatar.setDrawable(new TextureRegionDrawable(Current.player().avatar()));
         }
@@ -341,6 +343,59 @@ public class PlayerStatisticScene extends UIScene {
     public boolean quests() {
         Forge.switchScene(QuestLogScene.instance(lastGameScene),true);
         return true;
+    }
+
+    private TypingLabel seasonStatusLabel;
+
+    private void addAscendantSeasonLabel() {
+        if (ui.findActor("seasonStatus") != null) {
+            seasonStatusLabel = ui.findActor("seasonStatus");
+            return;
+        }
+        seasonStatusLabel = Controls.newTypingLabel("");
+        seasonStatusLabel.setName("seasonStatus");
+        seasonStatusLabel.setColor(com.badlogic.gdx.graphics.Color.BLACK);
+        float[] b = seasonStatusStageBounds(Forge.isLandscapeMode(), ui.getHeight());
+        seasonStatusLabel.setBounds(b[0], b[1], b[2], b[3]);
+        seasonStatusLabel.setVisible(false);
+        ui.addActor(seasonStatusLabel);
+    }
+
+    private void refreshAscendantSeasonLabel() {
+        if (seasonStatusLabel == null || !Config.ascendant())
+            return;
+        try {
+            AdventurePlayer player = Current.player();
+            if (player == null || player.getSeason() == null || !player.getSeason().isEnabled()) {
+                seasonStatusLabel.setVisible(false);
+                return;
+            }
+            String line = player.getSeason().statusLine(player.getStandardWindow());
+            if (line == null || line.isEmpty()) {
+                seasonStatusLabel.setVisible(false);
+                return;
+            }
+            seasonStatusLabel.setText("[%80][DARK_GRAY]" + line);
+            seasonStatusLabel.skipToTheEnd();
+            seasonStatusLabel.setVisible(true);
+        } catch (Throwable ignored) {
+            seasonStatusLabel.setVisible(false);
+        }
+    }
+
+    /**
+     * Stage-space (y-up) season status line for the statistic layouts.
+     * Landscape: footer strip under the nav row. Portrait: right of Awards band.
+     */
+    public static float[] seasonStatusStageBounds(boolean landscape, float layoutH) {
+        if (landscape) {
+            // Below nav (y=224,h=30) — json (8, 255, 300, 14).
+            float jx = 8f, jy = 255f, jw = 300f, jh = 14f;
+            return new float[] { jx, layoutH - jy - jh, jw, jh };
+        }
+        // Right of Awards (8,408,70,28) — json (82, 408, 180, 28).
+        float jx = 82f, jy = 408f, jw = 180f, jh = 28f;
+        return new float[] { jx, layoutH - jy - jh, jw, jh };
     }
 
     /**
