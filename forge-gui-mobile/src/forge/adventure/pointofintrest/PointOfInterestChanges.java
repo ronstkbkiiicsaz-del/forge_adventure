@@ -7,7 +7,6 @@ import forge.adventure.util.SaveFileData;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Map;
 import java.util.Random;
 
 /**
@@ -50,7 +49,7 @@ public class PointOfInterestChanges implements SaveFileContent  {
             SaveFileData data=new SaveFileData();
             ArrayList<String> keys=new ArrayList<>();
             ArrayList<PointOfInterestChanges> items=new ArrayList<>();
-            for (Map.Entry<String,PointOfInterestChanges> entry : this.entrySet()) {
+            for (java.util.Map.Entry<String,PointOfInterestChanges> entry : this.entrySet()) {
                 keys.add(entry.getKey());
                 items.add(entry.getValue());
             }
@@ -109,7 +108,7 @@ public class PointOfInterestChanges implements SaveFileContent  {
             String[] names = new String[marketSupply.size()];
             float[] supply = new float[marketSupply.size()];
             int i = 0;
-            for (Map.Entry<String, Float> e : marketSupply.entrySet()) {
+            for (java.util.Map.Entry<String, Float> e : marketSupply.entrySet()) {
                 names[i] = e.getKey();
                 supply[i] = e.getValue() == null ? 0f : e.getValue();
                 i++;
@@ -300,9 +299,9 @@ public class PointOfInterestChanges implements SaveFileContent  {
             return;
         }
         float keep = (float) Math.pow(1.0 - Math.min(0.99, driftPerDay), days);
-        java.util.Iterator<Map.Entry<String, Float>> it = marketSupply.entrySet().iterator();
+        java.util.Iterator<java.util.Map.Entry<String, Float>> it = marketSupply.entrySet().iterator();
         while (it.hasNext()) {
-            Map.Entry<String, Float> e = it.next();
+            java.util.Map.Entry<String, Float> e = it.next();
             float next = e.getValue() * keep;
             if (Math.abs(next) < 0.0001f)
                 it.remove();

@@ -136,7 +136,11 @@ public class CardEconomyEc1Test {
         } catch (Throwable ignored) {
         }
         if (realUserDir != null && realUserDirSnapshot != null) {
-            AdventureTestUserDir.assertUnchanged(realUserDir, realUserDirSnapshot);
+            try {
+                AdventureTestUserDir.assertUnchanged(realUserDir, realUserDirSnapshot, "EC1");
+            } catch (java.io.IOException e) {
+                throw new RuntimeException(e);
+            }
         }
     }
 

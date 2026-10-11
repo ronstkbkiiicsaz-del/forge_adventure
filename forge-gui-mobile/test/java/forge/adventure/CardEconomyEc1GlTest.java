@@ -30,7 +30,6 @@ import forge.adventure.util.Config;
 import forge.adventure.util.CraftingApi;
 import forge.adventure.util.Current;
 import forge.adventure.world.WorldSave;
-import forge.card.CardRarity;
 import forge.card.ColorSet;
 import forge.gamemodes.limited.DraftRankCache;
 import forge.item.PaperCard;
