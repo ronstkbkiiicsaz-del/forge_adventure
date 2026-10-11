@@ -1,18 +1,25 @@
 # Shandalar Ascendant: Grok ⇄ Wren handoff
 
-> **WHOSE TURN: GROK**
-> Turn passed by Wren on 2026-10-11, 05:08 Phoenix time
+> **WHOSE TURN: WREN**
+> Turn passed by Grok on 2026-10-11, 05:45 Phoenix time
 > Rule: only the side whose turn it is acts. When you finish, update this header and **Outstanding**, add a log entry at the top of the **Log**, flip the turn, then give Steve a copyable paste for the other side.
 
 ## Outstanding
 
 ### Waiting on Wren
-- Nothing. Hand over #70 DS1, #72 SN1, #73 AU1, #74 EC1 when each is ready (Wren tests on the Linux runner, so
-  several at once is fine; say which are ready).
+Four PRs are ready to test and merge. Each was merged with the current feature/set-start (after #69 and #71), conflicts were resolved by keeping every labelled ConfigData/config.json block, and each is MERGEABLE/CLEAN. They touch the same config files, so later ones will need the usual keep-all-blocks resolve as earlier ones merge.
+
+| PR | Head | What's in it | Tests |
+|---|---|---|---|
+| #70 DS1 (PR 1 of the roadmap plan) | `5b8331ddef8` | `ArenaDuelScreen`: opponent on top, you at the bottom, centre stack column, fanned hand, auto-arranged battlefield (lands, creatures, others; small boards centred), context button plus Pass until EOT, DS4 take back kept, DS3 right-click scope unchanged. Gated by `ModernDuelScreen` + `ds1ArenaDuelScreen`. Classic chrome hidden on Arena (the stray "2/3" bar was the classic VStack dropdown). One backdrop spans the whole play area. Real xvfb renders in the PR (landscape + portrait). Tests: pairwise overlap in both orientations, and hand cards keep card aspect and stay on screen. Later DS1 PRs: targeting/combat, mana/cost views, prompt views, animations with AU1, full pad focus. | mobile 362/0, gl 14/0, desktop 873 with 2 co-op flakes |
+| #72 SN1 | `d61cfad2695` | Seasons: 4-set Standard (`sn1WindowSize`), `AdventureSeason` calendar (15 min exploring = 1 day, duel = 2h, inn Rest skips to morning), 7-day opening seasons ×2 then 14-day seasons, mastery ends a season early, shortlist pick with grace auto-pick and undo. HUD, Status, Skills and Inn UI. Old saves default from their rotation. Wired through `StandardWindow`/RW1/CS0. Real renders in the PR; the HUD season line clears the QL1 line and the minimap. Gaps: town criers are HUD notices only, Planar Keys are a counter, mastery cosmetics wait on CS1/AC1. | mobile 361/0, gl 14/0, desktop 873 (co-op flakes, 48/0 on rerun) |
+| #73 AU1 | `2d57c42855f` | Sound overhaul: Kenney CC0 `au1_*.ogg` (pack table in the PR and in CREDITS.md), `Au1Sounds` hooks for DS1 animations, counter sound from the engine's `GameEventSpellCountered` (no name heuristics), chest/pickup/UI sounds wired with fire-once tests, UI volume plus muted overworld ambience. Stock sounds unchanged. | mobile 355/0, gl 13/0, desktop 873 (co-op flakes, 13/0 alone) |
+| #74 EC1 | `4c513b90e3a` | Card economy: base gold 50/150/300/500, special 400, basics 0; rank band 0.4×-3.5×; Standard/Historic 1.25×/0.75×; sale 30%; market band 0.5-2.0, drift 10%/day; colour lean 1.15×. Hooks `CardUtil.getCardPrice`, shops/sell, craft/salvage. Old saves keep gold, cards and dust; stock `cardprices.txt` unchanged. `CraftingApi` drives **MX1 Craft missing** (dust per card and total, confirm before spending, disabled with a reason when short, source printings, then import). MX1 TODO removed. Wren's MX1 nit fixed: Import is disabled with no known cards. Gap: plane-format shop lean (K) deferred. | mobile 361/0, gl 14/0, desktop 873 with 3 co-op flakes |
 
 ### Waiting on Grok (priority order)
-- Finish **DS1** #70 (landscape fix round, then later DS1 PRs: targeting/combat, mana/cost views, prompt views, animations + AU1 sound, full pad focus).
-- Then SN1, **AU1** (pairs with DS1's animation PR), EC1 (plus MX1's Craft missing), DB1, GN1, DS5, QL2, the #51 redo.
+- **Play bug: stuck after a dungeon fight reward** (Steve). In progress on its own branch: reproduce through the real duel and reward path with a fail-before test, fix the root cause, and check the overworld and arena too. If Steve hits it again, his `STUCK:` log line helps.
+- Then DS1 PR 2 onward, DB1, GN1, DS5, QL2, the #51 redo.
+- Low nits from Wren 05:08: QL1 test `tearDown` should reset the plane id; the F8 test's NPE match depends on the JDK message (the MX1 Import nit is fixed in #74).
 - Later nits: #63 doc line "lists must be truly empty, not a space" plus the tileset test checking PNGs and `.tx` templates; #60 test asserting `playerTitle` sits inside `stats`.
 
 ### Waiting on Steve (hands-on)
@@ -27,6 +34,10 @@
 - Bugs Steve reports from play jump the queue. So do Tiny's, which arrive via `docs/FEEDBACK.md` (written by Tiny's AI, Sam; Wren triages).
 
 ## Log (newest first)
+
+### 2026-10-11 05:45 · Grok → Wren
+- #70 DS1, #72 SN1, #73 AU1 and #74 EC1 are all ready (merged with current base, CLEAN). #74 also wires MX1 Craft missing.
+- Started the stuck-after-dungeon-fight bug (Steve's play report jumps the queue).
 
 ### 2026-10-11 05:08 · Wren → Grok
 - Merged **#69 MX1 r2** and **#71** (873 desktop + 346 mobile green). Low nits for later: MX1 Import enabled with no
