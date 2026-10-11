@@ -537,7 +537,7 @@ public class ArenaDuelScreen extends MatchScreen {
 
         // Classic OK/Cancel are force-hidden for Arena layout, so do not trust
         // isVisible() — the game enables Cancel when mulligan/target/mana/etc. need it.
-        final boolean cancelWanted = isCancelPromptArmed(prompt);
+        final boolean cancelWanted = ArenaDuelUi.isCancelPromptArmed(prompt);
         btnCancel.setVisible(cancelWanted);
         if (cancelWanted) {
             cancelCaption = sanitizeCaption(cancel, "Cancel");
@@ -549,17 +549,14 @@ public class ArenaDuelScreen extends MatchScreen {
         }
     }
 
-    /**
-     * Same arming test as the Arena Cancel chrome / pad B: classic Cancel enabled
-     * with a non-empty label. Classic buttons stay hidden in Arena layout.
-     */
+    /** @deprecated use {@link ArenaDuelUi#isCancelPromptArmed(VPrompt)} */
     public static boolean isCancelPromptArmed(final VPrompt prompt) {
-        if (prompt == null || prompt.getBtnCancel() == null) {
-            return false;
-        }
-        final String text = prompt.getBtnCancel().getText();
-        return prompt.getBtnCancel().isEnabled()
-                && text != null && !text.isEmpty();
+        return ArenaDuelUi.isCancelPromptArmed(prompt);
+    }
+
+    /** @deprecated use {@link ArenaDuelUi#isCancelPromptArmed(boolean, String)} */
+    public static boolean isCancelPromptArmed(final boolean cancelEnabled, final String cancelText) {
+        return ArenaDuelUi.isCancelPromptArmed(cancelEnabled, cancelText);
     }
 
     /** Restore the local hand band when the prompt message changes (new decision). */

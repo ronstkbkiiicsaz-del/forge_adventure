@@ -111,7 +111,7 @@ public class ArenaDuelScriptedDuelTest {
                     }
                 }
                 // When Cancel is not armed, free B must not be consumed as Cancel.
-                if (arena != null && !ArenaDuelScreen.isCancelPromptArmed(arena.getActivePrompt())
+                if (arena != null && !ArenaDuelUi.isCancelPromptArmed(arena.getActivePrompt())
                         && !probedPadBUnarmed.get()) {
                     Assert.assertFalse(
                             ModernDuelController.get().handlePadKey(Input.Keys.BUTTON_B, arena, null, null),
@@ -166,12 +166,12 @@ public class ArenaDuelScriptedDuelTest {
                     return;
                 }
                 // Real Cancel chrome from the live prompt — never force Cancel visible.
-                if (ArenaDuelScreen.isCancelPromptArmed(arena.getActivePrompt())
+                if (ArenaDuelUi.isCancelPromptArmed(arena.getActivePrompt())
                         || MatchController.instance.isSelecting()) {
                     arena.revalidate(); // apply Cancel visibility from the armed prompt
                     if (arena.arenaCancelControl() != null && arena.arenaCancelControl().isVisible()) {
                         sawCancelChrome.set(true);
-                    } else if (ArenaDuelScreen.isCancelPromptArmed(arena.getActivePrompt())) {
+                    } else if (ArenaDuelUi.isCancelPromptArmed(arena.getActivePrompt())) {
                         // Chrome may lag one layout; armed Cancel still counts as real prompt.
                         sawCancelChrome.set(true);
                     }
@@ -222,7 +222,7 @@ public class ArenaDuelScriptedDuelTest {
                 }
                 final ArenaDuelScreen arena = (ArenaDuelScreen) MatchController.getView();
                 if (arena != null && phase == PhaseType.COMBAT_DECLARE_ATTACKERS
-                        && !ArenaDuelScreen.isCancelPromptArmed(arena.getActivePrompt())) {
+                        && !ArenaDuelUi.isCancelPromptArmed(arena.getActivePrompt())) {
                     Assert.assertFalse(ModernDuelController.get().handlePadKey(
                                     Input.Keys.BUTTON_B, arena, null, null),
                             "pad B must no-op when Cancel is disabled in attack declaration");

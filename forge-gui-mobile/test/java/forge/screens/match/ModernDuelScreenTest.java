@@ -382,22 +382,17 @@ public class ModernDuelScreenTest {
     @Test
     public void cancelPromptArmedMatchesArenaButtonGate() {
         // Same arming test pad B / Arena Cancel chrome use (enabled + non-empty label).
-        final forge.screens.match.views.VPrompt prompt =
-                new forge.screens.match.views.VPrompt("Keep", "Mulligan", e -> { }, e -> { });
-        // Constructor leaves Cancel disabled until a prompt is queued — B must no-op.
-        Assert.assertFalse(ArenaDuelScreen.isCancelPromptArmed(prompt),
+        // ArenaDuelUi stays loadable without GL — do not touch ArenaDuelScreen/VPrompt here.
+        Assert.assertFalse(ArenaDuelUi.isCancelPromptArmed(false, "Mulligan"),
                 "disabled Cancel (e.g. before first prompt / some attack windows) must not arm B");
-        prompt.getBtnCancel().setEnabled(true);
-        prompt.getBtnCancel().setText("Mulligan");
-        Assert.assertTrue(ArenaDuelScreen.isCancelPromptArmed(prompt),
+        Assert.assertTrue(ArenaDuelUi.isCancelPromptArmed(true, "Mulligan"),
                 "enabled Cancel with a label (mulligan) arms B");
-        prompt.getBtnCancel().setText("");
-        Assert.assertFalse(ArenaDuelScreen.isCancelPromptArmed(prompt),
+        Assert.assertFalse(ArenaDuelUi.isCancelPromptArmed(true, ""),
                 "empty Cancel label must not arm B");
+        Assert.assertFalse(ArenaDuelUi.isCancelPromptArmed(true, null),
+                "null Cancel label must not arm B");
         // Attack declaration often leaves Cancel disabled until a legal choice exists.
-        prompt.getBtnCancel().setText("OK");
-        prompt.getBtnCancel().setEnabled(false);
-        Assert.assertFalse(ArenaDuelScreen.isCancelPromptArmed(prompt),
+        Assert.assertFalse(ArenaDuelUi.isCancelPromptArmed(false, "OK"),
                 "disabled Cancel during attack declaration must not arm B");
     }
 

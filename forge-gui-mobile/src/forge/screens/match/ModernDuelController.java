@@ -473,7 +473,7 @@ public final class ModernDuelController {
         }
         if (padFocus == ModernDuelPad.Focus.CANCEL) {
             if (MatchController.getView() instanceof ArenaDuelScreen arena
-                    && ArenaDuelScreen.isCancelPromptArmed(arena.getActivePrompt())
+                    && ArenaDuelUi.isCancelPromptArmed(arena.getActivePrompt())
                     && MatchController.instance != null
                     && MatchController.instance.getGameController() != null) {
                 MatchController.instance.getGameController().selectButtonCancel();
@@ -655,7 +655,7 @@ public final class ModernDuelController {
         // (same test as the Arena Cancel chrome — enabled + non-empty label).
         if (ArenaDuelUi.isActive() && MatchController.instance != null
                 && MatchController.getView() instanceof ArenaDuelScreen arena
-                && ArenaDuelScreen.isCancelPromptArmed(arena.getActivePrompt())) {
+                && ArenaDuelUi.isCancelPromptArmed(arena.getActivePrompt())) {
             final IGameController gc = MatchController.instance.getGameController();
             if (gc != null) {
                 gc.selectButtonCancel();
