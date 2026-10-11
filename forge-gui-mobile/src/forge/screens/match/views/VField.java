@@ -269,8 +269,27 @@ public class VField extends FContainer {
         if (!arenaLayoutActive()) {
             return;
         }
-        // Transparent in Arena: VPlayerPanel paints the continuous scroller-relative
-        // forest plate behind the field so both halves share one backdrop.
+        // Opaque forest plate inside the field. Must be painted here (not only on
+        // the parent panel) so FieldRow clips cannot leave FBO alpha voids that
+        // read as a flat dark opponent half in landscape captures.
+        g.resetAlphaComposite();
+        forge.assets.FSkinTexture plate = forge.assets.FSkinTexture.ADV_BG_MATCH;
+        if (plate.getWidth() <= 0) {
+            plate = forge.assets.FSkinTexture.BG_MATCH;
+        }
+        final float w = getWidth();
+        final float h = getHeight();
+        g.startClip(0, 0, w, h);
+        try {
+            g.fillRect(new com.badlogic.gdx.graphics.Color(0.10f, 0.16f, 0.12f, 1f), 0, 0, w, h);
+            if (plate.getWidth() > 0) {
+                // Local stretch of the forest slice — avoid depending on parent UV.
+                g.drawImage(plate, 0, -h * 0.15f, w, h / 0.55f);
+            }
+        } finally {
+            g.endClip();
+        }
+        g.resetAlphaComposite();
     }
 
     @Override

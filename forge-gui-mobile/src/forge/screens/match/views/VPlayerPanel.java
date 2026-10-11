@@ -273,6 +273,7 @@ public class VPlayerPanel extends FContainer {
             }
             field.getRow1().setRotate180(false);
             field.getRow2().setRotate180(false);
+            field.getRowSide().setRotate180(false);
             return;
         }
         //only rotate certain parts of panel
