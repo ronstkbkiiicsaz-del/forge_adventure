@@ -252,6 +252,9 @@ public class ArenaDuelScreenGlTest {
             // Must not be the giant landscape side-column card (~half band width).
             Assert.assertTrue(w < bandW * 0.55f,
                     "card width " + w + " too wide for fan in band " + bandW);
+            // Must stay readable — not chrome-shrunk landscape thumbnails.
+            Assert.assertTrue(w >= 48f && h >= 64f,
+                    "pile card too small " + w + "x" + h + " (landscape=" + landscape + ")");
             Assert.assertTrue(panel.getLeft() >= -0.5f && panel.getTop() >= -0.5f);
             Assert.assertTrue(panel.getLeft() + w <= bandW + 0.5f,
                     "card right edge past pile band");

@@ -132,11 +132,34 @@ public class ArenaDuelLayoutTest {
 
     @Test
     public void openedPileFansKeepAspectAndStayFullyOnScreenInBothOrientations() {
-        // Local piles share the hand band (minus title chrome); opponent piles use the field slot.
-        final float chromeH = 32f;
-        assertFanKeepsAspectInBand("playerHand", chromeH);
-        assertFanKeepsAspectInBand("opponentField", chromeH);
-        assertFanKeepsAspectInBand("playerField", chromeH);
+        // Chrome overlays the fan (does not shrink card height). Local piles may also grow
+        // the hand band upward; assert the base layout bands still host a full card-aspect fan.
+        assertFanKeepsAspectInBand("playerHand", null);
+        assertFanKeepsAspectInBand("opponentField", null);
+        assertFanKeepsAspectInBand("playerField", null);
+        // Expanded landscape pile band (hand grown into field) must still keep aspect on-screen.
+        for (final boolean landscape : new boolean[] { true, false }) {
+            final float sw = landscape ? 1280f : 720f;
+            final float sh = landscape ? 720f : 1280f;
+            final ArenaDuelLayout.Result layout = ArenaDuelLayout.compute(sw, sh, landscape);
+            final ArenaDuelLayout.Rect hand = layout.get("playerHand");
+            final float wantH = Math.max(hand.h, Math.min(sh * 0.42f, 200f));
+            final float fanH = Math.max(hand.h, wantH);
+            final float fanY = hand.y - (fanH - hand.h);
+            for (final int count : new int[] { 3, 5 }) {
+                final List<ArenaHandFan.CardPose> poses =
+                        ArenaHandFan.fan(count, hand.w, fanH, 1, null);
+                for (final ArenaHandFan.CardPose p : poses) {
+                    final float aspect = p.h / p.w;
+                    Assert.assertTrue(aspect > 1.2f && aspect < 1.6f,
+                            "expanded pile card aspect " + aspect);
+                    Assert.assertTrue(p.w >= 48f,
+                            "expanded pile cards must stay readable, w=" + p.w);
+                    Assert.assertTrue(fanY + p.y + p.h <= sh + 0.5f);
+                    Assert.assertTrue(hand.x + p.x + p.w <= sw + 0.5f);
+                }
+            }
+        }
     }
 
     @Test

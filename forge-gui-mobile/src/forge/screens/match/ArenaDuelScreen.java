@@ -133,6 +133,25 @@ public class ArenaDuelScreen extends MatchScreen {
         return stackColumn;
     }
 
+    /**
+     * FScreen's landscape path sizes {@code FMenuBar} across the top when
+     * {@code doLandscapeLayout} returns 0 — that preferred-height band is the
+     * tick-mark strip. Skip it entirely for Arena.
+     */
+    @Override
+    protected float doLandscapeLayout(final float width, final float height) {
+        collapseArenaMenuHeader();
+        doLayout(0, width, height);
+        return width;
+    }
+
+    private void collapseArenaMenuHeader() {
+        if (getHeader() != null) {
+            getHeader().setVisible(false);
+            getHeader().setBounds(0, 0, 0, 0);
+        }
+    }
+
     @Override
     protected void layoutMatchChrome(final float startY, final float width, final float height) {
         final boolean landscape = Forge.isLandscapeMode();
@@ -151,14 +170,8 @@ public class ArenaDuelScreen extends MatchScreen {
 
         lastLayout = ArenaDuelLayout.compute(width, height, landscape, railF, handF, stackF, promptH);
 
-        // Classic FMenuBar in the Arena menuBand collapses to a ~36px strip of tiny
-        // tick-mark tab labels (Game/Log/Dev/Stack). Hide it for Arena — Game menu
-        // remains reachable via Escape / gamepad system controls.
-        final ArenaDuelLayout.Rect menu = lastLayout.get("menuBar");
-        if (getHeader() != null) {
-            getHeader().setVisible(false);
-            getHeader().setBounds(0, 0, 0, 0);
-        }
+        // Classic FMenuBar collapses to a ~36px tick-mark strip — keep it collapsed.
+        collapseArenaMenuHeader();
 
         // Scroller fills opponent + player field bands; centre gap is for the stack column.
         final ArenaDuelLayout.Rect opp = lastLayout.get("opponentArea");

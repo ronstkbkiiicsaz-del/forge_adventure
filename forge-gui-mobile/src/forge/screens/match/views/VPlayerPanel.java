@@ -616,14 +616,32 @@ public class VPlayerPanel extends FContainer {
             tab.setDisplayVisible(false);
         }
         if (handR != null) {
-            // Local player: hand / opened pile share the hand band (pile keeps a title chrome).
+            // Local player: hand / opened pile share the hand band. Chrome (title + Hand)
+            // overlays the top of the fan — it must not shrink card height or landscape
+            // piles collapse to unreadably tiny thumbnails.
             final VZoneDisplay handZone = getZoneDisplay(ZoneType.Hand);
             final boolean pileOpen = selectedTab != null && isArenaPileTab(selectedTab);
-            final float chromeH = pileOpen ? ARENA_PILE_CHROME_H : 0f;
-            final float cardsY = handR.y + chromeH;
-            final float cardsH = Math.max(1f, handR.h - chromeH);
+            float bandX = handR.x;
+            float bandY = handR.y;
+            float bandW = handR.w;
+            float bandH = handR.h;
+            if (pileOpen) {
+                // Grow the pile fan upward into the field so landscape cards stay hand-sized
+                // (stock handH≈90px collapses to unreadably tiny faces once chrome overlays).
+                final float wantH = Math.max(bandH, Math.min(height * 0.42f, 200f));
+                final float grow = Math.max(0f, wantH - bandH);
+                if (grow > 0.5f) {
+                    final float maxGrow = fieldR != null ? Math.max(0f, fieldR.h * 0.55f) : grow;
+                    final float useGrow = Math.min(grow, maxGrow);
+                    bandY = Math.max(0f, bandY - useGrow);
+                    bandH = bandH + useGrow;
+                    if (fieldR != null) {
+                        field.setBounds(fieldX, fieldY, fieldW, Math.max(1f, fieldH - useGrow));
+                    }
+                }
+            }
             for (InfoTab tab : tabs) {
-                tab.setDisplayBounds(handR.x, cardsY, handR.w, cardsH);
+                tab.setDisplayBounds(bandX, bandY, bandW, bandH);
             }
             if (selectedTab != null) {
                 selectedTab.setDisplayVisible(true);
@@ -631,22 +649,20 @@ public class VPlayerPanel extends FContainer {
                 handZone.setVisible(true);
             }
             if (handZone != null) {
-                handZone.setBounds(handR.x, cardsY, handR.w, cardsH);
+                handZone.setBounds(bandX, bandY, bandW, bandH);
                 if (selectedTab == null || selectedTab.getDisplayArea() == handZone) {
                     handZone.setVisible(true);
                 }
             }
-            layoutArenaPileChrome(pileOpen, handR.x, handR.y, handR.w, chromeH);
+            layoutArenaPileChrome(pileOpen, bandX, bandY, bandW, ARENA_PILE_CHROME_H);
             return;
         }
         // Opponent (flipped, no hand band): show an opened pile over the field slot.
+        // Chrome overlays the fan; cards keep the full field height.
         if (fieldR != null && selectedTab != null && isArenaPileTab(selectedTab)) {
-            final float chromeH = ARENA_PILE_CHROME_H;
-            final float cardsY = fieldR.y + chromeH;
-            final float cardsH = Math.max(1f, fieldR.h - chromeH);
-            selectedTab.setDisplayBounds(fieldR.x, cardsY, fieldR.w, cardsH);
+            selectedTab.setDisplayBounds(fieldR.x, fieldR.y, fieldR.w, fieldR.h);
             selectedTab.setDisplayVisible(true);
-            layoutArenaPileChrome(true, fieldR.x, fieldR.y, fieldR.w, chromeH);
+            layoutArenaPileChrome(true, fieldR.x, fieldR.y, fieldR.w, ARENA_PILE_CHROME_H);
         } else {
             layoutArenaPileChrome(false, 0, 0, 0, 0);
         }
@@ -680,11 +696,11 @@ public class VPlayerPanel extends FContainer {
     }
 
     private void layoutArenaPileChrome(final boolean show, final float x, final float y,
-            final float w, final float h) {
+            final float w, final float chromeH) {
         if (arenaPileTitle == null || arenaPileClose == null) {
             return;
         }
-        if (!show || w < 8f || h < 8f) {
+        if (!show || w < 8f || chromeH < 8f) {
             arenaPileTitle.setVisible(false);
             arenaPileClose.setVisible(false);
             return;
@@ -696,10 +712,11 @@ public class VPlayerPanel extends FContainer {
         arenaPileTitle.setVisible(true);
         final float btnW = Math.min(88f, w * 0.22f);
         final float pad = 4f;
+        final float h = Math.min(chromeH, Math.max(24f, chromeH));
         arenaPileClose.setVisible(true);
         arenaPileClose.setBounds(x + w - btnW - pad, y + pad, btnW, h - 2f * pad);
         arenaPileTitle.setBounds(x + pad, y, w - btnW - 3f * pad, h);
-        // Draw above the zone cards.
+        // Draw above the zone cards (overlay — fan keeps full band height).
         remove(arenaPileTitle);
         remove(arenaPileClose);
         add(arenaPileTitle);
