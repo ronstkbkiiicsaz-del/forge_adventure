@@ -104,6 +104,9 @@ public class CardEconomyEc1GlTest {
             }
             Assert.assertNotNull(strong, "Plated Geopede ZEN");
             Assert.assertNotNull(weak, "Archmage Ascension ZEN");
+            // Ensure ZEN is in Standard so rank×power applies (never-window cards use rarity base).
+            player.getStandardWindow().init(List.of("M10", "M11", "ZEN"));
+            AscendantCardEconomy.bindSeasonCalendar(player.getSeason());
             Double sr = DraftRankCache.getRanking(strong.getName(), "ZEN");
             Double wr = DraftRankCache.getRanking(weak.getName(), "ZEN");
             Assert.assertNotNull(sr);
