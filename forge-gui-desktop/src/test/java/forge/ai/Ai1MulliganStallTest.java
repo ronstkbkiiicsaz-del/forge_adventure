@@ -193,7 +193,8 @@ public class Ai1MulliganStallTest extends AITest {
         if (gameError.get() != null) {
             throw new AssertionError("game thread failed", gameError.get());
         }
-        AssertJUnit.assertTrue("stub should have been asked while above floor", asks.get() >= 1);
+        // The default test decks can deal all-land hands, which the land guard hands to Forge AI without
+        // asking the LLM, so asks may be 0; what matters is that the game starts and asking stays bounded.
         // At/below floor the LLM is skipped (Forge AI decides); asks must not grow unboundedly.
         AssertJUnit.assertTrue("forever-mulligan LLM must stop being asked at the floor, asks="
                 + asks.get(), asks.get() <= 8);
@@ -220,7 +221,8 @@ public class Ai1MulliganStallTest extends AITest {
         Player ai = game.getPlayers().get(1);
         fillLibrary(ai, 40);
         for (int i = 0; i < 7; i++) {
-            addCardToZone("Plains", ai, ZoneType.Hand);
+            // A playable mix: the land guard sends 0-1 land / all-land hands to Forge AI without asking the LLM.
+            addCardToZone(i % 2 == 0 ? "Plains" : "Runeclaw Bear", ai, ZoneType.Hand);
         }
         AssertJUnit.assertEquals(Boolean.FALSE, LlmOpponent.chooseKeepHand(ai, 0));
         while (ai.getCardsIn(ZoneType.Hand).size() > 6) {
