@@ -762,7 +762,7 @@ public class DeckImportController {
                     String.format("%s: %s", Localizer.getInstance().getMessage("lblWarningMsgPrefix"),
                             Localizer.getInstance()
                                     .getMessage("lblWarnDeckSectionNotAllowedInEditor", token.getText(),
-                                            this.currentGameType.name()));
+                                            this.currentGameType != null ? this.currentGameType.name() : ""));
 
             // Special Case of Card moved into another section (e.g. Commander from Sideboard)
             case WARNING_MESSAGE -> String.format("%s: %s", Localizer.getInstance()

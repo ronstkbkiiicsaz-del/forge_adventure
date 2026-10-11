@@ -19,6 +19,7 @@ import forge.deck.DeckRecognizer.TokenType;
 import forge.deck.DeckSection;
 import forge.deck.DeckUrlLoader;
 import forge.game.GameFormat;
+import forge.game.GameType;
 import forge.gui.interfaces.ICheckBox;
 import forge.item.PaperCard;
 import forge.localinstance.properties.ForgeConstants;
@@ -450,9 +451,9 @@ public class MoxfieldMx1Test {
         player.addCard(bolt, 4);
 
         DeckImportController controller = newController(player.getCards());
-        // Main + Sideboard only — Commander is a known section but disallowed here.
+        // Main + Sideboard only — Schemes is known but not allowed (and not auto-added).
         List<Token> tokens = controller.parseInput(
-                "Deck\n2 Lightning Bolt (M10) 146\n1 Not A Real Card Name Zzz\nCommander\n1 Omnath, Locus of Creation\n");
+                "Deck\n2 Lightning Bolt (M10) 146\n1 Not A Real Card Name Zzz\nSchemes\n1 Evil Scheme Placeholder\n");
         tokens = controller.constrainTokensToInventory();
 
         String cannot = MoxfieldMx1.formatCannotImportList(tokens, controller);
@@ -460,7 +461,7 @@ public class MoxfieldMx1Test {
         Assert.assertTrue(cannot.toLowerCase(Locale.ROOT).contains("not a real card")
                         || cannot.toLowerCase(Locale.ROOT).contains("unknown"),
                 "unknown card should appear:\n" + cannot);
-        Assert.assertTrue(cannot.toLowerCase(Locale.ROOT).contains("commander")
+        Assert.assertTrue(cannot.toLowerCase(Locale.ROOT).contains("scheme")
                         || cannot.toLowerCase(Locale.ROOT).contains("section")
                         || cannot.toLowerCase(Locale.ROOT).contains("unsupported"),
                 "disallowed section should appear:\n" + cannot);
@@ -627,6 +628,8 @@ public class MoxfieldMx1Test {
         // Main + Sideboard only — including Commander makes DeckRecognizer place legal
         // singleton-style candidates into Commander when no section header is present.
         c.setAllowedSections(List.of(DeckSection.Main, DeckSection.Sideboard));
+        // Needed so getTokenMessage for UNSUPPORTED_DECK_SECTION does not NPE.
+        c.setGameFormat(GameType.Adventure);
         return c;
     }
 
