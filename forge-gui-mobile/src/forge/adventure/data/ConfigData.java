@@ -534,6 +534,11 @@ public class ConfigData {
      */
     public float rw1CurrentSetCardShare = 1.0f;
     /**
+     * Home plane only: share of the set cards that come from the newest Standard set (0–1). The rest is
+     * spread evenly over the other sets in the window. Set planes always give their own set.
+     */
+    public float rw1NewestSetShare = 0.5f;
+    /**
      * When true (Ascendant default), every regular fight uses the RW1 card rewards, not only themed
      * overworld spawns: dungeon, town and cave enemies and unthemed overworld enemies draw their card
      * rewards from the current set too (no signature card without a theme). Bosses, gyms, the League
