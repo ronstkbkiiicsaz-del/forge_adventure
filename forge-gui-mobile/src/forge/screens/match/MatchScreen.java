@@ -1270,6 +1270,44 @@ public class MatchScreen extends FScreen {
 
         @Override
         public void drawOverlay(Graphics g) {
+            // DS1 Arena: empty centre band between opponent/player panels loses FBO
+            // alpha after translucent UI. Re-seal that gap with the match plate so
+            // landscape matches portrait (stack column draws above the scroller).
+            if (MatchController.getView() != null && MatchController.getView().isArenaDuelScreen()
+                    && topPlayerPanel != null && bottomPlayerPanel != null) {
+                final float gapTop = topPlayerPanel.getBottom();
+                final float gapH = bottomPlayerPanel.getTop() - gapTop;
+                if (gapH > 1f) {
+                    FSkinTexture arenaBG = Forge.isMobileAdventureMode ? currentBG : FSkinTexture.BG_MATCH;
+                    if (!Forge.isMobileAdventureMode && daytime != null) {
+                        arenaBG = "Day".equals(daytime) ? FSkinTexture.BG_MATCH_DAY : FSkinTexture.BG_MATCH_NIGHT;
+                    }
+                    if (FSkinTexture.ADV_BG_MATCH.getWidth() > 0) {
+                        arenaBG = FSkinTexture.ADV_BG_MATCH;
+                    }
+                    final float aw = getWidth();
+                    final float ah = getHeight();
+                    final float aspect = arenaBG.getWidth() / (float) Math.max(1, arenaBG.getHeight());
+                    float bgW = aw;
+                    float bgH = bgW / aspect;
+                    if (bgH < ah) {
+                        bgH = ah;
+                        bgW = bgH * aspect;
+                    }
+                    g.resetAlphaComposite();
+                    g.startClip(0, gapTop, aw, gapH);
+                    try {
+                        // Also write an opaque bed so capture alpha stays 1 even if
+                        // the texture sample has premultiplied edges.
+                        g.fillRect(new com.badlogic.gdx.graphics.Color(0.07f, 0.09f, 0.12f, 1f),
+                                0, gapTop, aw, gapH);
+                        g.drawImage(arenaBG, (aw - bgW) / 2f, (ah - bgH) / 2f, bgW, bgH);
+                    } finally {
+                        g.endClip();
+                    }
+                    g.resetAlphaComposite();
+                }
+            }
             if (Forge.isLandscapeMode()) {
                 if (playerPanelsList.size() > 2) {
                     for (VPlayerPanel playerPanel : playerPanelsList) {

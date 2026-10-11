@@ -270,8 +270,8 @@ public class VField extends FContainer {
         if (!arenaLayoutActive()) {
             return;
         }
-        // Screen-aligned match plate, clipped to this field so it cannot paint over
-        // the Arena hand band below (an unclipped blit was wiping the hand scrim).
+        // Screen-aligned match plate, clipped to this field. (Unclipped blits from the
+        // top panel — drawn after the bottom panel — wipe the Arena hand band.)
         g.resetAlphaComposite();
         forge.assets.FSkinTexture plate = forge.assets.FSkinTexture.ADV_BG_MATCH;
         if (plate.getWidth() <= 0) {

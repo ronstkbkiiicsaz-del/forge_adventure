@@ -211,14 +211,15 @@ public class VZoneDisplay extends VCardDisplayArea {
 
     @Override
     protected void drawBackground(Graphics g) {
-        // Arena hand: opaque band painted inside the zone's own draw so it sits above
-        // FieldScroller's full-bleed plate and below the card children.
+        // Arena hand: opaque band above the field's unclipped match plate and below
+        // the fanned card children (must write alpha=1 so the GL capture keeps it).
         if (zoneType == ZoneType.Hand
                 && MatchController.getView() != null
                 && MatchController.getView().isArenaDuelScreen()) {
             g.resetAlphaComposite();
             g.fillRect(new com.badlogic.gdx.graphics.Color(0.16f, 0.18f, 0.22f, 1f),
                     0, 0, getWidth(), getHeight());
+            g.resetAlphaComposite();
         }
     }
 
