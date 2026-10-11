@@ -226,9 +226,9 @@ public class CraftingScreen extends FScreen {
         int cost = player.craftCost(printing);
         int owned = countOwnedByName(player, printing.getName());
         CardRarity rarity = printing.getRarity();
-        String historic = player.isStandardLegal(printing) ? "Standard cost" : "Historic (2×)";
+        String legality = player.isStandardLegal(printing) ? "Standard" : "Historic";
         lblDetail.setText(printing.getName() + "  ·  " + cost + " " + rarity.getLongName()
-                + " dust  ·  owned " + owned + "  ·  " + historic);
+                + " dust  ·  owned " + owned + "  ·  " + legality);
 
         CardReagentCost reagents = cachedReagentCost(printing);
         lblReagents.setText(reagents.detailSummary(player));

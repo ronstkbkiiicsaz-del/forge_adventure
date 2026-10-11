@@ -7,11 +7,15 @@ import forge.StaticData;
 import forge.adventure.data.ConfigData;
 import forge.adventure.player.AccountStore;
 import forge.adventure.player.AdventurePlayer;
+import forge.adventure.data.MaterialListData;
+import forge.adventure.util.AscendantCardEconomy;
 import forge.adventure.util.CollectionExporter;
 import forge.adventure.util.Config;
+import forge.adventure.util.CraftingApi;
 import forge.adventure.util.MoxfieldMx1;
 import forge.adventure.world.WorldSave;
 import forge.card.CardEdition;
+import forge.card.CardRarity;
 import forge.deck.Deck;
 import forge.deck.DeckImportController;
 import forge.deck.DeckRecognizer.Token;
@@ -39,6 +43,7 @@ import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -614,7 +619,218 @@ public class MoxfieldMx1Test {
                 "Stock export must not write unmatched.txt");
     }
 
+    @Test
+    public void importDisabledWhenNoKnownCardsParsed() {
+        Assert.assertFalse(MoxfieldMx1.hasKnownCardTokens(null));
+        Assert.assertFalse(MoxfieldMx1.hasKnownCardTokens(List.of()));
+
+        DeckImportController controller = newController(new ItemPool<>(PaperCard.class));
+        List<Token> unknown = controller.parseInput("Deck\n4 Completely Fake Card Name Zzz123\n");
+        Assert.assertFalse(MoxfieldMx1.hasKnownCardTokens(unknown),
+                "Wren nit: Import must stay disabled when no known cards were parsed");
+
+        AdventurePlayer player = WorldSave.getCurrentSave().getPlayer();
+        player.getCards().clear();
+        PaperCard bolt = magicDb.getCommonCards().getCard("Lightning Bolt", "M10", "146");
+        Assert.assertNotNull(bolt);
+        player.addCard(bolt, 1);
+        DeckImportController withBolt = newController(player.getCards());
+        List<Token> known = withBolt.parseInput("Deck\n1 Lightning Bolt (M10) 146\n");
+        Assert.assertTrue(MoxfieldMx1.hasKnownCardTokens(known));
+    }
+
+    @Test
+    public void craftMissingEnoughDustCraftsSourcePrintingAndImportsFullDeck() {
+        Assert.assertTrue(AscendantCardEconomy.enabled(), "EC1 dust costs require Ascendant economy");
+        AdventurePlayer player = WorldSave.getCurrentSave().getPlayer();
+        List<String> windowBefore = new ArrayList<>(player.getStandardWindow().getSets());
+        int dustBefore = player.getDust(AdventurePlayer.DUST_COMMON);
+        int ashBefore = player.getMaterial("ash");
+        try {
+            player.getStandardWindow().init(List.of("M10", "M11", "ZEN"));
+            player.getCards().clear();
+            PaperCard bolt = magicDb.getCommonCards().getCard("Lightning Bolt", "M10", "146");
+            Assert.assertNotNull(bolt);
+            Assert.assertEquals(bolt.getRarity(), CardRarity.Common);
+            player.addCard(bolt, 2);
+
+            DeckImportController controller = newController(player.getCards());
+            List<Token> tokens = controller.parseInput("Deck\n4 Lightning Bolt (M10) 146\n");
+            tokens = controller.constrainTokensToInventory();
+            List<MoxfieldMx1.MissingCard> missing = MoxfieldMx1.missingFromTokens(tokens, player.getCards());
+            Assert.assertEquals(missing.size(), 1);
+            Assert.assertEquals(missing.get(0).wanted, 4);
+            Assert.assertEquals(missing.get(0).owned, 2);
+            Assert.assertNotNull(missing.get(0).preferred);
+            Assert.assertEquals(missing.get(0).preferred.getEdition(), "M10");
+
+            String list = MoxfieldMx1.formatMissingList(missing);
+            Assert.assertTrue(list.contains("Lightning Bolt"), list);
+            Assert.assertTrue(list.toLowerCase(Locale.ROOT).contains("dust"),
+                    "Missing list must show per-card dust cost:\n" + list);
+            Assert.assertTrue(list.toLowerCase(Locale.ROOT).contains("total"),
+                    "Missing list must show total dust:\n" + list);
+
+            grantCraftFuel(player, bolt, 2);
+            CraftingApi.CraftMissingPlan plan = CraftingApi.planCraftMissing(
+                    MoxfieldMx1.toCraftRequests(missing));
+            Assert.assertTrue(plan.craftEnabled, "plan should enable Craft missing: " + plan.disabledReason);
+            Assert.assertEquals(plan.totalCopies, 2);
+            Assert.assertFalse(plan.totalDustLine().isEmpty());
+
+            int dustAtCraft = player.getDust(AdventurePlayer.DUST_COMMON);
+            // Enough dust: craft source printings, then re-import.
+            List<CraftingApi.CraftResult> results = CraftingApi.craftMissing(plan.requests);
+            Assert.assertEquals(results.size(), 1);
+            Assert.assertTrue(results.get(0).ok(), "craft should succeed: " + results.get(0).problem);
+            Assert.assertEquals(results.get(0).crafted, 2);
+            Assert.assertEquals(player.getCards().count(bolt), 4,
+                    "collection should hold crafted M10 copies");
+            Assert.assertTrue(player.getDust(AdventurePlayer.DUST_COMMON) < dustAtCraft,
+                    "crafting must spend common dust");
+
+            controller.setPlayerInventory(player.getCards());
+            tokens = controller.parseInput("Deck\n4 Lightning Bolt (M10) 146\n");
+            tokens = controller.constrainTokensToInventory();
+            Assert.assertTrue(MoxfieldMx1.missingFromTokens(tokens, player.getCards()).isEmpty());
+            Deck deck = acceptTokens(tokens);
+            Assert.assertEquals(deck.getMain().countAll(), 4, "resulting deck must include crafted copies");
+            Assert.assertEquals(deck.getMain().count(bolt), 4);
+        } finally {
+            player.getStandardWindow().init(windowBefore);
+            restoreDust(player, AdventurePlayer.DUST_COMMON, dustBefore);
+            restoreMaterial(player, "ash", ashBefore);
+        }
+    }
+
+    @Test
+    public void craftMissingTooLittleDustDisablesWithReason() {
+        AdventurePlayer player = WorldSave.getCurrentSave().getPlayer();
+        List<String> windowBefore = new ArrayList<>(player.getStandardWindow().getSets());
+        int dustBefore = player.getDust(AdventurePlayer.DUST_COMMON);
+        int ashBefore = player.getMaterial("ash");
+        try {
+            player.getStandardWindow().init(List.of("M10", "M11", "ZEN"));
+            player.getCards().clear();
+            PaperCard bolt = magicDb.getCommonCards().getCard("Lightning Bolt", "M10", "146");
+            Assert.assertNotNull(bolt);
+            player.addCard(bolt, 1);
+
+            // Drain common dust so the plan cannot afford the gap.
+            int have = player.getDust(AdventurePlayer.DUST_COMMON);
+            if (have > 0) {
+                player.addDust(AdventurePlayer.DUST_COMMON, -have);
+            }
+            Assert.assertEquals(player.getDust(AdventurePlayer.DUST_COMMON), 0);
+
+            // Reagents alone must not enable Craft missing when dust is short.
+            forge.adventure.data.MaterialData ash = MaterialListData.primaryReagent("R", 1);
+            if (ash != null) {
+                player.addMaterial(ash.id, 8);
+            }
+
+            DeckImportController controller = newController(player.getCards());
+            List<Token> tokens = controller.parseInput("Deck\n3 Lightning Bolt (M10) 146\n");
+            tokens = controller.constrainTokensToInventory();
+            List<MoxfieldMx1.MissingCard> missing = MoxfieldMx1.missingFromTokens(tokens, player.getCards());
+            Assert.assertEquals(missing.size(), 1);
+
+            CraftingApi.CraftMissingPlan plan = CraftingApi.planCraftMissing(
+                    MoxfieldMx1.toCraftRequests(missing));
+            Assert.assertFalse(plan.craftEnabled, "Craft missing must be disabled when dust is short");
+            Assert.assertNotNull(plan.disabledReason);
+            Assert.assertTrue(plan.disabledReason.toLowerCase(Locale.ROOT).contains("dust"),
+                    plan.disabledReason);
+            Assert.assertTrue(plan.totalCopies > 0, "totals still shown when disabled");
+            Assert.assertFalse(plan.totalDustLine().isEmpty());
+
+            String list = MoxfieldMx1.formatMissingList(missing);
+            Assert.assertTrue(list.toLowerCase(Locale.ROOT).contains("dust"), list);
+            Assert.assertTrue(list.toLowerCase(Locale.ROOT).contains("unavailable")
+                            || list.contains(plan.disabledReason),
+                    "Missing list must explain why Craft missing is disabled:\n" + list);
+
+            int cardsBefore = player.getCards().count(bolt);
+            // Cancel / do not craft — inventory and (zero) dust unchanged.
+            Assert.assertEquals(player.getCards().count(bolt), cardsBefore);
+            Assert.assertEquals(player.getDust(AdventurePlayer.DUST_COMMON), 0);
+            Deck ownedOnly = acceptTokens(tokens);
+            Assert.assertEquals(ownedOnly.getMain().countAll(), 1,
+                    "without crafting, deck keeps only owned copies");
+        } finally {
+            player.getStandardWindow().init(windowBefore);
+            restoreDust(player, AdventurePlayer.DUST_COMMON, dustBefore);
+            restoreMaterial(player, "ash", ashBefore);
+        }
+    }
+
+    @Test
+    public void craftMissingCancelLeavesInventoryDustAndDeckUnchanged() {
+        AdventurePlayer player = WorldSave.getCurrentSave().getPlayer();
+        List<String> windowBefore = new ArrayList<>(player.getStandardWindow().getSets());
+        int dustBefore = player.getDust(AdventurePlayer.DUST_COMMON);
+        int ashBefore = player.getMaterial("ash");
+        try {
+            player.getStandardWindow().init(List.of("M10", "M11", "ZEN"));
+            player.getCards().clear();
+            PaperCard bolt = magicDb.getCommonCards().getCard("Lightning Bolt", "M10", "146");
+            Assert.assertNotNull(bolt);
+            player.addCard(bolt, 2);
+            grantCraftFuel(player, bolt, 2);
+
+            DeckImportController controller = newController(player.getCards());
+            List<Token> tokens = controller.parseInput("Deck\n4 Lightning Bolt (M10) 146\n");
+            tokens = controller.constrainTokensToInventory();
+            List<MoxfieldMx1.MissingCard> missing = MoxfieldMx1.missingFromTokens(tokens, player.getCards());
+            CraftingApi.CraftMissingPlan plan = CraftingApi.planCraftMissing(
+                    MoxfieldMx1.toCraftRequests(missing));
+            Assert.assertTrue(plan.craftEnabled, plan.disabledReason);
+
+            int dustAtPrompt = player.getDust(AdventurePlayer.DUST_COMMON);
+            int ashAtPrompt = player.getMaterial("ash");
+            int cardsAtPrompt = player.getCards().count(bolt);
+
+            // Cancel Craft missing / Missing dialog — do not call craftMissing.
+            Deck cancelled = acceptTokens(tokens);
+            Assert.assertEquals(cancelled.getMain().countAll(), 2,
+                    "cancel keeps only owned copies in the resulting deck");
+            Assert.assertEquals(player.getCards().count(bolt), cardsAtPrompt);
+            Assert.assertEquals(player.getDust(AdventurePlayer.DUST_COMMON), dustAtPrompt);
+            Assert.assertEquals(player.getMaterial("ash"), ashAtPrompt);
+        } finally {
+            player.getStandardWindow().init(windowBefore);
+            restoreDust(player, AdventurePlayer.DUST_COMMON, dustBefore);
+            restoreMaterial(player, "ash", ashBefore);
+        }
+    }
+
     // ---- helpers ----
+
+    /** Enough dust + red T1 reagents to craft {@code copies} of a common red card. */
+    private static void grantCraftFuel(AdventurePlayer player, PaperCard sample, int copies) {
+        int unit = Math.max(1, player.craftCost(sample));
+        player.addDust(AdventurePlayer.DUST_COMMON, unit * copies + 50);
+        forge.adventure.data.MaterialData ash = MaterialListData.primaryReagent("R", 1);
+        Assert.assertNotNull(ash, "Ash (R T1) reagent must exist for Lightning Bolt crafts");
+        player.addMaterial(ash.id, copies + 2);
+    }
+
+    private static void restoreDust(AdventurePlayer player, int index, int target) {
+        int now = player.getDust(index);
+        if (now != target) {
+            player.addDust(index, target - now);
+        }
+    }
+
+    private static void restoreMaterial(AdventurePlayer player, String id, int target) {
+        int now = player.getMaterial(id);
+        if (now > target) {
+            player.takeMaterial(id, now - target);
+        } else if (now < target) {
+            player.addMaterial(id, target - now);
+        }
+    }
+
 
     private static DeckImportController newController(ItemPool<PaperCard> inventory) {
         return newController(inventory, false);

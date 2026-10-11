@@ -9,6 +9,8 @@ import forge.adventure.data.GeneratedDeckData;
 import forge.adventure.data.GeneratedDeckTemplateData;
 import forge.adventure.data.MaterialData;
 import forge.adventure.data.RewardData;
+import forge.adventure.player.AdventurePlayer;
+import forge.adventure.pointofintrest.PointOfInterestChanges;
 import forge.card.*;
 import forge.card.DeckHints.Type;
 import forge.card.mana.ManaCost;
@@ -385,8 +387,29 @@ public class CardUtil {
     }
 
     public static int getCardPrice(PaperCard card) {
+        PointOfInterestChanges market = null;
+        try {
+            AdventurePlayer player = Current.player();
+            if (player != null)
+                // EC1: price from the active shop's own POI only — never the last inn visit.
+                market = player.getActiveShopMarket();
+        } catch (Exception ignored) {
+        }
+        return getCardPrice(card, market);
+    }
+
+    /**
+     * Card gold price. For EC1, {@code market} must be the shop's own
+     * {@link PointOfInterestChanges} (map shops use their POI); {@code null} means no
+     * local market pressure (outside a shop / selling outside town).
+     */
+    public static int getCardPrice(PaperCard card, PointOfInterestChanges market) {
         if (card == null)
             return 0;
+        // EC1: Ascendant life-cycle prices. Stock / ec1GamePrices=false keep price-list stubs.
+        if (AscendantCardEconomy.enabled()) {
+            return AscendantCardEconomy.cardValue(card, market);
+        }
         CardRarity effectiveRarity = card.getRarity();
 
         if (card.getRarity() == CardRarity.BasicLand
@@ -432,11 +455,16 @@ public class CardUtil {
      }
     
     public static int getRewardPrice(Reward reward) {
+        return getRewardPrice(reward, null);
+    }
+
+    /** Shop buy price using the shop's own market when {@code market} is non-null. */
+    public static int getRewardPrice(Reward reward, PointOfInterestChanges market) {
         PaperCard card = reward.getCard();
         Deck booster = reward.getDeck();
 
         if (card != null)
-            return getCardPrice(card);
+            return market != null ? getCardPrice(card, market) : getCardPrice(card);
         if (reward.getItem() != null)
             return reward.getItem().cost;
         if (reward.getType() == Reward.Type.Material) {
