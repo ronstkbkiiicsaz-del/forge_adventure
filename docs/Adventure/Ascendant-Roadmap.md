@@ -1004,16 +1004,21 @@ window is too thin to build from. Step 1 is already in: home-plane loot spreads 
 current sets; the window just has room for one more.
 
 **Campaign start (decided 2026-10-10).** New games keep today's two picks: a starter set (sealed packs) plus a core set
-or the Core Set Collection, so Standard opens with 2 sets. The **first two seasons are short** (~15 in-game days,
+or the Core Set Collection, so Standard opens with 2 sets. The **first two seasons are short** (7 in-game days,
 tunable) and each adds a set the player picks from the shortlist, so Standard reaches 4 sets within the first month;
 from then on normal seasons rotate one set in and the oldest out.
 
 **Seasons.** Forge Adventure has no world clock today (the day/night look is only a cosmetic background tint), so SN1
-adds an in-game calendar, shown on the HUD and Status screen. **One in-game day = 15 minutes of active play**
-(tunable), and active play **includes duels**, where most play time goes; menus, pauses and idle time don't count.
-Resting at an inn skips to the next morning. That makes an opening season (15 days) about 4 hours of play and a
-normal season (30 days) about 7-8 hours.
-A **season** lasts a tunable number of in-game days (start with ~30, playtest it). Each season brings **one new set**
+adds an in-game calendar, shown on the HUD and Status screen (all numbers tunable, decided with Steve 2026-10-10):
+- **Overworld, towns and dungeons:** time flows; **15 minutes of real exploring = 1 in-game day**. Menus, pauses
+  and idle time don't count.
+- **A duel costs a flat 2 in-game hours**, win or lose, however long it really took (most play time is duels, so
+  real duel length must not drive the calendar).
+- **Resting at an inn** skips to the next morning.
+- Estimate: a typical real hour (about 40 min of duels, 4 fights, plus 20 min exploring) is about 1.7 in-game days.
+  So a **normal season = 14 in-game days (about 8 hours of play)** and an **opening season = 7 days (about 4
+  hours)**. More dueling stretches a season in real time; more exploring shortens it.
+A **season** lasts a tunable number of in-game days (14 by default; see above). Each season brings **one new set**
 into Standard; when the window is full the oldest set rotates to Historic. Nothing owned is ever lost.
 - **Mastery pulls the next season forward**: mastering the newest set (today's requirement) ends the season early, so
   fast players aren't held back and slow players aren't left behind; the calendar guarantees progress either way.
