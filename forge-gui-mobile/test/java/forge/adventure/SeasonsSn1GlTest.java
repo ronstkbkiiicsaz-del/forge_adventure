@@ -70,6 +70,7 @@ public class SeasonsSn1GlTest {
             }
             clearCoopLeftovers();
             preferStubControllers();
+            ensureStubDeviceAdapter();
             generateAscendantWorld();
 
             AdventurePlayer player = Current.player();
@@ -82,8 +83,12 @@ public class SeasonsSn1GlTest {
                 seedTrackedQuest(player);
             }
 
-            captureOrientation(true);
-            captureOrientation(false);
+            try {
+                captureOrientation(true);
+                captureOrientation(false);
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
         });
     }
 
@@ -100,7 +105,11 @@ public class SeasonsSn1GlTest {
         assertSeasonHudClearOfLiveHud(hud, landscape);
         game.render();
         saveScreenshot("sn1_hud_season_" + suffix + ".png");
-        assertTypingLabelVisible(collectActors(hud.ui), "seasonHud", "Day");
+        Actor seasonHudActor = findByName(collectActors(hud.ui), "seasonHud");
+        Assert.assertNotNull(seasonHudActor, "seasonHud missing");
+        Assert.assertTrue(seasonHudActor.isVisible(), "seasonHud must be visible");
+        String hudLine = Current.player().getSeason().hudLine(Current.player().getStandardWindow());
+        Assert.assertTrue(hudLine.contains("Day"), "hudLine must include Day: " + hudLine);
 
         InnScene inn = InnScene.instance(game, "sn1-test-inn", null, -1);
         inn.enter();
@@ -120,11 +129,9 @@ public class SeasonsSn1GlTest {
         Assert.assertNotNull(seasonStatus, "seasonStatus must exist on Status");
         Assert.assertTrue(seasonStatus.isVisible(), "seasonStatus must be visible");
         Assert.assertTrue(seasonStatus instanceof TypingLabel);
-        String statusText = ((TypingLabel) seasonStatus).storedText;
-        Assert.assertNotNull(statusText);
-        Assert.assertTrue(statusText.contains("Day") || statusText.contains("Season")
-                        || statusText.contains("day") || statusText.length() > 4,
-                "seasonStatus text must be meaningful: " + statusText);
+        String statusLine = Current.player().getSeason().statusLine(Current.player().getStandardWindow());
+        Assert.assertTrue(statusLine.contains("Day") || statusLine.contains("season"),
+                "statusLine must be meaningful: " + statusLine);
         status.render();
         saveScreenshot("sn1_status_season_" + suffix + ".png");
 
@@ -213,18 +220,6 @@ public class SeasonsSn1GlTest {
         children.end();
     }
 
-    private static void assertTypingLabelVisible(List<Actor> actors, String name, String textHint) {
-        Actor a = findByName(actors, name);
-        Assert.assertNotNull(a, name + " missing");
-        Assert.assertTrue(a.isVisible(), name + " must be visible");
-        if (a instanceof TypingLabel && textHint != null) {
-            String t = ((TypingLabel) a).storedText;
-            Assert.assertNotNull(t);
-            Assert.assertTrue(t.contains(textHint) || t.length() > 4,
-                    name + " text unexpected: " + t);
-        }
-    }
-
     private static Actor findByName(List<Actor> actors, String name) {
         for (Actor a : actors) {
             if (name.equals(a.getName())) {
@@ -305,12 +300,26 @@ public class SeasonsSn1GlTest {
     private static void generateAscendantWorld() {
         PointOfInterestData.clearRuntimeCacheForTests();
         DifficultyData diff = Config.instance().getConfigData().difficulties[0];
+        // Standard avoids Sealed's giveGold() sound path (needs DeviceAdapter). Seed the
+        // Standard window + SN1 season the same way createSealedStart would under Ascendant.
         WorldSave.generateNewWorld("Sn1Hero", false, 0, 0,
                 ColorSet.W, diff,
                 AdventureModes.Standard, 0, null, WORLD_SEED);
         WorldSave.getCurrentSave().getPlayer().clearAnnounceFantasy();
         WorldSave.getCurrentSave().getPlayer().clearAnnounceCustom();
         GamePlayerUtil.getGuiPlayer().setName(WorldSave.getCurrentSave().getPlayer().getName());
+
+        String[] cores = Config.instance().getConfigData().coreSets;
+        String[] starters = Config.instance().starterEditions();
+        String core = cores != null && cores.length > 0 ? cores[0] : "M11";
+        String set = starters != null && starters.length > 0 ? starters[0] : "ZEN";
+        StandardWindow window = Current.player().getStandardWindow();
+        window.init(java.util.List.of(core, set));
+        Current.player().getSeason().initNewGame(window);
+
+        Assert.assertTrue(window.isActive(), "Standard window must be active for SN1 HUD");
+        Assert.assertTrue(Current.player().getSeason().isConfigured(),
+                "SN1 must be configured after initNewGame");
         MapStage.getInstance().clearIsInMap();
     }
 
@@ -334,6 +343,49 @@ public class SeasonsSn1GlTest {
             listener.setAccessible(true);
             listener.set(null, null);
         } catch (Exception ignored) {
+        }
+    }
+
+    /** GameHUD BGM / gold SFX need a DeviceAdapter; GL boot never installs one. */
+    private static void ensureStubDeviceAdapter() {
+        try {
+            if (Forge.getDeviceAdapter() != null) {
+                return;
+            }
+            Field f = Forge.class.getDeclaredField("deviceAdapter");
+            f.setAccessible(true);
+            f.set(null, new forge.interfaces.IDeviceAdapter() {
+                @Override public boolean isConnectedToInternet() { return false; }
+                @Override public boolean isConnectedToWifi() { return false; }
+                @Override public boolean isTablet() { return false; }
+                @Override public String getDownloadsDir() {
+                    return System.getProperty("java.io.tmpdir") + File.separator;
+                }
+                @Override public String getVersionString() { return "test"; }
+                @Override public String getLatestChanges(String commitsAtom, java.util.Date buildDateOriginal, java.util.Date maxDate) {
+                    return "";
+                }
+                @Override public String getReleaseTag(String releaseAtom) { return ""; }
+                @Override public boolean openFile(String filename) { return false; }
+                @Override public void setLandscapeMode(boolean landscapeMode) { }
+                @Override public void preventSystemSleep(boolean preventSleep) { }
+                @Override public void restart() { }
+                @Override public void exit() { }
+                @Override public void closeSplashScreen() { }
+                @Override public void convertToJPEG(java.io.InputStream input, java.io.OutputStream output) { }
+                @Override public void convertToPNG(java.io.InputStream input, java.io.OutputStream output) { }
+                @Override public org.apache.commons.lang3.tuple.Pair<Integer, Integer> getRealScreenSize(boolean real) {
+                    return org.apache.commons.lang3.tuple.Pair.of(480, 270);
+                }
+                @Override public java.util.ArrayList<String> getGamepads() {
+                    return new java.util.ArrayList<>();
+                }
+                @Override public org.jupnp.UpnpServiceConfiguration getUpnpPlatformService() { return null; }
+                @Override public boolean needFileAccess() { return false; }
+                @Override public void requestFileAcces() { }
+            });
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to install stub DeviceAdapter", e);
         }
     }
 

@@ -270,7 +270,8 @@ public class GameHUD extends Stage {
 
         seasonHud = Controls.newTypingLabel("");
         seasonHud.setName("seasonHud");
-        seasonHud.setColor(Color.BLACK);
+        // White reads on overworld biomes (ocean/forest); black vanishes on water tiles.
+        seasonHud.setColor(Color.WHITE);
         seasonHud.skipToTheEnd();
         seasonHud.setVisible(false);
         float[] seasonBounds = seasonHudStageBounds(Forge.isLandscapeMode(), getHeight());
