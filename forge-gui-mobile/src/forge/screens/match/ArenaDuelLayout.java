@@ -149,7 +149,9 @@ public final class ArenaDuelLayout {
         final float railW = Math.max(36f, width * railF);
         final float contentX = railW;
         final float contentW = width - railW;
-        final float menuH = Math.max(28f, height * 0.05f);
+        // Arena hides the classic FMenuBar (it collapsed to a tick-mark strip). Give the
+        // body that top band so the battlefield is edge-to-edge under the phase rail.
+        final float menuH = 0f;
         final float bodyY = menuH;
         final float bodyH = height - menuH - promptH;
 
@@ -210,7 +212,8 @@ public final class ArenaDuelLayout {
 
     private static void layoutPortrait(final Map<String, Rect> m, final float width, final float height,
             final float railF, final float handF, final float stackF, final float promptH) {
-        final float menuH = Math.max(28f, height * 0.045f);
+        // Same as landscape: no classic menu strip (see layoutLandscape).
+        final float menuH = 0f;
         // Portrait: phase rail is a horizontal strip above the prompt (pad-reachable).
         final float railH = Math.max(28f, height * Math.max(railF, 0.05f));
         final float bodyY = menuH;

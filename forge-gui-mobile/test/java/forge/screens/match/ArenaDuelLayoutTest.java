@@ -36,7 +36,7 @@ public class ArenaDuelLayoutTest {
         for (final boolean landscape : new boolean[] { true, false }) {
             final ArenaDuelLayout.Result r = ArenaDuelLayout.compute(1000f, 600f, landscape);
             for (final String name : new String[] {
-                    "phaseRail", "menuBar", "opponentAvatar", "opponentField", "opponentPiles",
+                    "phaseRail", "opponentAvatar", "opponentField", "opponentPiles",
                     "stackColumn", "combatLane", "playerField", "playerHand", "playerAvatar",
                     "playerPiles", "contextButton", "cancelButton", "takeBackSlot", "promptBar",
                     "passUntilEot"
@@ -46,6 +46,10 @@ public class ArenaDuelLayoutTest {
                 Assert.assertTrue(r.get(name).w > 0 && r.get(name).h > 0,
                         name + " must have positive size");
             }
+            // menuBar is intentionally zero-height — classic FMenuBar was a tick-mark strip.
+            Assert.assertNotNull(r.get("menuBar"));
+            Assert.assertEquals(r.get("menuBar").h, 0f, 0.01f,
+                    "Arena menuBand must stay collapsed (no classic tab strip)");
         }
     }
 
@@ -123,38 +127,66 @@ public class ArenaDuelLayoutTest {
 
     @Test
     public void handFanCardsKeepAspectAndStayFullyOnScreenInBothOrientations() {
+        assertFanKeepsAspectInBand("playerHand", null);
+    }
+
+    @Test
+    public void openedPileFansKeepAspectAndStayFullyOnScreenInBothOrientations() {
+        // Local piles share the hand band (minus title chrome); opponent piles use the field slot.
+        final float chromeH = 32f;
+        assertFanKeepsAspectInBand("playerHand", chromeH);
+        assertFanKeepsAspectInBand("opponentField", chromeH);
+        assertFanKeepsAspectInBand("playerField", chromeH);
+    }
+
+    @Test
+    public void arenaPileTitlesNameOwnerZoneAndCount() {
+        Assert.assertEquals(formatPileTitle(true, "graveyard", 3), "Your graveyard (3)");
+        Assert.assertEquals(formatPileTitle(false, "exile", 1), "Opponent's exile (1)");
+        Assert.assertEquals(formatPileTitle(true, "library", 40), "Your library (40)");
+        Assert.assertEquals(formatPileTitle(false, "graveyard", 0), "Opponent's graveyard (0)");
+    }
+
+    private static String formatPileTitle(final boolean local, final String zone, final int n) {
+        return (local ? "Your" : "Opponent's") + " " + zone + " (" + n + ")";
+    }
+
+    private static void assertFanKeepsAspectInBand(final String bandName, final Float chromeH) {
         for (final boolean landscape : new boolean[] { true, false }) {
             final float sw = landscape ? 1280f : 720f;
             final float sh = landscape ? 720f : 1280f;
             final ArenaDuelLayout.Result layout = ArenaDuelLayout.compute(sw, sh, landscape);
-            final ArenaDuelLayout.Rect hand = layout.get("playerHand");
-            Assert.assertNotNull(hand, landscape ? "landscape hand" : "portrait hand");
-            // Hand band itself must lie fully inside the screen.
-            Assert.assertTrue(hand.x >= -0.5f && hand.y >= -0.5f,
-                    "hand origin off-screen in " + (landscape ? "landscape" : "portrait"));
-            Assert.assertTrue(hand.x + hand.w <= sw + 0.5f && hand.y + hand.h <= sh + 0.5f,
-                    "hand extends past screen in " + (landscape ? "landscape" : "portrait"));
-            for (final int count : new int[] { 1, 2, 5, 7 }) {
+            final ArenaDuelLayout.Rect band = layout.get(bandName);
+            Assert.assertNotNull(band, (landscape ? "landscape " : "portrait ") + bandName);
+            Assert.assertTrue(band.x >= -0.5f && band.y >= -0.5f,
+                    bandName + " origin off-screen");
+            Assert.assertTrue(band.x + band.w <= sw + 0.5f && band.y + band.h <= sh + 0.5f,
+                    bandName + " extends past screen");
+            final float fanY = chromeH == null ? band.y : band.y + chromeH;
+            final float fanH = chromeH == null ? band.h : Math.max(1f, band.h - chromeH);
+            final float fanX = band.x;
+            final float fanW = band.w;
+            for (final int count : new int[] { 1, 2, 3, 5, 7 }) {
                 final int hover = count > 1 ? 1 : -1;
                 final List<ArenaHandFan.CardPose> poses =
-                        ArenaHandFan.fan(count, hand.w, hand.h, hover, null);
+                        ArenaHandFan.fan(count, fanW, fanH, hover, null);
                 Assert.assertEquals(poses.size(), count);
                 for (final ArenaHandFan.CardPose p : poses) {
                     final float aspect = p.h / p.w;
                     Assert.assertTrue(aspect > 1.2f && aspect < 1.6f,
                             "card aspect " + aspect + " count=" + count
-                                    + " " + (landscape ? "landscape" : "portrait"));
+                                    + " " + bandName + " "
+                                    + (landscape ? "landscape" : "portrait"));
                     Assert.assertTrue(p.x >= -0.5f && p.y >= -0.5f,
-                            "card origin outside hand band");
-                    Assert.assertTrue(p.x + p.w <= hand.w + 0.5f,
-                            "card right edge past hand band");
-                    Assert.assertTrue(p.y + p.h <= hand.h + 0.5f,
-                            "card bottom edge past hand band (clipped)");
-                    // Fully on screen via the hand band.
-                    Assert.assertTrue(hand.x + p.x >= -0.5f);
-                    Assert.assertTrue(hand.y + p.y >= -0.5f);
-                    Assert.assertTrue(hand.x + p.x + p.w <= sw + 0.5f);
-                    Assert.assertTrue(hand.y + p.y + p.h <= sh + 0.5f);
+                            "card origin outside fan band");
+                    Assert.assertTrue(p.x + p.w <= fanW + 0.5f,
+                            "card right edge past fan band");
+                    Assert.assertTrue(p.y + p.h <= fanH + 0.5f,
+                            "card bottom edge past fan band (clipped)");
+                    Assert.assertTrue(fanX + p.x >= -0.5f);
+                    Assert.assertTrue(fanY + p.y >= -0.5f);
+                    Assert.assertTrue(fanX + p.x + p.w <= sw + 0.5f);
+                    Assert.assertTrue(fanY + p.y + p.h <= sh + 0.5f);
                 }
             }
         }

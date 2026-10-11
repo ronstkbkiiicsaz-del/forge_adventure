@@ -23,12 +23,14 @@ import forge.localinstance.skin.FSkinProp;
 import forge.menu.FMenuBar;
 import forge.menu.FMenuItem;
 import forge.menu.FPopupMenu;
+import forge.screens.match.ArenaDuelUi;
 import forge.screens.match.MatchController;
 import forge.screens.match.MatchScreen;
 import forge.screens.match.ModernDuelScreen;
 import forge.toolbox.FCardPanel;
 import forge.toolbox.FContainer;
 import forge.toolbox.FDisplayObject;
+import forge.toolbox.FLabel;
 import forge.toolbox.FScrollPane;
 import forge.util.Utils;
 import org.apache.commons.text.WordUtils;
@@ -72,6 +74,11 @@ public class VPlayerPanel extends FContainer {
     private static final Color ARENA_LIFE_BADGE_INK = new Color(1f, 0.98f, 0.88f, 1f);
     private static final FSkinFont ARENA_LIFE_FONT = FSkinFont._get(28);
     private static final FSkinFont ARENA_LIFE_COUNTER_FONT = FSkinFont._get(14);
+    private static final FSkinFont ARENA_PILE_TITLE_FONT = FSkinFont._get(16);
+    private static final Color ARENA_PILE_TITLE_INK = new Color(0.96f, 0.97f, 0.99f, 1f);
+    private static final Color ARENA_PILE_CLOSE_FACE = new Color(0.28f, 0.34f, 0.44f, 1f);
+    /** Title + Hand button strip above an opened Arena pile fan. */
+    private static final float ARENA_PILE_CHROME_H = 32f;
 
     /**
      * Zones to include in the extra zones dropdown.
@@ -99,6 +106,8 @@ public class VPlayerPanel extends FContainer {
     public int adjustHeight = 1;
     private int selected = 0;
     private boolean isBottomPlayer = false;
+    private final FLabel arenaPileTitle;
+    private final FLabel arenaPileClose;
 
     public VPlayerPanel(PlayerView player0, boolean showHand, int playerCount) {
         player = player0;
@@ -128,6 +137,22 @@ public class VPlayerPanel extends FContainer {
         tabs.add(extraTab);
 
         commandZone = add(new CommandZoneDisplay(player));
+
+        arenaPileTitle = add(new FLabel.Builder()
+                .text("")
+                .font(ARENA_PILE_TITLE_FONT)
+                .textColor(FSkinColor.getStandardColor(ARENA_PILE_TITLE_INK))
+                .align(Align.left)
+                .build());
+        arenaPileTitle.setVisible(false);
+        arenaPileClose = add(new FLabel.ButtonBuilder()
+                .text("Hand")
+                .font(ARENA_PILE_TITLE_FONT)
+                .pressedColor(FSkinColor.getStandardColor(ARENA_PILE_CLOSE_FACE))
+                .textColor(FSkinColor.getStandardColor(ARENA_PILE_TITLE_INK))
+                .command(e -> closeArenaPileToHand())
+                .build());
+        arenaPileClose.setVisible(false);
 
         if (showHand) {
             setSelectedZone(ZoneType.Hand);
@@ -591,10 +616,14 @@ public class VPlayerPanel extends FContainer {
             tab.setDisplayVisible(false);
         }
         if (handR != null) {
-            // Local player: hand / opened pile share the hand band.
+            // Local player: hand / opened pile share the hand band (pile keeps a title chrome).
             final VZoneDisplay handZone = getZoneDisplay(ZoneType.Hand);
+            final boolean pileOpen = selectedTab != null && isArenaPileTab(selectedTab);
+            final float chromeH = pileOpen ? ARENA_PILE_CHROME_H : 0f;
+            final float cardsY = handR.y + chromeH;
+            final float cardsH = Math.max(1f, handR.h - chromeH);
             for (InfoTab tab : tabs) {
-                tab.setDisplayBounds(handR.x, handR.y, handR.w, handR.h);
+                tab.setDisplayBounds(handR.x, cardsY, handR.w, cardsH);
             }
             if (selectedTab != null) {
                 selectedTab.setDisplayVisible(true);
@@ -602,17 +631,24 @@ public class VPlayerPanel extends FContainer {
                 handZone.setVisible(true);
             }
             if (handZone != null) {
-                handZone.setBounds(handR.x, handR.y, handR.w, handR.h);
+                handZone.setBounds(handR.x, cardsY, handR.w, cardsH);
                 if (selectedTab == null || selectedTab.getDisplayArea() == handZone) {
                     handZone.setVisible(true);
                 }
             }
+            layoutArenaPileChrome(pileOpen, handR.x, handR.y, handR.w, chromeH);
             return;
         }
         // Opponent (flipped, no hand band): show an opened pile over the field slot.
         if (fieldR != null && selectedTab != null && isArenaPileTab(selectedTab)) {
-            selectedTab.setDisplayBounds(fieldR.x, fieldR.y, fieldR.w, fieldR.h);
+            final float chromeH = ARENA_PILE_CHROME_H;
+            final float cardsY = fieldR.y + chromeH;
+            final float cardsH = Math.max(1f, fieldR.h - chromeH);
+            selectedTab.setDisplayBounds(fieldR.x, cardsY, fieldR.w, cardsH);
             selectedTab.setDisplayVisible(true);
+            layoutArenaPileChrome(true, fieldR.x, fieldR.y, fieldR.w, chromeH);
+        } else {
+            layoutArenaPileChrome(false, 0, 0, 0, 0);
         }
     }
 
@@ -623,6 +659,69 @@ public class VPlayerPanel extends FContainer {
         }
         final ZoneType zt = ((InfoTabZone) tab).zoneType;
         return zt == ZoneType.Graveyard || zt == ZoneType.Exile || zt == ZoneType.Library;
+    }
+
+    /** True when an Arena pile (GY / exile / library) is the selected zone display. */
+    public boolean isArenaPileOpen() {
+        return ArenaDuelUi.isActive() && selectedTab != null && isArenaPileTab(selectedTab);
+    }
+
+    /** Close an opened Arena pile and restore the local hand band. */
+    public void closeArenaPileToHand() {
+        setSelectedZone(ZoneType.Hand);
+    }
+
+    /** Title shown above an opened Arena pile (empty when hand is showing). */
+    public String getArenaPileTitle() {
+        if (!isArenaPileOpen() || !(selectedTab instanceof InfoTabZone)) {
+            return "";
+        }
+        return buildArenaPileTitle(((InfoTabZone) selectedTab).zoneType);
+    }
+
+    private void layoutArenaPileChrome(final boolean show, final float x, final float y,
+            final float w, final float h) {
+        if (arenaPileTitle == null || arenaPileClose == null) {
+            return;
+        }
+        if (!show || w < 8f || h < 8f) {
+            arenaPileTitle.setVisible(false);
+            arenaPileClose.setVisible(false);
+            return;
+        }
+        final ZoneType zt = selectedTab instanceof InfoTabZone
+                ? ((InfoTabZone) selectedTab).zoneType : null;
+        final String title = zt == null ? "" : buildArenaPileTitle(zt);
+        arenaPileTitle.setText(title);
+        arenaPileTitle.setVisible(true);
+        final float btnW = Math.min(88f, w * 0.22f);
+        final float pad = 4f;
+        arenaPileClose.setVisible(true);
+        arenaPileClose.setBounds(x + w - btnW - pad, y + pad, btnW, h - 2f * pad);
+        arenaPileTitle.setBounds(x + pad, y, w - btnW - 3f * pad, h);
+        // Draw above the zone cards.
+        remove(arenaPileTitle);
+        remove(arenaPileClose);
+        add(arenaPileTitle);
+        add(arenaPileClose);
+    }
+
+    private String buildArenaPileTitle(final ZoneType zt) {
+        final int n = player.getCards(zt) == null ? 0 : player.getCards(zt).size();
+        final boolean local = MatchController.instance != null
+                && MatchController.instance.isLocalPlayer(player);
+        final String owner = local ? "Your" : "Opponent's";
+        final String zone;
+        if (zt == ZoneType.Graveyard) {
+            zone = "graveyard";
+        } else if (zt == ZoneType.Exile) {
+            zone = "exile";
+        } else if (zt == ZoneType.Library) {
+            zone = "library";
+        } else {
+            zone = zt.name().toLowerCase();
+        }
+        return owner + " " + zone + " (" + n + ")";
     }
 
     private void setArenaChromeVisible(final boolean visible) {

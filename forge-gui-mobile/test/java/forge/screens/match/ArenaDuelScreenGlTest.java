@@ -41,6 +41,7 @@ import forge.model.FModel;
 import forge.player.GamePlayerUtil;
 import forge.player.LobbyPlayerHuman;
 import forge.screens.FScreen;
+import forge.screens.match.views.VCardDisplayArea;
 import forge.screens.match.views.VPlayerPanel;
 import forge.screens.match.views.VZoneDisplay;
 import forge.util.collect.FCollectionView;
@@ -142,6 +143,7 @@ public class ArenaDuelScreenGlTest {
                     "Cancel chrome caption must be the readable label");
             assertLifeBadgesReadable(arena);
             openLocalGraveyard(arena);
+            assertOpenedPileFanAndTitle(arena, true);
             captureScreen(outDir.resolve("ds1-arena-duel-landscape.png"), 1280, 720);
             captureScreen(outDir.resolve("ds1-arena-duel-graveyard.png"), 1280, 720);
             return null;
@@ -156,7 +158,9 @@ public class ArenaDuelScreenGlTest {
             ensureTargetingPromptMessage(arena);
             assertLifeBadgesReadable(arena);
             openLocalGraveyard(arena);
+            assertOpenedPileFanAndTitle(arena, false);
             captureScreen(outDir.resolve("ds1-arena-duel-portrait.png"), 720, 1280);
+            captureScreen(outDir.resolve("ds1-arena-duel-graveyard-portrait.png"), 720, 1280);
             return null;
         });
 
@@ -190,10 +194,14 @@ public class ArenaDuelScreenGlTest {
             }
         }
         Assert.assertNotNull(human);
-        final PaperCard pc = requireCard("Grizzly Bears");
-        final Card c = Card.fromPaperCard(pc, human);
-        c.setGameTimestamp(game.getNextTimestamp());
-        human.getZone(ZoneType.Graveyard).add(c);
+        // 3+ cards so the opened pile must fan (not one giant clipped card).
+        final String[] names = { "Grizzly Bears", "Forest", "Lightning Bolt" };
+        for (final String name : names) {
+            final PaperCard pc = requireCard(name);
+            final Card c = Card.fromPaperCard(pc, human);
+            c.setGameTimestamp(game.getNextTimestamp());
+            human.getZone(ZoneType.Graveyard).add(c);
+        }
         if (MatchController.getView() != null && match.getGameView() != null) {
             final PlayerView pv = localHuman(match);
             if (pv != null) {
@@ -210,7 +218,61 @@ public class ArenaDuelScreenGlTest {
         final VZoneDisplay gy = bottom.getZoneDisplay(ZoneType.Graveyard);
         Assert.assertNotNull(gy, "graveyard display");
         Assert.assertTrue(gy.isVisible(), "opened graveyard must stay visible after revalidate");
-        Assert.assertTrue(gy.getCount() > 0, "opened graveyard must show seeded cards");
+        Assert.assertTrue(gy.getCount() >= 3, "opened graveyard must show 3+ seeded cards");
+    }
+
+    /** Opened pile must fan card-aspect, stay fully in the band, and show the pile title. */
+    private static void assertOpenedPileFanAndTitle(final ArenaDuelScreen arena, final boolean landscape) {
+        final VPlayerPanel bottom = arena.getBottomPlayerPanel();
+        Assert.assertTrue(bottom.isArenaPileOpen(), "graveyard pile must be open");
+        final String title = bottom.getArenaPileTitle();
+        Assert.assertTrue(title.startsWith("Your graveyard ("),
+                "expected Your graveyard (N), got: " + title);
+        Assert.assertTrue(title.matches("Your graveyard \\(\\d+\\)"),
+                "title must include count: " + title);
+        final VZoneDisplay gy = bottom.getZoneDisplay(ZoneType.Graveyard);
+        Assert.assertNotNull(gy);
+        Assert.assertTrue(gy.isVisible());
+        final float bandW = gy.getWidth();
+        final float bandH = gy.getHeight();
+        Assert.assertTrue(bandW > 40f && bandH > 40f, "pile band must have size");
+        int n = 0;
+        float prevX = -1f;
+        for (final VCardDisplayArea.CardAreaPanel panel : gy.getCardPanels()) {
+            if (panel == null || !panel.isVisible()) {
+                continue;
+            }
+            n++;
+            final float w = panel.getWidth();
+            final float h = panel.getHeight();
+            Assert.assertTrue(w > 8f && h > 8f, "card must have size");
+            final float aspect = h / w;
+            Assert.assertTrue(aspect > 1.2f && aspect < 1.6f,
+                    "card aspect " + aspect + " (landscape=" + landscape + ")");
+            // Must not be the giant landscape side-column card (~half band width).
+            Assert.assertTrue(w < bandW * 0.55f,
+                    "card width " + w + " too wide for fan in band " + bandW);
+            Assert.assertTrue(panel.getLeft() >= -0.5f && panel.getTop() >= -0.5f);
+            Assert.assertTrue(panel.getLeft() + w <= bandW + 0.5f,
+                    "card right edge past pile band");
+            Assert.assertTrue(panel.getTop() + h <= bandH + 0.5f,
+                    "card bottom edge past pile band (clipped by prompt)");
+            if (prevX >= 0f) {
+                Assert.assertTrue(panel.getLeft() > prevX - 0.5f,
+                        "fan should progress left-to-right");
+            }
+            prevX = panel.getLeft();
+        }
+        Assert.assertTrue(n >= 3, "expected 3+ fanned cards, got " + n);
+        // Menu bar / top prompt strip must stay collapsed (no tick-mark row at y~0).
+        Assert.assertFalse(arena.getHeader() != null && arena.getHeader().isVisible()
+                        && arena.getHeader().getHeight() > 1f,
+                "Arena header/menu strip must stay hidden");
+        if (arena.getTopPlayerPrompt() != null) {
+            Assert.assertFalse(arena.getTopPlayerPrompt().isVisible()
+                            && arena.getTopPlayerPrompt().getHeight() > 1f,
+                    "top prompt strip must stay hidden");
+        }
     }
 
     private static void prepareSkinAndPrefs() {

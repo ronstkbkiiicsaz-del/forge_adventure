@@ -651,6 +651,11 @@ public final class ModernDuelController {
             Gdx.graphics.requestRendering();
             return true;
         }
+        // Arena: B closes an opened pile (GY/exile/library) back to hand before Cancel.
+        if (ArenaDuelUi.isActive() && closeOpenArenaPile()) {
+            Gdx.graphics.requestRendering();
+            return true;
+        }
         // Arena: free B press reaches Cancel only when the prompt's Cancel is armed
         // (same test as the Arena Cancel chrome — enabled + non-empty label).
         if (ArenaDuelUi.isActive() && MatchController.instance != null
@@ -659,6 +664,21 @@ public final class ModernDuelController {
             final IGameController gc = MatchController.instance.getGameController();
             if (gc != null) {
                 gc.selectButtonCancel();
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Close any open Arena pile on either player panel; returns true if one was closed. */
+    private static boolean closeOpenArenaPile() {
+        final MatchScreen screen = MatchController.getView();
+        if (screen == null) {
+            return false;
+        }
+        for (final VPlayerPanel panel : screen.getPlayerPanelsList()) {
+            if (panel != null && panel.isArenaPileOpen()) {
+                panel.closeArenaPileToHand();
                 return true;
             }
         }

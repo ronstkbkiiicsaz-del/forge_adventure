@@ -120,15 +120,21 @@ public class VZoneDisplay extends VCardDisplayArea {
         return !Forge.altZoneTabs || !"Horizontal".equalsIgnoreCase(Forge.altZoneTabMode);
     }
 
+    /** Arena zones that use the same card-aspect fan as the hand band. */
+    public static boolean isArenaFannedZone(final ZoneType zt) {
+        return zt == ZoneType.Hand || zt == ZoneType.Graveyard
+                || zt == ZoneType.Exile || zt == ZoneType.Library;
+    }
+
     @Override
     protected ScrollBounds layoutAndGetScrollBounds(float visibleWidth, float visibleHeight) {
         if (!isVisible()) { //if zone not visible, don't spend time laying out cards
             return new ScrollBounds(visibleWidth, visibleHeight);
         }
 
-        // DS1 Arena hand: always use the fanned card-aspect layout from VCardDisplayArea,
-        // even in landscape (classic landscape stacks the hand in a side column).
-        if (zoneType == ZoneType.Hand && isArenaDuelScreen()) {
+        // DS1 Arena hand / opened piles: always use the fanned card-aspect layout from
+        // VCardDisplayArea, even in landscape (classic landscape stacks zones in a side column).
+        if (isArenaDuelScreen() && isArenaFannedZone(zoneType)) {
             return super.layoutAndGetScrollBounds(visibleWidth, visibleHeight);
         }
 
@@ -212,9 +218,9 @@ public class VZoneDisplay extends VCardDisplayArea {
 
     @Override
     protected void drawBackground(Graphics g) {
-        // Arena hand: opaque band above the field's unclipped match plate and below
-        // the fanned card children (must write alpha=1 so the GL capture keeps it).
-        if (zoneType == ZoneType.Hand && isArenaDuelScreen()) {
+        // Arena hand / opened pile: opaque band above the field's unclipped match plate
+        // and below the fanned card children (must write alpha=1 so the GL capture keeps it).
+        if (isArenaDuelScreen() && isArenaFannedZone(zoneType)) {
             g.resetAlphaComposite();
             g.fillRect(ARENA_HAND_BAND, 0, 0, getWidth(), getHeight());
             g.resetAlphaComposite();
@@ -227,10 +233,10 @@ public class VZoneDisplay extends VCardDisplayArea {
 
     @Override
     protected void startClip(Graphics g) {
-        // Classic landscape stacks zones in a side column (tight clip). DS1 Arena hand
-        // is a bottom band like portrait — use the expanded clip so fanned cards paint.
-        final boolean arenaHand = zoneType == ZoneType.Hand && isArenaDuelScreen();
-        if (Forge.isLandscapeMode() && !arenaHand) {
+        // Classic landscape stacks zones in a side column (tight clip). DS1 Arena hand /
+        // opened piles are a bottom/field band like portrait — expanded clip for fans.
+        final boolean arenaFan = isArenaDuelScreen() && isArenaFannedZone(zoneType);
+        if (Forge.isLandscapeMode() && !arenaFan) {
             g.startClip(0, 0, getWidth(), getHeight());
         }
         else {

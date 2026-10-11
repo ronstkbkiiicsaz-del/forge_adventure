@@ -239,9 +239,9 @@ public abstract class VCardDisplayArea extends VDisplayArea implements ActivateH
         orderedCards.get().clear();
         infoGhostCardIds.get().clear();
 
-        // DS1 Arena: fan the local player's hand across the hand band.
+        // DS1 Arena: fan the hand / opened piles (GY, exile, library) card-aspect.
         if (this instanceof VZoneDisplay zone
-                && zone.getZoneType() == ZoneType.Hand
+                && VZoneDisplay.isArenaFannedZone(zone.getZoneType())
                 && forge.screens.match.ArenaDuelUi.isActive()) {
             return layoutArenaHandFan(visibleWidth, visibleHeight);
         }

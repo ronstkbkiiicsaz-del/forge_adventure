@@ -32,7 +32,6 @@ import forge.assets.FSkinTexture;
 import forge.gamemodes.match.YieldController;
 import forge.interfaces.IGameController;
 import forge.localinstance.properties.ForgePreferences.FPref;
-import forge.menu.FMenuBar;
 import forge.model.FModel;
 import forge.screens.match.views.VArenaStackColumn;
 import forge.screens.match.views.VPhaseIndicator;
@@ -152,17 +151,13 @@ public class ArenaDuelScreen extends MatchScreen {
 
         lastLayout = ArenaDuelLayout.compute(width, height, landscape, railF, handF, stackF, promptH);
 
-        // Menu bar across the top. Classic MatchScreen also hosts "• • •" player
-        // tabs that read as a clipped icon strip in the Arena menuBand — hide those
-        // and keep the readable Game/Log/Dev/Stack tabs only.
+        // Classic FMenuBar in the Arena menuBand collapses to a ~36px strip of tiny
+        // tick-mark tab labels (Game/Log/Dev/Stack). Hide it for Arena — Game menu
+        // remains reachable via Escape / gamepad system controls.
         final ArenaDuelLayout.Rect menu = lastLayout.get("menuBar");
-        if (getHeader() != null && menu != null) {
-            getHeader().setBounds(menu.x, menu.y, menu.w, menu.h);
-            getHeader().setVisible(true);
-            if (getHeader() instanceof FMenuBar) {
-                getHeader().setRotate90(false);
-                hideArenaMenuBulletTabs((FMenuBar) getHeader());
-            }
+        if (getHeader() != null) {
+            getHeader().setVisible(false);
+            getHeader().setBounds(0, 0, 0, 0);
         }
 
         // Scroller fills opponent + player field bands; centre gap is for the stack column.
@@ -204,19 +199,12 @@ public class ArenaDuelScreen extends MatchScreen {
                 bottom.getBtnCancel().setVisible(false);
             }
         }
-        // Always mode / two-human local: keep the second human's prompt visible when present.
+        // Arena: never show the second human's classic prompt strip under the menuBand
+        // (MODE_ALWAYS used to park a tiny Upk/Drw-like row at y≈0–36).
         final VPrompt top = getTopPlayerPrompt();
         if (top != null) {
-            final boolean showTop = isAlwaysModernMode();
-            top.setVisible(showTop);
-            if (showTop && menu != null) {
-                top.setBounds(0, menu.h, width, Math.min(VPrompt.HEIGHT, promptH));
-            }
-        }
-
-        // Menu bar fills the Arena menuBand (not the classic rotated side strip).
-        if (getHeader() != null && menu != null) {
-            getHeader().setHeight(menu.h);
+            top.setVisible(false);
+            top.setBounds(0, 0, 0, 0);
         }
 
         // Do NOT force Hand here — revalidate runs after every pile tab tap
