@@ -19,12 +19,16 @@ import forge.assets.FSkin;
 import forge.assets.FSkinFont;
 import forge.card.CardFaceSymbols;
 import forge.deck.Deck;
+import forge.game.Game;
 import forge.game.GameRules;
 import forge.game.GameType;
+import forge.game.card.Card;
 import forge.game.card.CardView;
 import forge.game.phase.PhaseType;
+import forge.game.player.Player;
 import forge.game.player.PlayerView;
 import forge.game.player.RegisteredPlayer;
+import forge.game.zone.ZoneType;
 import forge.gamemodes.match.HostedMatch;
 import forge.gui.GuiBase;
 import forge.gui.interfaces.IGuiGame;
@@ -38,6 +42,7 @@ import forge.player.GamePlayerUtil;
 import forge.player.LobbyPlayerHuman;
 import forge.screens.FScreen;
 import forge.screens.match.views.VPlayerPanel;
+import forge.screens.match.views.VZoneDisplay;
 import forge.util.collect.FCollectionView;
 import org.apache.commons.lang3.tuple.Pair;
 import org.jupnp.UpnpServiceConfiguration;
@@ -107,6 +112,10 @@ public class ArenaDuelScreenGlTest {
         // Prefer mid-targeting (Lightning Bolt choosing a target) so Cancel + prompt show.
         driveToTargetingShot(match);
 
+        // Seed a GY card so the opened-pile re-render shows real cards.
+        GuiBase.getInterface().invokeInEdtNow(() -> seedLocalGraveyard(match));
+        Thread.sleep(50);
+
         AdventureGlTestSupport.runOnGl(() -> {
             Assert.assertTrue(MatchController.getView() instanceof ArenaDuelScreen,
                     "expected ArenaDuelScreen, got " + MatchController.getView());
@@ -132,7 +141,9 @@ public class ArenaDuelScreenGlTest {
             Assert.assertEquals(arena.arenaCancelCaption(), "Cancel",
                     "Cancel chrome caption must be the readable label");
             assertLifeBadgesReadable(arena);
+            openLocalGraveyard(arena);
             captureScreen(outDir.resolve("ds1-arena-duel-landscape.png"), 1280, 720);
+            captureScreen(outDir.resolve("ds1-arena-duel-graveyard.png"), 1280, 720);
             return null;
         });
 
@@ -144,6 +155,7 @@ public class ArenaDuelScreenGlTest {
             ensureCancelChromeVisible(arena);
             ensureTargetingPromptMessage(arena);
             assertLifeBadgesReadable(arena);
+            openLocalGraveyard(arena);
             captureScreen(outDir.resolve("ds1-arena-duel-portrait.png"), 720, 1280);
             return null;
         });
@@ -163,6 +175,42 @@ public class ArenaDuelScreenGlTest {
                 "landscape screenshot too small — likely blank");
         Assert.assertTrue(Files.size(outDir.resolve("ds1-arena-duel-portrait.png")) > 20_000,
                 "portrait screenshot too small — likely blank");
+        Assert.assertTrue(Files.size(outDir.resolve("ds1-arena-duel-graveyard.png")) > 20_000,
+                "graveyard screenshot too small — likely blank");
+    }
+
+    private static void seedLocalGraveyard(final HostedMatch match) {
+        final Game game = match.getGame();
+        Assert.assertNotNull(game);
+        Player human = null;
+        for (final Player p : game.getPlayers()) {
+            if (!p.isAI()) {
+                human = p;
+                break;
+            }
+        }
+        Assert.assertNotNull(human);
+        final PaperCard pc = requireCard("Grizzly Bears");
+        final Card c = Card.fromPaperCard(pc, human);
+        c.setGameTimestamp(game.getNextTimestamp());
+        human.getZone(ZoneType.Graveyard).add(c);
+        if (MatchController.getView() != null && match.getGameView() != null) {
+            final PlayerView pv = localHuman(match);
+            if (pv != null) {
+                MatchController.getView().getPlayerPanel(pv).updateZone(ZoneType.Graveyard);
+            }
+        }
+    }
+
+    private static void openLocalGraveyard(final ArenaDuelScreen arena) {
+        final VPlayerPanel bottom = arena.getBottomPlayerPanel();
+        Assert.assertNotNull(bottom);
+        bottom.setSelectedZone(ZoneType.Graveyard);
+        arena.revalidate();
+        final VZoneDisplay gy = bottom.getZoneDisplay(ZoneType.Graveyard);
+        Assert.assertNotNull(gy, "graveyard display");
+        Assert.assertTrue(gy.isVisible(), "opened graveyard must stay visible after revalidate");
+        Assert.assertTrue(gy.getCount() > 0, "opened graveyard must show seeded cards");
     }
 
     private static void prepareSkinAndPrefs() {
