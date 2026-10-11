@@ -120,6 +120,28 @@ public class SaveAnywhereSv1Test {
     }
 
     @Test
+    public void worldMapOnlySaveMessageIsStockOnly() {
+        // Ascendant: never show lblGameNotSaved for in-map saves.
+        assumeAscendantConfig();
+        Assert.assertTrue(InteriorMapSave.saveAnywhereEnabled());
+        Assert.assertFalse(InteriorMapSave.shouldShowWorldMapOnlySaveMessage(),
+                "Ascendant must not use the world-map-only save message");
+
+        ConfigData stock = new ConfigData();
+        stock.ascendantRules = false;
+        Config.installConfigDataForTest(stock);
+        try {
+            Assert.assertFalse(InteriorMapSave.saveAnywhereEnabled());
+            // Without an in-map MapStage the stock message stays off; the in-map case is
+            // covered by the GL test below.
+            Assert.assertFalse(InteriorMapSave.shouldShowWorldMapOnlySaveMessage());
+        } finally {
+            Config.resetInstanceForTest();
+            assumeAscendantConfig();
+        }
+    }
+
+    @Test
     public void autosaveBeforeDuelSkippedDuringCoopSession() throws Exception {
         assumeAscendantConfig();
         setCoopActiveHost();
@@ -264,6 +286,123 @@ public class SaveAnywhereSv1Test {
             String loaded = MapStage.getInstance().getLoadedMapPath();
             Assert.assertEquals(loaded, dungeon.getData().map,
                     "Fallback must load the POI root map, not the missing path");
+        });
+    }
+
+    @Test(groups = "gl", timeOut = 300_000)
+    public void overworldFallbackResetsWorldSeedLikeNormalOverworld() {
+        AdventureGlTestSupport.runOnGl(() -> {
+            assumeAscendantConfig();
+            PointOfInterest dungeon = generateWorldAndPickDungeon();
+            TileMapScene.instance().load(dungeon);
+            Assert.assertTrue(MapStage.getInstance().isInMap());
+            // load() applied the POI seed offset; capture a draw from that sequence for contrast.
+            forge.adventure.world.World world = WorldSave.getCurrentSave().getWorld();
+            long poiOffsetDraw = world.getRandom().nextLong();
+
+            String originalMap = dungeon.getData().map;
+            dungeon.getData().map = "../common/maps/map/does_not_exist_sv1_root.tmx";
+            try {
+                SaveFileData fake = new SaveFileData();
+                fake.store(InteriorMapSave.KEY_POI_ID, dungeon.getID());
+                fake.store(InteriorMapSave.KEY_MAP_PATH, "../common/maps/map/does_not_exist_sv1.tmx");
+                fake.store(InteriorMapSave.KEY_ENTRANCE_ID, 0);
+                fake.store(InteriorMapSave.KEY_POS_X, 1f);
+                fake.store(InteriorMapSave.KEY_POS_Y, 1f);
+                InteriorMapSave.readPending(fake);
+
+                Assert.assertFalse(InteriorMapSave.prepareRestoredMap(),
+                        "Both nested and root TMX missing → overworld fallback");
+                Assert.assertFalse(MapStage.getInstance().isInMap());
+
+                long afterFallback = world.getRandom().nextLong();
+                world.setSeed(0);
+                long expectedOverworld = world.getRandom().nextLong();
+                Assert.assertEquals(afterFallback, expectedOverworld,
+                        "Overworld fallback must reset RNG like setSeed(0) / generateNew");
+                Assert.assertNotEquals(poiOffsetDraw, afterFallback,
+                        "Fallback RNG must not stay on the POI-offset sequence");
+            } finally {
+                dungeon.getData().map = originalMap;
+            }
+        });
+    }
+
+    @Test(groups = "gl", timeOut = 300_000)
+    public void worldMapOnlySaveMessage_stockInMap_ascendantInMap() {
+        AdventureGlTestSupport.runOnGl(() -> {
+            PointOfInterest dungeon = generateWorldAndPickDungeon();
+            TileMapScene.instance().load(dungeon);
+            Assert.assertTrue(MapStage.getInstance().isInMap());
+
+            assumeAscendantConfig();
+            Assert.assertFalse(InteriorMapSave.shouldShowWorldMapOnlySaveMessage(),
+                    "Ascendant in a map must not show the world-map-only save message");
+
+            ConfigData stock = new ConfigData();
+            stock.ascendantRules = false;
+            Config.installConfigDataForTest(stock);
+            try {
+                Assert.assertTrue(MapStage.getInstance().isInMap());
+                Assert.assertTrue(InteriorMapSave.shouldShowWorldMapOnlySaveMessage(),
+                        "Stock mode in a map must still show the world-map-only save message");
+            } finally {
+                Config.resetInstanceForTest();
+                assumeAscendantConfig();
+            }
+        });
+    }
+
+    @Test(groups = "gl", timeOut = 300_000)
+    public void f8QuickloadBlockedWhileDialogOpen() {
+        AdventureGlTestSupport.runOnGl(() -> {
+            assumeAscendantConfig();
+            PointOfInterest dungeon = generateWorldAndPickDungeon();
+            TileMapScene.instance().load(dungeon);
+            Assert.assertTrue(MapStage.getInstance().isInMap());
+
+            try {
+                setPlayerField(Current.player(), "gold", 100);
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+            Assert.assertTrue(WorldSave.getCurrentSave().quickSave());
+            try {
+                setPlayerField(Current.player(), "gold", 50);
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+            Assert.assertEquals(Current.player().getGold(), 50);
+
+            MapStage map = MapStage.getInstance();
+            try {
+                Field dialogFlag = forge.adventure.stage.GameStage.class
+                        .getDeclaredField("dialogOnlyInput");
+                dialogFlag.setAccessible(true);
+                dialogFlag.setBoolean(map, true);
+                Assert.assertTrue(map.isDialogOnlyInput());
+
+                Assert.assertTrue(map.keyDown(com.badlogic.gdx.Input.Keys.F8));
+                Assert.assertEquals(Current.player().getGold(), 50,
+                        "F8 must not quickload while a dialog is open");
+
+                dialogFlag.setBoolean(map, false);
+                Assert.assertFalse(map.isDialogOnlyInput());
+                map.keyDown(com.badlogic.gdx.Input.Keys.F8);
+                Assert.assertEquals(Current.player().getGold(), 100,
+                        "F8 quickload must run when no dialog is open");
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            } finally {
+                try {
+                    Field dialogFlag = forge.adventure.stage.GameStage.class
+                            .getDeclaredField("dialogOnlyInput");
+                    dialogFlag.setAccessible(true);
+                    dialogFlag.setBoolean(map, false);
+                } catch (Exception ignored) {
+                }
+                deleteSlot(WorldSave.QUICK_SAVE_SLOT);
+            }
         });
     }
 

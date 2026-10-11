@@ -272,10 +272,19 @@ public class SaveLoadScene extends UIScene {
         loaded = true;
         switch (mode) {
             case Save:
-                // Stock: block in-map saves. Ascendant SV1: allow (interior location is persisted).
-                if (TileMapScene.instance().currentMap().isInMap()
-                        && !forge.adventure.util.InteriorMapSave.allowsManualSave()) {
+                // Stock: block in-map saves with lblGameNotSaved. Ascendant SV1: save anywhere
+                // (interior persisted); only block while a dialog is open (different message).
+                if (forge.adventure.util.InteriorMapSave.shouldShowWorldMapOnlySaveMessage()) {
                     Dialog noSave = createGenericDialog("", Forge.getLocalizer().getMessage("lblGameNotSaved"), Forge.getLocalizer().getMessage("lblOK"), null, null, null);
+                    showDialog(noSave);
+                    loaded = false;
+                    return;
+                }
+                if (!forge.adventure.util.InteriorMapSave.allowsManualSave()) {
+                    Dialog noSave = createGenericDialog("", Forge.getLocalizer().getMessageorUseDefault(
+                            "lblCannotSaveDuringDialog",
+                            "Cannot save while a dialog is open."),
+                            Forge.getLocalizer().getMessage("lblOK"), null, null, null);
                     showDialog(noSave);
                     loaded = false;
                     return;

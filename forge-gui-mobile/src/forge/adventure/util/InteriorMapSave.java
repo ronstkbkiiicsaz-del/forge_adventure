@@ -70,6 +70,15 @@ public final class InteriorMapSave {
     }
 
     /**
+     * Stock-only gate for {@code lblGameNotSaved} ("only on the world map").
+     * Ascendant never shows that message — save-anywhere is allowed inside maps.
+     */
+    public static boolean shouldShowWorldMapOnlySaveMessage() {
+        MapStage map = MapStage.instance;
+        return map != null && map.isInMap() && !saveAnywhereEnabled();
+    }
+
+    /**
      * Persist interior location into the WorldSave player blob when in a map.
      * Must only be called from {@link WorldSave#save}, never from co-op {@code .chr} paths.
      */
@@ -195,6 +204,12 @@ public final class InteriorMapSave {
                 System.err.println("SV1: root map also failed: " + e2.getMessage());
                 try {
                     MapStage.getInstance().clearIsInMap();
+                } catch (Exception ignored) {
+                }
+                // loadForRestore already applied the POI seed offset; reset to the overworld
+                // RNG (offset 0), same as World.generateNew's random.setSeed(worldSeed).
+                try {
+                    WorldSave.getCurrentSave().getWorld().setSeed(0);
                 } catch (Exception ignored) {
                 }
                 return false;

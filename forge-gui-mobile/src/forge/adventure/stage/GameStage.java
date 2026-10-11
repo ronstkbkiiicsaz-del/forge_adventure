@@ -496,6 +496,11 @@ public abstract class GameStage extends Stage {
         }
         if (keycode == Input.Keys.F8)//todo config
         {
+            // Block quickload while a dialog is open (F5 already gates via allowsManualSave).
+            if (isDialogOnlyInput()
+                    || TileMapScene.instance().currentMap().isDialogOnlyInput()) {
+                return true;
+            }
             // Ascendant SV1: quickload restores interior via sceneAfterLoad. Stock: world map only.
             if (forge.adventure.util.InteriorMapSave.saveAnywhereEnabled()) {
                 if (WorldSave.getCurrentSave().quickLoad()) {
