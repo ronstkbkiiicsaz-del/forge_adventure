@@ -16,6 +16,20 @@ window pops it up. Tighten the hover zone to the **cards themselves**: the hand 
 over a card's visible area (plus a small margin, about 0.02H), not across a wide band along the bottom edge. The next
 prototype is the battlefield and combat: see `BattlefieldPrototype-Spec.md`.
 
+**Play notes, round 3 (Steve, 2026-10-12).** The opened cards were too small, and the photos looked soft or broken up,
+so the titles could not be read without the click zoom. On hover, lift the whole hand toward the middle of the window
+(tops near 0.55H). Seven cards at half the screen height will not fit, so the opened cards are about 0.42H
+tall and the one under the cursor a little taller (about 0.48H, still short of the 0.75H zoom). Overlap the lower
+part and keep the title bands
+clear. Load real card scans with mipmaps so the art stays sharp. Keep the resting fan, the cast, and the 0.02H hover
+zone.
+
+**Play notes, round 4 (Steve, 2026-10-12).** The readable hover stays. Card scans are clipped to a small
+rounded rectangle (about Forge's card corner, 22px on a 488px-wide scan) so the white JPEG corners
+disappear. Once a card is gripped past the drag threshold, the rest of the hand eases back to the tucked
+resting fan so the table stays visible; the gripped card keeps following the cursor at the raised size.
+Release below the cast line still snaps back; release above still casts.
+
 **Reference feel.** MTG Arena's hand and Slay the Spire's hand (Slay the Spire is Java/libGDX, so this is achievable
 in our stack). The point is the *behaviour*, not the layout.
 
