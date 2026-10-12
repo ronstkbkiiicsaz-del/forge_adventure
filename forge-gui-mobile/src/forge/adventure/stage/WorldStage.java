@@ -5,6 +5,7 @@ import com.badlogic.gdx.math.GridPoint2;
 import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.scenes.scene2d.Actor;
+import com.badlogic.gdx.utils.ObjectMap;
 import com.badlogic.gdx.utils.Timer;
 import com.badlogic.gdx.utils.viewport.Viewport;
 import forge.Forge;
@@ -46,6 +47,8 @@ import java.util.*;
  */
 public class WorldStage extends GameStage implements SaveFileContent {
     private static WorldStage instance = null;
+    /** GN1: trees grow everywhere; log materials live on the forest biome in materials.json. */
+    private static final String LOGS_FAMILY = "logs";
     protected EnemySprite currentMob;
     /**
      * EN2: how many times to roll {@link EnemySprite#getRewards()} on a win.
@@ -808,13 +811,18 @@ public class WorldStage extends GameStage implements SaveFileContent {
     }
 
     /**
-     * Chooses a gather line for biomes that host more than one (forest: logs|plants,
-     * mountain: ore veins|ash vents), then a tier weighted toward the player's skill level.
+     * Chooses a gather family for the biome (GN1 shares in Ascendant, the legacy split otherwise),
+     * borrows that family's materials from its home biome, then picks a tier weighted toward the
+     * player's skill level.
      */
     private MaterialData pickNodeMaterial(String materialBiome) {
-        String familyFilter = pickBiomeFamily(materialBiome);
-        // Log materials are defined on the forest biome; other biomes borrow them.
-        String familyBiome = "logs".equals(familyFilter) ? "forest" : materialBiome;
+        Map<String, String> homes = MaterialListData.gatherFamilyHomeBiomes();
+        String familyFilter = pickBiomeFamily(materialBiome, homes);
+        // Families are defined on one biome in materials.json (logs on forest, ash on mountain, ...);
+        // other biomes borrow them from there.
+        String familyBiome = familyFilter != null && homes.containsKey(familyFilter)
+                ? homes.get(familyFilter)
+                : (LOGS_FAMILY.equals(familyFilter) ? "forest" : materialBiome);
         com.badlogic.gdx.utils.Array<MaterialData> candidates = familyFilter != null
                 ? MaterialListData.getGatherablesForBiomeFamily(familyBiome, familyFilter)
                 : MaterialListData.getGatherablesForBiome(materialBiome);
@@ -851,8 +859,34 @@ public class WorldStage extends GameStage implements SaveFileContent {
         return candidates.get(candidates.size - 1);
     }
 
-    /** Family split for dual-line biomes; null = use every gatherable in the biome. */
-    private String pickBiomeFamily(String materialBiome) {
+    private String pickBiomeFamily(String materialBiome, Map<String, String> familyHomes) {
+        ConfigData cfg = gatherConfig();
+        return chooseGatherFamily(materialBiome, cfg, Config.ascendant(), familyHomes, rand);
+    }
+
+    /**
+     * Gather family for one node spawn; null = use every gatherable in the biome.
+     *
+     * <p>GN1 (Ascendant with {@code gn1GatherVariety}): the biome's primary family
+     * {@code gn1PrimaryShare} of the time, logs {@code gn1LogsShare}, and otherwise a weighted mix of
+     * every other gatherable family ({@code gn1SecondaryWeights}, unlisted = {@code gn1OtherFamilyWeight}).
+     * Otherwise the legacy split: forest logs|plants, 30% logs elsewhere, mountain ore|ash.
+     *
+     * @param familyHomes gatherable family → home biome ({@link MaterialListData#gatherFamilyHomeBiomes()})
+     */
+    public static String chooseGatherFamily(String materialBiome, ConfigData cfg, boolean ascendant,
+            Map<String, String> familyHomes, Random rand) {
+        if (ascendant && cfg != null && cfg.ascendantRules && cfg.gn1GatherVariety
+                && materialBiome != null && familyHomes != null && !familyHomes.isEmpty()) {
+            String picked = chooseGn1Family(materialBiome.toLowerCase(), cfg, familyHomes, rand);
+            if (picked != null)
+                return picked;
+        }
+        return legacyBiomeFamily(materialBiome, rand);
+    }
+
+    /** Pre-GN1 family split (stock worlds and Ascendant with GN1 off). */
+    private static String legacyBiomeFamily(String materialBiome, Random rand) {
         if ("forest".equalsIgnoreCase(materialBiome))
             return rand.nextBoolean() ? "logs" : "plants";
         // Trees grow everywhere (each biome has its own look, world/node_variants.json).
@@ -860,6 +894,88 @@ public class WorldStage extends GameStage implements SaveFileContent {
             return "logs";
         if ("mountain".equalsIgnoreCase(materialBiome))
             return rand.nextBoolean() ? "ore" : "ash";
+        return null;
+    }
+
+    private static String chooseGn1Family(String biome, ConfigData cfg, Map<String, String> familyHomes,
+            Random rand) {
+        String primary = gn1PrimaryFamily(biome, cfg, familyHomes);
+        if (primary == null)
+            return null;
+        boolean hasLogs = familyHomes.containsKey(LOGS_FAMILY) && !LOGS_FAMILY.equals(primary);
+        float primaryShare = Math.max(0f, cfg.gn1PrimaryShare);
+        float logsShare = hasLogs ? Math.max(0f, cfg.gn1LogsShare) : 0f;
+        float secondaryShare = Math.max(0f, cfg.gn1SecondaryShare);
+        float total = primaryShare + logsShare + secondaryShare;
+        if (total <= 0f)
+            return primary;
+        float roll = rand.nextFloat() * total;
+        if (roll < primaryShare)
+            return primary;
+        if (roll < primaryShare + logsShare)
+            return LOGS_FAMILY;
+
+        ObjectMap<String, Float> listed = cfg.gn1SecondaryWeights != null
+                ? findIgnoreCase(cfg.gn1SecondaryWeights, biome) : null;
+        float other = Math.max(0f, cfg.gn1OtherFamilyWeight);
+        List<String> pool = new ArrayList<>();
+        List<Float> weights = new ArrayList<>();
+        float sum = 0f;
+        for (String family : familyHomes.keySet()) {
+            if (family.equals(primary) || LOGS_FAMILY.equals(family))
+                continue;
+            float w = other;
+            if (listed != null) {
+                Object v = findIgnoreCase(listed, family);
+                if (v instanceof Number)
+                    w = Math.max(0f, ((Number) v).floatValue());
+            }
+            if (w <= 0f)
+                continue;
+            pool.add(family);
+            weights.add(w);
+            sum += w;
+        }
+        if (sum <= 0f)
+            return primary;
+        float pick = rand.nextFloat() * sum;
+        float acc = 0f;
+        for (int i = 0; i < pool.size(); i++) {
+            acc += weights.get(i);
+            if (pick < acc)
+                return pool.get(i);
+        }
+        return pool.get(pool.size() - 1);
+    }
+
+    /** Configured primary when it exists in the data, else the first non-log family defined on the biome. */
+    static String gn1PrimaryFamily(String biome, ConfigData cfg, Map<String, String> familyHomes) {
+        if (cfg.gn1PrimaryFamily != null) {
+            String configured = findIgnoreCase(cfg.gn1PrimaryFamily, biome);
+            if (configured != null && familyHomes.containsKey(configured.toLowerCase()))
+                return configured.toLowerCase();
+        }
+        String fallback = null;
+        for (Map.Entry<String, String> e : familyHomes.entrySet()) {
+            if (!biome.equalsIgnoreCase(e.getValue()))
+                continue;
+            if (!LOGS_FAMILY.equals(e.getKey()))
+                return e.getKey();
+            fallback = e.getKey();
+        }
+        return fallback;
+    }
+
+    private static <V> V findIgnoreCase(ObjectMap<String, V> map, String key) {
+        if (map == null || key == null)
+            return null;
+        V direct = map.get(key);
+        if (direct != null)
+            return direct;
+        for (ObjectMap.Entry<String, V> e : new ObjectMap.Entries<>(map)) {
+            if (e.key != null && e.key.equalsIgnoreCase(key))
+                return e.value;
+        }
         return null;
     }
 

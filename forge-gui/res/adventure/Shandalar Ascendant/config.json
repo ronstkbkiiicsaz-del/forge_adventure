@@ -28,6 +28,27 @@
   "gatherChannelMin": 1,
   "gatherYieldMin": 1,
   "gatherYieldMax": 3,
+  "gn1GatherVariety": true,
+  "gn1PrimaryShare": 0.5,
+  "gn1LogsShare": 0.2,
+  "gn1SecondaryShare": 0.3,
+  "gn1OtherFamilyWeight": 1,
+  "gn1PrimaryFamily": {
+    "plains": "sacred_stone",
+    "island": "waters",
+    "swamp": "dead",
+    "mountain": "ore",
+    "forest": "plants",
+    "wastes": "scrap"
+  },
+  "gn1SecondaryWeights": {
+    "plains": { "plants": 4 },
+    "island": { "sacred_stone": 4, "plants": 4 },
+    "swamp": { "plants": 4 },
+    "mountain": { "ash": 5, "sacred_stone": 3 },
+    "forest": { "waters": 4, "dead": 4 },
+    "wastes": { "sacred_stone": 4, "ash": 4 }
+  },
   "gatherYieldLevel2": 40,
   "gatherYieldLevel3": 70,
   "gatherGemChance": 0.08,
