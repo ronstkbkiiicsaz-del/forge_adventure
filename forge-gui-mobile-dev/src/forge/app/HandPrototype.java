@@ -139,10 +139,7 @@ public final class HandPrototype extends ApplicationAdapter {
                 int n = live.size();
                 if (n == 0) { hover = -1; return false; }
                 float w = Gdx.graphics.getWidth(), h = Gdx.graphics.getHeight();
-                int nearest = HandLayout.nearestCard(w, h, n, x);
-                if (hover >= 0 && !HandLayout.pointerInHandArea(w, h, n, hover, x, y)) hover = -1;
-                else if (HandLayout.pointerInHandArea(w, h, n, nearest, x, y)) hover = nearest;
-                else hover = -1;
+                hover = HandLayout.hoverIndexFor(w, h, n, hover, x, y);
                 return false;
             }
         });
@@ -234,8 +231,7 @@ public final class HandPrototype extends ApplicationAdapter {
             if (Math.abs(x - c.cx) <= c.w / 2f && Math.abs(y - c.cy) <= c.h / 2f) return i;
         }
         float w = Gdx.graphics.getWidth(), h = Gdx.graphics.getHeight();
-        int nearest = HandLayout.nearestCard(w, h, n, x);
-        return HandLayout.pointerInHandArea(w, h, n, nearest, x, y) ? nearest : -1;
+        return HandLayout.hoverIndexFor(w, h, n, hover, x, y);
     }
 
     private void layoutTargets(float dt) {

@@ -13,9 +13,17 @@ public final class HandLayout {
     public static final float VISIBLE_STRIP_FRAC = 0.45f;
     public static final float MAX_HAND_WIDTH_FRAC = 0.55f;
     public static final float ROTATION_MAX_DEG = 12f;
-    public static final float ARC_RADIUS_MULT = 2.5f;
     public static final float HOVER_BOTTOM_FRAC = 0.02f;
-    public static final float NEIGHBOR_SPREAD_FRAC = 0.35f;
+    /** HP1: on hover the whole hand grows to this multiple of its resting size. */
+    public static final float HOVER_HAND_SCALE = 1.35f;
+    /** HP1: hovered hand's card tops sit this high (fraction of H); the hovered card still lifts higher. */
+    public static final float HOVER_HAND_TOP_FRAC = 0.20f;
+    /** HP1: hovered hand fan is flatter than the resting fan so spread cards stay clear of each other. */
+    public static final float HOVER_ROTATION_MAX_DEG = 4f;
+    /** HP1: clear gap between spread cards on hover, as a fraction of a full card width. */
+    public static final float HOVER_GAP_FRAC = 0.05f;
+    /** HP1: the spread hand may use at most this fraction of the window width (scale shrinks to fit). */
+    public static final float HOVER_MAX_WIDTH_FRAC = 0.92f;
     public static final float LEAVE_HAND_ABOVE_FRAC = 0.05f;
     public static final float EASE_RATE = 14f;
     public static final float CAST_LINE_FRAC = 0.45f;
@@ -93,61 +101,104 @@ public final class HandLayout {
         return (n - 1) * restStep(windowW, h, n) + restWidth(h);
     }
 
-    /** Resting pose for card {@code i} of {@code n}. Origin is card centre. Y is from bottom. */
+    /** Fan angle (degrees from vertical, negative = leaning left) for card {@code i} of {@code n}. */
+    static float fanAngleDeg(int n, int i, float maxDeg) {
+        float t = n <= 1 ? 0.5f : i / (float) (n - 1);
+        return -maxDeg + 2f * maxDeg * t;
+    }
+
+    /**
+     * Resting pose for card {@code i} of {@code n}. Origin is card centre. Y is from bottom.
+     * HP1: held like a real hand. Every card rotates about one pivot below the hand, so the
+     * card bottoms are pinched together and the tops fan outward along an arc (left cards lean
+     * left, right cards lean right). The arc radius is chosen so the centre-to-centre spacing
+     * matches {@link #restStep}, keeping the 45% visible strip and 55% width cap.
+     */
     public static Pose restPose(float windowW, float h, int n, int i) {
         float restW = restWidth(h);
         float restH = restHeight(h);
         float step = restStep(windowW, h, n);
-        float handW = handWidth(windowW, h, n);
-        float left = (windowW - handW) / 2f;
-        float cx = left + restW / 2f + i * step;
-        float t = n <= 1 ? 0.5f : i / (float) (n - 1);
-        float rot = -ROTATION_MAX_DEG + 2f * ROTATION_MAX_DEG * t;
         float handCx = windowW / 2f;
-        float relX = cx - handCx;
-        float radius = Math.max(handW * ARC_RADIUS_MULT, 1f);
-        // Outer cards sit lower on the arc; centre card top stays at REST_TOP_FRAC * H.
-        float drop = radius - (float) Math.sqrt(Math.max(0.0, (double) radius * radius - (double) relX * relX));
-        float topY = REST_TOP_FRAC * h - drop;
-        float cy = topY - restH / 2f;
-        return new Pose(cx, cy, restW, restH, rot, REST_SCALE);
+        float theta = fanAngleDeg(n, i, ROTATION_MAX_DEG);
+        float stepRad = n <= 1 ? 0f : (float) Math.toRadians(2f * ROTATION_MAX_DEG / (n - 1));
+        float radius = stepRad <= 0f ? 0f : step / stepRad;
+        // Centre card's top stays at REST_TOP_FRAC * H; the pivot sits radius below its centre.
+        float pivotY = REST_TOP_FRAC * h - restH / 2f - radius;
+        double rad = Math.toRadians(theta);
+        float cx = handCx + radius * (float) Math.sin(rad);
+        float cy = pivotY + radius * (float) Math.cos(rad);
+        // libGDX rotation is counter-clockwise; a card leaning left (theta < 0) turns CCW.
+        return new Pose(cx, cy, restW, restH, -theta, REST_SCALE);
     }
 
     /**
-     * Sideways shift for neighbours of the hovered card. Immediate neighbours
-     * move by {@link #NEIGHBOR_SPREAD_FRAC} of a full card width; further cards
-     * fall off as 1/|distance|.
+     * HP1 hover scale: the whole hand grows to {@link #HOVER_HAND_SCALE} times its resting size,
+     * shrunk only if the spread hand would not fit in {@link #HOVER_MAX_WIDTH_FRAC} of the window.
+     * Never below 1.
      */
-    public static float neighborShiftX(float h, int cardIndex, int hoverIndex) {
-        if (hoverIndex < 0 || cardIndex == hoverIndex) {
-            return 0f;
+    public static float hoverHandScale(float windowW, float h, int n) {
+        if (n <= 0) {
+            return HOVER_HAND_SCALE;
         }
-        int dist = cardIndex - hoverIndex;
-        float mag = NEIGHBOR_SPREAD_FRAC * fullWidth(h) / Math.abs(dist);
-        return Math.signum(dist) * mag;
+        float restW = restWidth(h);
+        float gap = HOVER_GAP_FRAC * fullWidth(h);
+        float room = HOVER_MAX_WIDTH_FRAC * windowW - fullWidth(h) - gap * (n - 1);
+        float fit = n <= 1 ? HOVER_HAND_SCALE : room / ((n - 1) * restW);
+        return Math.max(1f, Math.min(HOVER_HAND_SCALE, fit));
     }
 
+    private static float hoverCardWidth(float windowW, float h, int n, int i, int hoverIndex) {
+        return i == hoverIndex ? fullWidth(h) : restWidth(h) * hoverHandScale(windowW, h, n);
+    }
+
+    /** Total width of the spread hand while card {@code hoverIndex} is hovered. */
+    public static float hoverHandWidth(float windowW, float h, int n, int hoverIndex) {
+        float total = 0f;
+        for (int i = 0; i < n; i++) {
+            total += hoverCardWidth(windowW, h, n, i, hoverIndex);
+        }
+        return total + HOVER_GAP_FRAC * fullWidth(h) * Math.max(0, n - 1);
+    }
+
+    /**
+     * HP1 hover pose: the whole hand scales up (see {@link #hoverHandScale}) and spreads into
+     * side-by-side slots with a small gap, so no card covers another. The hovered card is full
+     * size, upright and lifted (bottom at {@link #HOVER_BOTTOM_FRAC} * H); the others keep a
+     * flatter version of the same bottoms-pinched fan.
+     */
     public static Pose hoverPose(float windowW, float h, int n, int i, int hoverIndex) {
-        Pose rest = restPose(windowW, h, n, i);
-        float shift = neighborShiftX(h, i, hoverIndex);
+        if (hoverIndex < 0 || hoverIndex >= n) {
+            return restPose(windowW, h, n, i);
+        }
+        float gap = HOVER_GAP_FRAC * fullWidth(h);
+        float x = (windowW - hoverHandWidth(windowW, h, n, hoverIndex)) / 2f;
+        for (int k = 0; k < i; k++) {
+            x += hoverCardWidth(windowW, h, n, k, hoverIndex) + gap;
+        }
+        float cw = hoverCardWidth(windowW, h, n, i, hoverIndex);
+        float cx = x + cw / 2f;
         if (i == hoverIndex) {
             float fh = fullHeight(h);
-            float fw = fullWidth(h);
-            float cy = HOVER_BOTTOM_FRAC * h + fh / 2f;
-            return new Pose(rest.cx + shift, cy, fw, fh, 0f, 1f);
+            return new Pose(cx, HOVER_BOTTOM_FRAC * h + fh / 2f, cw, fh, 0f, 1f);
         }
-        return new Pose(rest.cx + shift, rest.cy, rest.w, rest.h, rest.rotationDeg, rest.scale);
+        float scale = hoverHandScale(windowW, h, n);
+        float ch = restHeight(h) * scale;
+        float theta = fanAngleDeg(n, i, HOVER_ROTATION_MAX_DEG);
+        // Outer cards dip slightly, matching the resting arc.
+        float dip = (float) (1.0 - Math.cos(Math.toRadians(theta))) * ch;
+        float cy = HOVER_HAND_TOP_FRAC * h - ch / 2f - dip;
+        return new Pose(cx, cy, cw, ch, -theta, REST_SCALE * scale);
     }
 
-    /** Nearest card by centre column; used so hover does not flicker between cards. */
-    public static int nearestCard(float windowW, float h, int n, float pointerX) {
+    /** Nearest card by centre column in the current layout (resting, or spread around {@code hoverIndex}). */
+    public static int nearestCard(float windowW, float h, int n, float pointerX, int hoverIndex) {
         if (n <= 0) {
             return -1;
         }
         int best = 0;
         float bestDist = Float.MAX_VALUE;
         for (int i = 0; i < n; i++) {
-            Pose p = restPose(windowW, h, n, i);
+            Pose p = hoverIndex >= 0 ? hoverPose(windowW, h, n, i, hoverIndex) : restPose(windowW, h, n, i);
             float d = Math.abs(p.cx - pointerX);
             if (d < bestDist) {
                 bestDist = d;
@@ -157,8 +208,36 @@ public final class HandLayout {
         return best;
     }
 
+    /** Nearest card by resting centre column. */
+    public static int nearestCard(float windowW, float h, int n, float pointerX) {
+        return nearestCard(windowW, h, n, pointerX, -1);
+    }
+
     /**
-     * True while the pointer is still considered "over the hand": inside the hand's
+     * Hover target for a pointer. Keeps the current hover while the pointer is still over that
+     * (spread) card's column, so the hand does not flicker as it spreads; otherwise picks the
+     * nearest centre column. Returns -1 when the pointer is outside the hand area.
+     */
+    public static int hoverIndexFor(float windowW, float h, int n, int currentHover, float pointerX, float pointerY) {
+        if (n <= 0) {
+            return -1;
+        }
+        if (currentHover >= 0 && currentHover < n) {
+            if (!pointerInHandArea(windowW, h, n, currentHover, pointerX, pointerY)) {
+                return -1;
+            }
+            Pose cur = hoverPose(windowW, h, n, currentHover, currentHover);
+            if (Math.abs(pointerX - cur.cx) <= cur.w / 2f) {
+                return currentHover;
+            }
+            return nearestCard(windowW, h, n, pointerX, currentHover);
+        }
+        int nearest = nearestCard(windowW, h, n, pointerX);
+        return pointerInHandArea(windowW, h, n, nearest, pointerX, pointerY) ? nearest : -1;
+    }
+
+    /**
+     * True while the pointer is still considered "over the hand": inside the (spread) hand's
      * horizontal span and not more than {@link #LEAVE_HAND_ABOVE_FRAC} * H above the
      * hovered card's top.
      */
@@ -167,7 +246,7 @@ public final class HandLayout {
         if (n <= 0 || hoverIndex < 0 || hoverIndex >= n) {
             return false;
         }
-        float handW = handWidth(windowW, h, n);
+        float handW = Math.max(handWidth(windowW, h, n), hoverHandWidth(windowW, h, n, hoverIndex));
         float left = (windowW - handW) / 2f;
         float pad = fullWidth(h) * 0.5f;
         if (pointerX < left - pad || pointerX > left + handW + pad) {
