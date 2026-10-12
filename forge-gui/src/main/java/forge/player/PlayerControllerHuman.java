@@ -3830,8 +3830,28 @@ public class PlayerControllerHuman extends PlayerController implements IGameCont
         // game thread races zone mutations (replacement/net/EDT) and throws CME.
         // CoopDuelRuntime / HostedMatch already invoke on the game thread for some
         // paths; marshal here so every off-thread concede (UI, disconnect, tests) is safe.
+        // Await completion so callers (tests, confirm dialogs) see updated game-over state.
         if (!ThreadUtil.isGameThread()) {
-            game.getAction().invoke(this::concede);
+            final java.util.concurrent.CountDownLatch done = new java.util.concurrent.CountDownLatch(1);
+            final java.util.concurrent.atomic.AtomicReference<RuntimeException> error =
+                    new java.util.concurrent.atomic.AtomicReference<>();
+            game.getAction().invoke(() -> {
+                try {
+                    concede();
+                } catch (final RuntimeException e) {
+                    error.set(e);
+                } finally {
+                    done.countDown();
+                }
+            });
+            try {
+                done.await(60, java.util.concurrent.TimeUnit.SECONDS);
+            } catch (final InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            if (error.get() != null) {
+                throw error.get();
+            }
             return;
         }
         player.concede();
