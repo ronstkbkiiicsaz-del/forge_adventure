@@ -60,8 +60,9 @@ public final class HandPrototype extends ApplicationAdapter {
     private Texture whitePixel;
     private final List<Card> cards = new ArrayList<>();
     private int hover = -1, castCount, pressIndex = -1, zoomIndex = -1;
-    private boolean zoomOpen, dragging;
+    private boolean zoomOpen, dragging, dragInHand;
     private float pressX, pressY, pressTime, dragDist, dragTilt, prevDragX, castT;
+    private float pointerX, pointerY;
     private Card casting;
     private String captureDir;
     private float captureAge;
@@ -116,18 +117,23 @@ public final class HandPrototype extends ApplicationAdapter {
                 if (button != Input.Buttons.LEFT || casting != null) return false;
                 int i = pick(x, y); if (i < 0) return false;
                 pressIndex = i; pressX = x; pressY = y; pressTime = 0; dragDist = 0;
-                dragging = false; prevDragX = x; hover = i; return true;
+                dragging = false; dragInHand = false; prevDragX = x; pointerX = x; pointerY = y;
+                hover = i; return true;
             }
             @Override public boolean touchDragged(int sx, int sy, int p) {
                 if (pressIndex < 0 || zoomOpen || casting != null) return false;
                 float x = sx, y = Gdx.graphics.getHeight() - sy;
                 dragDist = Math.max(dragDist, dist(pressX, pressY, x, y));
+                pointerX = x; pointerY = y;
                 if (HandLayout.isDrag(dragDist)) {
+                    if (!dragging) dragInHand = true;
                     dragging = true;
+                    List<Card> live = live();
+                    float w = Gdx.graphics.getWidth(), h = Gdx.graphics.getHeight();
+                    dragInHand = HandLayout.pointerInHand(w, h, live.size(), hover, dragInHand, x, y);
                     dragTilt = clamp((x - prevDragX) * 0.8f, -HandLayout.DRAG_TILT_MAX_DEG, HandLayout.DRAG_TILT_MAX_DEG);
                     prevDragX = x;
-                    Card c = live().get(pressIndex);
-                    float h = Gdx.graphics.getHeight();
+                    Card c = live.get(pressIndex);
                     c.targetCx = x; c.targetCy = y;
                     c.targetW = HandLayout.hoverRaisedWidth(h); c.targetH = HandLayout.hoverRaisedHeight(h);
                     c.targetRot = dragTilt; c.targetScale = 1f;
@@ -137,13 +143,24 @@ public final class HandPrototype extends ApplicationAdapter {
             @Override public boolean touchUp(int sx, int sy, int p, int button) {
                 if (button != Input.Buttons.LEFT || pressIndex < 0) return false;
                 float x = sx, y = Gdx.graphics.getHeight() - sy;
+                pointerX = x; pointerY = y;
                 dragDist = Math.max(dragDist, dist(pressX, pressY, x, y));
                 if (HandLayout.isTap(dragDist, pressTime)) openZoom(pressIndex);
                 else if (dragging) {
-                    Card c = live().get(pressIndex);
-                    if (c.cy > HandLayout.castLineY(Gdx.graphics.getHeight())) beginCast(c);
+                    float w = Gdx.graphics.getWidth(), h = Gdx.graphics.getHeight();
+                    List<Card> live = live();
+                    int n = live.size();
+                    boolean inHand = HandLayout.pointerInHand(w, h, n, hover, dragInHand, x, y);
+                    if (inHand && pressIndex < n) {
+                        int drop = HandLayout.reorderIndex(w, h, n, pressIndex, x);
+                        reorderLive(pressIndex, drop);
+                        hover = drop;
+                    } else if (pressIndex < n) {
+                        Card c = live.get(pressIndex);
+                        if (c.cy > HandLayout.castLineY(h)) beginCast(c);
+                    }
                 }
-                dragging = false; pressIndex = -1; dragTilt = 0; return true;
+                dragging = false; dragInHand = false; pressIndex = -1; dragTilt = 0; return true;
             }
             @Override public boolean mouseMoved(int sx, int sy) {
                 if (zoomOpen || dragging || casting != null || pressIndex >= 0) return false;
@@ -156,6 +173,20 @@ public final class HandPrototype extends ApplicationAdapter {
                 return false;
             }
         });
+    }
+
+    /** Insert the gripped live card at {@code to}. Dead cards keep their places in the list. */
+    private void reorderLive(int from, int to) {
+        List<Card> live = live();
+        int n = live.size();
+        if (from < 0 || from >= n) return;
+        int[] order = HandLayout.movedOrder(n, from, to);
+        Card[] next = new Card[n];
+        for (int i = 0; i < n; i++) next[i] = live.get(order[i]);
+        int li = 0;
+        for (int i = 0; i < cards.size(); i++) {
+            if (cards.get(i).alive) cards.set(i, next[li++]);
+        }
     }
 
     private List<Card> live() {
@@ -296,7 +327,7 @@ public final class HandPrototype extends ApplicationAdapter {
     }
 
     private void resetHand() {
-        casting = null; castT = 0; zoomOpen = false; dragging = false;
+        casting = null; castT = 0; zoomOpen = false; dragging = false; dragInHand = false;
         pressIndex = -1; castCount = 0; hover = -1;
         for (Card c : cards) { c.alive = true; c.alpha = 1f; }
         layoutTargets(0f);
@@ -340,7 +371,9 @@ public final class HandPrototype extends ApplicationAdapter {
             Card c = live.get(i);
             if (c == casting) continue;
             if (dragging && i == pressIndex) continue;
-            HandLayout.Pose pose = HandLayout.layoutPose(w, h, n, i, hover, dragging);
+            HandLayout.Pose pose = dragging
+                    ? HandLayout.dragLayoutPose(w, h, n, i, hover, dragInHand, pressIndex, pointerX, pointerY)
+                    : HandLayout.layoutPose(w, h, n, i, hover, false);
             c.targetCx = pose.cx; c.targetCy = pose.cy; c.targetW = pose.w; c.targetH = pose.h;
             c.targetRot = pose.rotationDeg; c.targetScale = pose.scale;
             if (dt > 0f) easeCard(c, dt);
@@ -385,7 +418,7 @@ public final class HandPrototype extends ApplicationAdapter {
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
         float w = Gdx.graphics.getWidth(), h = Gdx.graphics.getHeight();
         List<Card> live = live();
-        boolean willCast = dragging && pressIndex >= 0 && pressIndex < live.size()
+        boolean willCast = dragging && !dragInHand && pressIndex >= 0 && pressIndex < live.size()
                 && live.get(pressIndex).cy > HandLayout.castLineY(h);
 
         shapes.begin(ShapeRenderer.ShapeType.Filled);

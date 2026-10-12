@@ -309,11 +309,37 @@ public class HandLayoutTest {
     public void draggingCollapsesOtherCardsToRest() {
         float w = 1920f, h = 1080f;
         int n = 7, drag = 3;
+        HandLayout.Pose inside = HandLayout.hoverPose(w, h, n, 1, drag);
+        Assert.assertTrue(HandLayout.pointerInHand(w, h, n, drag, true, inside.cx, inside.cy));
         for (int i = 0; i < n; i++) {
             if (i == drag) {
                 continue;
             }
-            HandLayout.Pose collapsed = HandLayout.layoutPose(w, h, n, i, drag, true);
+            HandLayout.Pose heldOpen = HandLayout.dragLayoutPose(w, h, n, i, drag, true, drag, inside.cx, inside.cy);
+            Assert.assertEquals(heldOpen.h, HandLayout.hoverOpenHeight(h), 0.01f,
+                    "dragging inside the hand keeps the others opened");
+            Assert.assertTrue(heldOpen.h > HandLayout.restHeight(h));
+        }
+        // Above the opened row: tuck. The fan tops sit higher than the raised card, and past the cast line.
+        HandLayout.Pose raisedTop = HandLayout.hoverPose(w, h, n, drag, drag);
+        float rowTop = Float.NEGATIVE_INFINITY;
+        for (int i = 0; i < n; i++) {
+            HandLayout.Pose p = HandLayout.hoverPose(w, h, n, i, drag);
+            float hw = p.w / 2f, hh = p.h / 2f;
+            for (float lx : new float[]{-hw, hw}) {
+                for (float ly : new float[]{-hh, hh}) {
+                    rowTop = Math.max(rowTop, worldOnPose(p, lx, ly)[1]);
+                }
+            }
+        }
+        float aboveY = rowTop + HandLayout.OPEN_HIT_PAD_FRAC * h + 2f;
+        Assert.assertTrue(aboveY > HandLayout.castLineY(h));
+        Assert.assertFalse(HandLayout.pointerInHand(w, h, n, drag, true, raisedTop.cx, aboveY));
+        for (int i = 0; i < n; i++) {
+            if (i == drag) {
+                continue;
+            }
+            HandLayout.Pose collapsed = HandLayout.dragLayoutPose(w, h, n, i, drag, true, drag, raisedTop.cx, aboveY);
             HandLayout.Pose rest = HandLayout.restPose(w, h, n, i);
             Assert.assertEquals(collapsed.cx, rest.cx, 0.001f);
             Assert.assertEquals(collapsed.cy, rest.cy, 0.001f);
@@ -321,12 +347,110 @@ public class HandLayoutTest {
             Assert.assertEquals(collapsed.h, rest.h, 0.001f);
             Assert.assertEquals(collapsed.rotationDeg, rest.rotationDeg, 0.001f);
             Assert.assertTrue(collapsed.h < HandLayout.hoverOpenHeight(h),
-                    "a gripped card tucks the rest of the hand");
+                    "leaving the hand tucks the rest of the hand");
         }
-        HandLayout.Pose stillOpen = HandLayout.layoutPose(w, h, n, 0, drag, false);
-        Assert.assertEquals(stillOpen.h, HandLayout.hoverOpenHeight(h), 0.01f);
+        // Title band of an opened card is above the cast line and still in the hand.
+        float[] title = worldOnPose(raisedTop, 0f, raisedTop.h / 2f - raisedTop.h * HandLayout.TITLE_BAND_FRAC * 0.5f);
+        if (title[1] > HandLayout.castLineY(h)) {
+            Assert.assertTrue(HandLayout.pointerInHand(w, h, n, drag, true, title[0], title[1]));
+            HandLayout.Pose stillOpen = HandLayout.dragLayoutPose(w, h, n, 1, drag, true, drag, title[0], title[1]);
+            Assert.assertEquals(stillOpen.h, HandLayout.hoverOpenHeight(h), 0.01f);
+        }
+        HandLayout.Pose hoverOpen = HandLayout.layoutPose(w, h, n, 0, drag, false);
+        Assert.assertEquals(hoverOpen.h, HandLayout.hoverOpenHeight(h), 0.01f);
         HandLayout.Pose raised = HandLayout.layoutPose(w, h, n, drag, drag, false);
         Assert.assertEquals(raised.h, HandLayout.hoverRaisedHeight(h), 0.01f);
+    }
+
+    @Test
+    public void reorderIndexIsStableAtTheMidpoint() {
+        float w = 1920f, h = 1080f;
+        int n = 7, grip = 3;
+        float left = HandLayout.slotCenterX(w, h, n, grip - 1);
+        float right = HandLayout.slotCenterX(w, h, n, grip + 1);
+        float mid = (left + right) / 2f;
+        int at = HandLayout.reorderIndex(w, h, n, grip, mid);
+        Assert.assertEquals(HandLayout.reorderIndex(w, h, n, grip, mid - 1f), at);
+        Assert.assertEquals(HandLayout.reorderIndex(w, h, n, grip, mid + 1f), at);
+        Assert.assertEquals(at, grip, "the gap stays put across the midpoint");
+        float onCentre = HandLayout.slotCenterX(w, h, n, grip + 1);
+        Assert.assertEquals(HandLayout.reorderIndex(w, h, n, grip, onCentre),
+                HandLayout.reorderIndex(w, h, n, grip, onCentre - 0.25f));
+        Assert.assertTrue(HandLayout.reorderIndex(w, h, n, grip, onCentre + 0.25f)
+                > HandLayout.reorderIndex(w, h, n, grip, onCentre));
+        int prev = 0;
+        for (float x = 0f; x <= w; x += 3f) {
+            int idx = HandLayout.reorderIndex(w, h, n, grip, x);
+            Assert.assertTrue(idx >= prev && idx < n);
+            prev = idx;
+        }
+    }
+
+    @Test
+    public void reorderLeavesASingleGapAndDoesNotRepeatTheGrip() {
+        int n = 7, grip = 3, drop = 5;
+        boolean[] used = new boolean[n];
+        for (int i = 0; i < n; i++) {
+            int slot = HandLayout.reorderSlot(n, i, grip, drop);
+            if (i == grip) {
+                Assert.assertEquals(slot, -1);
+            } else {
+                Assert.assertTrue(slot >= 0 && slot < n);
+                Assert.assertFalse(used[slot], "slot " + slot + " used twice");
+                used[slot] = true;
+                HandLayout.Pose pose = HandLayout.reorderPose(1920f, 1080f, n, i, grip, drop);
+                Assert.assertEquals(pose.h, HandLayout.hoverOpenHeight(1080f), 0.01f);
+            }
+        }
+        Assert.assertFalse(used[drop], "the drop slot stays empty");
+        int filled = 0;
+        for (boolean u : used) {
+            if (u) filled++;
+        }
+        Assert.assertEquals(filled, n - 1);
+    }
+
+    @Test
+    public void releaseInsideHandReordersAndReleaseOutsideDoesNot() {
+        float w = 1920f, h = 1080f;
+        int n = 7, grip = 3;
+        float past = HandLayout.slotCenterX(w, h, n, 5) + 1f;
+        HandLayout.Pose row = HandLayout.hoverPose(w, h, n, 1, grip);
+        Assert.assertTrue(HandLayout.pointerInHand(w, h, n, grip, true, past, row.cy));
+        int[] moved = HandLayout.orderAfterRelease(w, h, n, grip, grip, true, past, row.cy);
+        int drop = HandLayout.reorderIndex(w, h, n, grip, past);
+        Assert.assertTrue(drop != grip);
+        Assert.assertEquals(moved, HandLayout.movedOrder(n, grip, drop));
+        Assert.assertEquals(moved[drop], grip);
+
+        HandLayout.Pose top = HandLayout.hoverPose(w, h, n, grip, grip);
+        float above = top.cy + top.h / 2f + HandLayout.OPEN_HIT_PAD_FRAC * h + 4f;
+        int[] same = HandLayout.orderAfterRelease(w, h, n, grip, grip, true, top.cx, above);
+        for (int i = 0; i < n; i++) {
+            Assert.assertEquals(same[i], i);
+        }
+        float beside = -40f;
+        int[] besideSame = HandLayout.orderAfterRelease(w, h, n, grip, grip, true, beside, row.cy);
+        for (int i = 0; i < n; i++) {
+            Assert.assertEquals(besideSame[i], i);
+        }
+    }
+
+    @Test
+    public void returningToTheRestingHandOpensReorderAgain() {
+        float w = 1920f, h = 1080f;
+        int n = 7, grip = 2;
+        HandLayout.Pose rest = HandLayout.restPose(w, h, n, 4);
+        Assert.assertTrue(HandLayout.pointerInHand(w, h, n, grip, false, rest.cx, rest.cy));
+        HandLayout.Pose reopened = HandLayout.dragLayoutPose(w, h, n, 0, grip, false, grip, rest.cx, rest.cy);
+        Assert.assertEquals(reopened.h, HandLayout.hoverOpenHeight(h), 0.01f);
+        HandLayout.Pose open = HandLayout.hoverPose(w, h, n, 3, grip);
+        float high = open.cy + open.h / 2f;
+        Assert.assertFalse(HandLayout.pointerInHand(w, h, n, grip, false, open.cx, high),
+                "while tucked, the old opened row is not the hand");
+        HandLayout.Pose stayTucked = HandLayout.dragLayoutPose(w, h, n, 0, grip, false, grip, open.cx, high);
+        HandLayout.Pose rest0 = HandLayout.restPose(w, h, n, 0);
+        Assert.assertEquals(stayTucked.h, rest0.h, 0.01f);
     }
 
     @Test

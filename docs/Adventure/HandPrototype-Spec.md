@@ -30,6 +30,8 @@ disappear. Once a card is gripped past the drag threshold, the rest of the hand 
 resting fan so the table stays visible; the gripped card keeps following the cursor at the raised size.
 Release below the cast line still snaps back; release above still casts.
 
+**Play notes, round 5 (Steve, 2026-10-12).** Reorder while the pointer stays in the hand. Tuck only once the card leaves the hand: above the hand's top, past the cast line outside the row, or outside the hand horizontally. Coming back into the hand while still holding opens it and resumes reorder. Release inside inserts the card; release outside still casts or cancels and does not reorder.
+
 **Reference feel.** MTG Arena's hand and Slay the Spire's hand (Slay the Spire is Java/libGDX, so this is achievable
 in our stack). The point is the *behaviour*, not the layout.
 

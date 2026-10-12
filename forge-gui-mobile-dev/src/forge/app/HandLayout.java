@@ -317,15 +317,200 @@ public final class HandLayout {
     }
 
     /**
-     * Pose the hand eases toward. While a card is dragged past {@link #isDrag}, every card's
-     * slot returns to {@link #restPose} so the opened fan tucks away and the table stays visible.
-     * The gripped card is not moved by this; the caller keeps it on the cursor at the raised size.
+     * Pose the hand eases toward when nothing is being reordered.
+     * {@code dragging} means the gripped card has already left the hand, so every slot
+     * returns to {@link #restPose}. Callers that still have the pointer inside the hand
+     * use {@link #dragLayoutPose} instead. The gripped card is not moved by this; the
+     * caller keeps it on the cursor at the raised size.
      */
     public static Pose layoutPose(float windowW, float h, int n, int i, int hoverIndex, boolean dragging) {
         if (dragging || hoverIndex < 0 || hoverIndex >= n) {
             return restPose(windowW, h, n, i);
         }
         return hoverPose(windowW, h, n, i, hoverIndex);
+    }
+
+    /**
+     * True while the pointer is in the hand Steve sees. {@code opened} uses the opened fan
+     * around {@code hoverIndex}; otherwise the resting fan. The zone is that row's bounds
+     * plus {@link #OPEN_HIT_PAD_FRAC}, not the whole screen.
+     * The hand is left when the pointer is above that top, past the cast line and clear of
+     * the row, or outside the row horizontally. The opened row crosses the cast line, so a
+     * pointer still on those cards is in the hand.
+     */
+    public static boolean pointerInHand(float windowW, float h, int n, int hoverIndex, boolean opened,
+                                         float pointerX, float pointerY) {
+        if (n <= 0) {
+            return false;
+        }
+        boolean useOpen = opened && hoverIndex >= 0 && hoverIndex < n;
+        float pad = OPEN_HIT_PAD_FRAC * h;
+        float minX = Float.POSITIVE_INFINITY;
+        float maxX = Float.NEGATIVE_INFINITY;
+        float minY = Float.POSITIVE_INFINITY;
+        float maxY = Float.NEGATIVE_INFINITY;
+        for (int i = 0; i < n; i++) {
+            Pose p = useOpen ? hoverPose(windowW, h, n, i, hoverIndex) : restPose(windowW, h, n, i);
+            float[] box = axisBounds(p);
+            minX = Math.min(minX, box[0]);
+            maxX = Math.max(maxX, box[1]);
+            minY = Math.min(minY, box[2]);
+            maxY = Math.max(maxY, box[3]);
+        }
+        boolean outsideX = pointerX < minX - pad || pointerX > maxX + pad;
+        boolean aboveHand = pointerY > maxY + pad;
+        boolean belowHand = pointerY < minY - pad;
+        boolean pastCastLine = pointerY > castLineY(h) && aboveHand;
+        return !outsideX && !aboveHand && !belowHand && !pastCastLine;
+    }
+
+    /** Axis-aligned bounds of a rotated card: minX, maxX, minY, maxY. */
+    private static float[] axisBounds(Pose p) {
+        double rad = Math.toRadians(p.rotationDeg);
+        float cos = (float) Math.cos(rad);
+        float sin = (float) Math.sin(rad);
+        float hw = p.w / 2f;
+        float hh = p.h / 2f;
+        float minX = Float.POSITIVE_INFINITY;
+        float maxX = Float.NEGATIVE_INFINITY;
+        float minY = Float.POSITIVE_INFINITY;
+        float maxY = Float.NEGATIVE_INFINITY;
+        for (float lx : new float[]{-hw, hw}) {
+            for (float ly : new float[]{-hh, hh}) {
+                float x = p.cx + lx * cos - ly * sin;
+                float y = p.cy + lx * sin + ly * cos;
+                minX = Math.min(minX, x);
+                maxX = Math.max(maxX, x);
+                minY = Math.min(minY, y);
+                maxY = Math.max(maxY, y);
+            }
+        }
+        return new float[]{minX, maxX, minY, maxY};
+    }
+
+    /**
+     * Opened-fan centre x of slot {@code i}. Shared by every hover index, so reorder
+     * thresholds do not move when the gap shifts.
+     */
+    public static float slotCenterX(float windowW, float h, int n, int i) {
+        int reference = (n > 1 && i == 0) ? 1 : 0;
+        return hoverPose(windowW, h, n, i, reference).cx;
+    }
+
+    /**
+     * Where the gripped card would insert, from 0 through {@code n - 1}.
+     * Counts other cards whose slot centre is strictly left of the pointer.
+     * Sitting on a centre stays before that card, so the midpoint between two
+     * centres does not flicker.
+     */
+    public static int reorderIndex(float windowW, float h, int n, int gripIndex, float pointerX) {
+        if (n <= 1) {
+            return 0;
+        }
+        int drop = 0;
+        for (int i = 0; i < n; i++) {
+            if (i == gripIndex) {
+                continue;
+            }
+            if (pointerX > slotCenterX(windowW, h, n, i)) {
+                drop++;
+            }
+        }
+        return drop;
+    }
+
+    /**
+     * Fan slot for card {@code cardIndex} while {@code gripIndex} is held and the gap
+     * is {@code dropIndex}. The gripped card returns -1 so it is not drawn in the fan.
+     */
+    public static int reorderSlot(int n, int cardIndex, int gripIndex, int dropIndex) {
+        if (n <= 0 || cardIndex < 0 || cardIndex >= n || cardIndex == gripIndex) {
+            return -1;
+        }
+        int clampedDrop = Math.max(0, Math.min(n - 1, dropIndex));
+        int rank = cardIndex < gripIndex ? cardIndex : cardIndex - 1;
+        return rank < clampedDrop ? rank : rank + 1;
+    }
+
+    /**
+     * Opened-hand pose for a card that is not the one under the cursor. Same fan as
+     * {@link #hoverPose} without the raised card.
+     */
+    private static Pose openFanPose(float windowW, float h, int n, int slot) {
+        if (n <= 1) {
+            return hoverPose(windowW, h, 1, 0, 0);
+        }
+        int other = slot == 0 ? 1 : 0;
+        return hoverPose(windowW, h, n, slot, other);
+    }
+
+    /** Opened pose of a non-gripped card, shifted so {@code dropIndex} is an empty gap. */
+    public static Pose reorderPose(float windowW, float h, int n, int cardIndex, int gripIndex, int dropIndex) {
+        int slot = reorderSlot(n, cardIndex, gripIndex, dropIndex);
+        if (slot < 0) {
+            return restPose(windowW, h, n, Math.max(0, Math.min(n - 1, cardIndex)));
+        }
+        return openFanPose(windowW, h, n, slot);
+    }
+
+    /**
+     * Pose for every card except the one on the cursor. Inside the hand, the others stay
+     * opened and shift to leave a gap. Once the pointer has left, they use the resting fan.
+     * {@code opened} is the layout currently on screen (opened while reordering, resting while tucked).
+     */
+    public static Pose dragLayoutPose(float windowW, float h, int n, int i, int hoverIndex, boolean opened,
+                                       int gripIndex, float pointerX, float pointerY) {
+        if (i < 0 || i >= n) {
+            return restPose(windowW, h, Math.max(n, 1), 0);
+        }
+        if (!pointerInHand(windowW, h, n, hoverIndex, opened, pointerX, pointerY) || i == gripIndex) {
+            return restPose(windowW, h, n, i);
+        }
+        return reorderPose(windowW, h, n, i, gripIndex, reorderIndex(windowW, h, n, gripIndex, pointerX));
+    }
+
+    /** Identity order with {@code from} removed and inserted at {@code to}. */
+    public static int[] movedOrder(int n, int from, int to) {
+        int[] order = new int[n];
+        if (n <= 0) {
+            return order;
+        }
+        if (from < 0 || from >= n) {
+            for (int i = 0; i < n; i++) {
+                order[i] = i;
+            }
+            return order;
+        }
+        int dest = Math.max(0, Math.min(n - 1, to));
+        int[] rest = new int[n - 1];
+        int r = 0;
+        for (int i = 0; i < n; i++) {
+            if (i != from) {
+                rest[r++] = i;
+            }
+        }
+        r = 0;
+        for (int i = 0; i < n; i++) {
+            order[i] = i == dest ? from : rest[r++];
+        }
+        return order;
+    }
+
+    /**
+     * Card indices after release. Inside the hand, the gripped card inserts at
+     * {@link #reorderIndex}. Outside, the order is unchanged (that release is a cast or a cancel).
+     */
+    public static int[] orderAfterRelease(float windowW, float h, int n, int gripIndex, int hoverIndex,
+                                           boolean opened, float pointerX, float pointerY) {
+        int[] same = new int[n];
+        for (int i = 0; i < n; i++) {
+            same[i] = i;
+        }
+        if (gripIndex < 0 || gripIndex >= n
+                || !pointerInHand(windowW, h, n, hoverIndex, opened, pointerX, pointerY)) {
+            return same;
+        }
+        return movedOrder(n, gripIndex, reorderIndex(windowW, h, n, gripIndex, pointerX));
     }
 
     /**
