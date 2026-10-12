@@ -1,14 +1,15 @@
 # Shandalar Ascendant: Grok ⇄ Cursor handoff
 
-> **WHOSE TURN: GROK**
-> Turn passed by Wren on 2026-10-11, 16:17 Phoenix time
+> **WHOSE TURN: CURSOR**
+> Turn passed by Grok on 2026-10-12, 10:10 Phoenix time
 > Review side from this point: Cursor. Older log lines say Wren.
 > Rule: only the side whose turn it is acts. When you finish, update this header and **Outstanding**, add a log entry at the top of the **Log**, flip the turn, then give Steve a copyable paste for the other side.
 
 ## Outstanding
 
 ### Waiting on Cursor
-- Nothing.
+- **#79** DS1 follow-up: `ArenaDuelScriptedDuelTest` asserts real game state (tapped lands, life, X value, chosen mode, attacking/blocking via the UI). Branch `grok/ds1-scripted-test-real-state`. Review.
+- **#80** SN1/EC1 lows: rest once per day; an undone set pick no longer marked rotated at the next season change. Branch `grok/sn1-ec1-lows`. Review.
 
 ### Waiting on Grok (priority order)
 | PR | Required |
@@ -16,8 +17,6 @@
 | HP1 | Steve playtested the standalone hand prototype (branch `cursor/hand-prototype-7bab`). Keep the responsiveness and the smooth cast. Reverse the fan: resting cards rotate from −12° (far left) to +12° (far right) and outer cards sit lower on the arc (radius about 2.5× hand width), so the tops are closer. Pinch the bottoms and spread the tops, like cards held in a hand. On hover, scale up and spread the whole hand so cards are not covered (today only the hovered card grows to full size and neighbours shift sideways). Continue on that branch and its files; own PR into `feature/set-start` if there is not one yet. Do not redo the rest of the prototype. **Round 2 (Steve tested `91d2365b2e`, 2026-10-11 ~23:20):** "so much better than before"; keep the fan. One fix: the hand opens too eagerly (any mouse near the bottom pops it). Only open when the cursor is over a card's visible area plus about 0.02H. See `docs/Adventure/HandPrototype-Spec.md` round 2 notes. |
 | BP1 | **After HP1.** Battlefield and combat prototype, spec approved by Steve: `docs/Adventure/BattlefieldPrototype-Spec.md`. Standalone window reusing the HP1 hand: board layout, cards landing in rows, **drag-first** attacking and blocking with forgiving snap-to-target drops (Steve and Tiny have tremors; clicks as backup), a big Arena-style **targeting arrow**, and an outcome preview (skulls, life change) before confirming blocks. Own branch and PR into `feature/set-start`. |
 | #76 | Keep the `CoopOverworldClient` channel-before-sync fix (correct). **Revert the engine-wide copy in `Game.forEachCardInGame`** (~976-1011): it allocates copies of every zone on every call in all games (replacement/static/trigger hot paths) and still iterates live zones, so it only narrows the race. Instead run `concede()` on the game thread (test + `CoopDuelRuntime` ~1107 if off-thread) or snapshot only in `onPlayerLost`/`getCardsInGame`. `GameForEachCardSnapshotTest` uses empty collections; make it meaningful or drop it. |
-| DS1 follow-up | `ArenaDuelScriptedDuelTest`: mana/X/mode/attack/block flags are set without checking game state (paidMana on avatar tap; castXSpell/choseMode right after selectCard; attack/block via `gc.selectCard` and `forceBlockWindow` devModeSet). Assert real state: lands tapped and opponent life, X value and chosen mode, card attacking/blocking via the UI. |
-| Lows | SN1: paid rests can be chained right after waking (consider once per day after a full day). EC1: an undone set pick still in the saved window snapshot can be marked rotated at the next season change. |
 
 **Queue after those:** DS1's later PRs, then **MC1** (multiplayer Commander AI, roadmap), then **AD1** (in-game Advisor chat, roadmap), DB1, GN1, DS5, QL2, the #51 redo, EC2 after FT2.
 
@@ -37,6 +36,10 @@
 - Bugs Steve reports from play jump the queue. So do Tiny's, which arrive via `docs/FEEDBACK.md` (written by Tiny's AI, Sam; Cursor triages).
 
 ## Log (newest first)
+
+### 2026-10-12 10:10 · Phoenix, Grok → Cursor
+- Opened **#79** (DS1 follow-up, scripted duel test asserts real state) and **#80** (SN1/EC1 lows) into `feature/set-start`. Both merge cleanly, no base merge needed.
+- Note: Cursor agents pushed the HP1 hover fix (7:32 AM PT) and a #76 fix (8:02 AM PT) this morning while it was Grok's turn. Grok left its own #76 version unpushed and unused to avoid conflicting. HP1 and #76 rows left in Grok's list for Cursor to reconcile against those pushes.
 
 ### 2026-10-12 05:45 · Phoenix, Vex (claude.ai design chat, for Steve) → Grok
 - Not a turn flip: still Grok's turn. Design notes only, no code.
