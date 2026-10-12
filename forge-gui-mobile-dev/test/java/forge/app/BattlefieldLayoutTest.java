@@ -116,4 +116,112 @@ public class BattlefieldLayoutTest {
         Assert.assertTrue(BattlefieldLayout.shockOnCreature("Ogre", 3, 0, 2).contains("survives"));
         Assert.assertEquals(BattlefieldLayout.lifeChange("Them", 20, 2), "Them 20 -> 18");
     }
+
+    @Test
+    public void castSpellIsAStackEntryAndDoesNotCoverTheBoard() {
+        BattlefieldLayout.StackEntry shock = BattlefieldLayout.castSpell("Shock", true);
+        Assert.assertEquals(shock.name, "Shock");
+        Assert.assertTrue(shock.needsTarget);
+        float w = 1920f, h = 1080f;
+        HandLayout.Pose thumb = BattlefieldLayout.stackThumbnail(w, h);
+        Assert.assertFalse(BattlefieldLayout.occupiesFullCardOverBoard(thumb, w, h));
+        HandLayout.Pose boardCard = BattlefieldLayout.slot(w, h, BattlefieldLayout.Side.YOU,
+                BattlefieldLayout.Row.CREATURE, 0, 1, false);
+        Assert.assertTrue(BattlefieldLayout.occupiesFullCardOverBoard(boardCard, w, h));
+    }
+
+    @Test
+    public void targetedSpellWaitsUntilATargetIsChosen() {
+        BattlefieldLayout.StackEntry shock = BattlefieldLayout.castSpell("Shock", true);
+        Assert.assertTrue(BattlefieldLayout.waitingForTarget(shock));
+        Assert.assertEquals(BattlefieldLayout.TARGET_PROMPT, "Choose a target.");
+        BattlefieldLayout.StackEntry chosen = BattlefieldLayout.chooseTarget(shock, "Sprite");
+        Assert.assertFalse(BattlefieldLayout.waitingForTarget(chosen));
+        Assert.assertEquals(chosen.target, "Sprite");
+    }
+
+    @Test
+    public void oneClickAssignsATargetWithNoConfirm() {
+        BattlefieldLayout.StackEntry shock = BattlefieldLayout.castSpell("Shock", true);
+        BattlefieldLayout.TargetAssignment assigned = BattlefieldLayout.clickTarget(shock, "Grizzly");
+        Assert.assertFalse(assigned.confirmRequired);
+        Assert.assertEquals(assigned.entry.target, "Grizzly");
+        Assert.assertFalse(BattlefieldLayout.waitingForTarget(assigned.entry));
+        Assert.assertEquals(BattlefieldLayout.stackOutcome("Shock", "Grizzly"), "Shock deals 2 to Grizzly");
+        java.util.List<BattlefieldLayout.StackEntry> stacked = java.util.List.of(shock);
+        java.util.List<BattlefieldLayout.StackEntry> aimed = BattlefieldLayout.assignTopTarget(stacked, "Grizzly");
+        Assert.assertEquals(aimed.size(), stacked.size());
+        Assert.assertEquals(aimed.get(0).target, "Grizzly");
+    }
+
+    @Test
+    public void twoSpellsStayOnTheStackUntilResolvePopsTheTop() {
+        java.util.List<BattlefieldLayout.StackEntry> stack = java.util.List.of();
+        Assert.assertTrue(BattlefieldLayout.mayCast(BattlefieldLayout.Speed.SORCERY, stack.size()));
+        stack = BattlefieldLayout.castOnto(stack, BattlefieldLayout.Speed.INSTANT, "Shock", true);
+        Assert.assertEquals(stack.size(), 1);
+        Assert.assertFalse(BattlefieldLayout.mayCast(BattlefieldLayout.Speed.SORCERY, stack.size()));
+        java.util.List<BattlefieldLayout.StackEntry> refused = BattlefieldLayout.castOnto(
+                stack, BattlefieldLayout.Speed.SORCERY, "Grizzly", false);
+        Assert.assertEquals(refused.size(), 1);
+        Assert.assertTrue(BattlefieldLayout.mayCast(BattlefieldLayout.Speed.INSTANT, stack.size()));
+        stack = BattlefieldLayout.castOnto(stack, BattlefieldLayout.Speed.INSTANT, "Shock", true);
+        Assert.assertEquals(stack.size(), 2);
+        Assert.assertEquals(stack.get(1).name, "Shock");
+        Assert.assertTrue(stack.get(0).fullText.contains("any target"));
+        Assert.assertTrue(stack.get(1).fullText.contains("any target"));
+        Assert.assertFalse(BattlefieldLayout.stackArtCoversBoard(1920f, 1080f));
+        HandLayout.Pose full = BattlefieldLayout.slot(1920f, 1080f, BattlefieldLayout.Side.YOU,
+                BattlefieldLayout.Row.CREATURE, 0, 1, false);
+        Assert.assertTrue(BattlefieldLayout.occupiesFullCardOverBoard(full, 1920f, 1080f));
+        Assert.assertFalse(BattlefieldLayout.occupiesFullCardOverBoard(
+                BattlefieldLayout.stackThumbnail(1920f, 1080f), 1920f, 1080f));
+        stack = BattlefieldLayout.assignTopTarget(stack, "Grizzly");
+        Assert.assertEquals(stack.get(1).target, "Grizzly");
+        Assert.assertTrue(BattlefieldLayout.waitingForTarget(stack.get(0)));
+        Assert.assertFalse(BattlefieldLayout.clickTarget(stack.get(1), "Grizzly").confirmRequired);
+        stack = BattlefieldLayout.resolveTop(stack);
+        Assert.assertEquals(stack.size(), 1);
+        Assert.assertTrue(BattlefieldLayout.waitingForTarget(stack.get(0)));
+        stack = BattlefieldLayout.assignTopTarget(stack, "Sprite");
+        stack = BattlefieldLayout.resolveTop(stack);
+        Assert.assertTrue(stack.isEmpty());
+    }
+
+    @Test
+    public void stackEntryKeepsAReadableFullText() {
+        BattlefieldLayout.StackEntry shock = BattlefieldLayout.castSpell("Shock", true);
+        Assert.assertNotNull(shock.fullText);
+        Assert.assertFalse(shock.fullText.isBlank());
+        Assert.assertTrue(shock.fullText.contains("any target"));
+        BattlefieldLayout.StackEntry cavern = BattlefieldLayout.castSpell("Cavern of Souls", false);
+        Assert.assertFalse(cavern.fullText.isBlank());
+        Assert.assertFalse(BattlefieldLayout.waitingForTarget(cavern));
+    }
+
+    @Test
+    public void screenYMovesUpWhenThePointerMovesUp() {
+        float windowH = 1080f;
+        float lowOnScreen = BattlefieldLayout.screenYToLayoutY(windowH, 800f);
+        float higherOnScreen = BattlefieldLayout.screenYToLayoutY(windowH, 200f);
+        Assert.assertTrue(higherOnScreen > lowOnScreen);
+        Assert.assertEquals(BattlefieldLayout.screenYToLayoutY(windowH, 0f), windowH, 0.001f);
+        Assert.assertEquals(BattlefieldLayout.screenYToLayoutY(windowH, windowH), 0f, 0.001f);
+        Assert.assertEquals(higherOnScreen - lowOnScreen, 600f, 0.001f);
+    }
+
+    @Test
+    public void arrowSticksOnlyWhenThePointerIsInsideARectangle() {
+        float[] cx = {200f, 500f};
+        float[] cy = {300f, 700f};
+        float[] w = {80f, 80f};
+        float[] h = {110f, 110f};
+        Assert.assertEquals(BattlefieldLayout.stickIndexIfInside(200f, 300f, cx, cy, w, h), 0);
+        Assert.assertEquals(BattlefieldLayout.stickIndexIfInside(530f, 740f, cx, cy, w, h), 1);
+        float outsideX = 200f + 41f;
+        Assert.assertEquals(BattlefieldLayout.stickIndexIfInside(outsideX, 300f, cx, cy, w, h), -1);
+        Assert.assertEquals(BattlefieldLayout.snapNearest(outsideX, 300f, cx, cy, 80f), 0);
+        Assert.assertEquals(BattlefieldLayout.stickIndexIfInside(350f, 500f, cx, cy, w, h), -1);
+        Assert.assertEquals(BattlefieldLayout.stickIndexIfInside(510f, 640f, cx, cy, w, h), -1);
+    }
 }

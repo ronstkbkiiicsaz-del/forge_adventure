@@ -16,6 +16,7 @@ import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.GlyphLayout;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
+import com.badlogic.gdx.utils.Align;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -24,12 +25,14 @@ import java.util.List;
 /**
  * Scripted battlefield window. No Forge rules, stack, mana, or AI.
  *
- * <p>Hover the hand to read it. Drag a card above the line to play it (the other cards tuck
- * while it is gripped). Click a permanent to tap or untap. Drag a creature into the opponent's
- * half to attack, or click it and then their life. Drag one of your creatures onto their
- * attacker to block, or click yours and then theirs. Click Activate, read the preview, then
- * Confirm. N starts a new turn (clears summoning sickness). R resets. Esc quits.
- * 1 is your attack, 2 is their attack.
+ * <p>Hover the hand to read it. Inside the hand, a drag reorders. Past the cast line, the card
+ * leaves the pointer: a targeted spell becomes a stack-log entry (full text, then one click
+ * assigns a target), and a land or creature lands on its row. Another instant can join the
+ * stack before the first resolves. Resolve takes only the top spell. Click a stack entry to
+ * read it while it is live. Drag a creature into the opponent's half to attack. Drag one of
+ * yours onto their attacker to block. Click Activate, read the preview, then Confirm.
+ * N starts a new turn. R resets. Esc cancels the top stack entry, or quits when the stack
+ * is empty. 1 is your attack, 2 is their attack.
  */
 public final class BattlefieldPrototype extends ApplicationAdapter {
     private static final Color TABLE = new Color(0.09f, 0.11f, 0.12f, 1f);
@@ -54,6 +57,7 @@ public final class BattlefieldPrototype extends ApplicationAdapter {
     private final List<Texture> art = new ArrayList<>();
     private final List<Perm> board = new ArrayList<>();
     private final List<HandCard> hand = new ArrayList<>();
+    private final List<StackItem> stack = new ArrayList<>();
     private final List<UiButton> buttons = new ArrayList<>();
     private UiButton youBadge = new UiButton("you-life", "", 0, 0, 1, 1);
     private UiButton themBadge = new UiButton("them-life", "", 0, 0, 1, 1);
@@ -61,18 +65,18 @@ public final class BattlefieldPrototype extends ApplicationAdapter {
     private Phase phase = Phase.MAIN;
     private Modal modal = Modal.NONE;
     private int yourLife = 20, theirLife = 20, yourGy, theirGy, artCursor;
-    private int hover = -1, pressHand = -1;
-    private boolean draggingHand;
+    private int hover = -1, pressHand = -1, examining = -1;
+    private boolean draggingHand, dragInHand;
     private float pressX, pressY, pressTime, dragDist;
     private Perm pressedPerm;
     private boolean draggingBoard;
     private Perm selected;
     private HandCard choiceHand;
     private Perm choicePerm;
-    private HandCard shockCard;
     private Perm shockHover, shockLock;
     private boolean shockHoverYou, shockHoverThem, shockLockYou, shockLockThem;
-    private String shockLine = "", abilityLine = "", note = "";
+    private String abilityLine = "", note = "";
+    private float stackBottomY;
     private float mx, my;
 
     public static void main(String[] args) {
@@ -100,6 +104,7 @@ public final class BattlefieldPrototype extends ApplicationAdapter {
             @Override public boolean keyDown(int keycode) {
                 if (keycode == Input.Keys.ESCAPE) {
                     if (modal != Modal.NONE) cancelModal();
+                    else if (!stack.isEmpty()) cancelTop();
                     else Gdx.app.exit();
                     return true;
                 }
@@ -108,8 +113,9 @@ public final class BattlefieldPrototype extends ApplicationAdapter {
                 if (keycode == Input.Keys.NUM_1 || keycode == Input.Keys.NUMPAD_1) { yourAttack(); return true; }
                 if (keycode == Input.Keys.NUM_2 || keycode == Input.Keys.NUMPAD_2) { theirAttack(); return true; }
                 if (keycode == Input.Keys.ENTER) {
-                    if (modal == Modal.ABILITY || (modal == Modal.SHOCK && shockLocked())) confirmModal();
-                    else if (modal == Modal.NONE && hover >= 0) play(live().get(hover));
+                    if (modal == Modal.ABILITY) confirmModal();
+                    else if (topHasTarget()) resolveShock();
+                    else if (modal == Modal.NONE && examining < 0 && hover >= 0) play(live().get(hover));
                     return true;
                 }
                 return false;
@@ -117,22 +123,31 @@ public final class BattlefieldPrototype extends ApplicationAdapter {
             @Override public boolean touchDown(int sx, int sy, int pointer, int button) {
                 if (button != Input.Buttons.LEFT) {
                     if (modal != Modal.NONE) cancelModal();
+                    else if (!stack.isEmpty()) cancelTop();
                     return true;
                 }
                 readPointer(sx, sy);
                 UiButton hit = hitButton(mx, my);
                 if (hit != null) { onButton(hit.id); return true; }
-                if (modal == Modal.SHOCK) { clickShockTarget(); return true; }
-                if (modal != Modal.NONE) return true;
+                if (hitStack(mx, my)) return true;
                 int handIndex = pickHand(mx, my);
-                if (handIndex >= 0) {
+                if (handIndex >= 0 && modal == Modal.NONE) {
+                    if (examining >= 0) examining = -1;
                     pressHand = handIndex;
                     pressedPerm = null;
                     pressX = mx; pressY = my; pressTime = 0; dragDist = 0;
                     draggingHand = false;
+                    dragInHand = false;
                     hover = handIndex;
                     return true;
                 }
+                if (examining >= 0) {
+                    examining = -1;
+                    note = targeting() ? BattlefieldLayout.TARGET_PROMPT : note;
+                    return true;
+                }
+                if (targeting()) { clickShockTarget(); return true; }
+                if (modal != Modal.NONE) return true;
                 Perm perm = hitBoard(mx, my);
                 if (perm != null) {
                     pressedPerm = perm;
@@ -151,11 +166,13 @@ public final class BattlefieldPrototype extends ApplicationAdapter {
                 dragDist = Math.max(dragDist, dist(pressX, pressY, mx, my));
                 if (!HandLayout.isDrag(dragDist)) return true;
                 if (pressHand >= 0 && modal == Modal.NONE) {
+                    if (!draggingHand) dragInHand = true;
                     draggingHand = true;
                     List<HandCard> live = live();
+                    float w = Gdx.graphics.getWidth(), h = Gdx.graphics.getHeight();
+                    dragInHand = HandLayout.pointerInHand(w, h, live.size(), hover, dragInHand, mx, my);
                     if (pressHand < live.size()) {
                         HandCard c = live.get(pressHand);
-                        float h = Gdx.graphics.getHeight();
                         c.tcx = mx; c.tcy = my;
                         c.tw = HandLayout.hoverRaisedWidth(h);
                         c.th = HandLayout.hoverRaisedHeight(h);
@@ -173,14 +190,23 @@ public final class BattlefieldPrototype extends ApplicationAdapter {
                 if (pressHand >= 0) {
                     List<HandCard> live = live();
                     if (draggingHand && pressHand < live.size()) {
-                        HandCard c = live.get(pressHand);
-                        if (c.cy > HandLayout.castLineY(Gdx.graphics.getHeight())) play(c);
+                        float w = Gdx.graphics.getWidth(), h = Gdx.graphics.getHeight();
+                        boolean inHand = HandLayout.pointerInHand(w, h, live.size(), hover, dragInHand, mx, my);
+                        if (inHand) {
+                            int drop = HandLayout.reorderIndex(w, h, live.size(), pressHand, mx);
+                            reorderLive(pressHand, drop);
+                            hover = drop;
+                        } else {
+                            HandCard c = live.get(pressHand);
+                            if (c.cy > HandLayout.castLineY(h)) play(c);
+                        }
                     }
                 } else if (pressedPerm != null) {
                     if (HandLayout.isTap(dragDist, pressTime)) clickBoard(pressedPerm);
                     else if (draggingBoard) releaseBoardDrag(pressedPerm);
                 }
                 draggingHand = false;
+                dragInHand = false;
                 draggingBoard = false;
                 pressHand = -1;
                 pressedPerm = null;
@@ -188,8 +214,7 @@ public final class BattlefieldPrototype extends ApplicationAdapter {
             }
             @Override public boolean mouseMoved(int sx, int sy) {
                 readPointer(sx, sy);
-                if (modal == Modal.SHOCK) updateShockHover();
-                if (modal != Modal.NONE || draggingHand || pressHand >= 0) return false;
+                if (draggingHand || pressHand >= 0 || modal == Modal.ABILITY) return false;
                 List<HandCard> live = live();
                 float w = Gdx.graphics.getWidth(), h = Gdx.graphics.getHeight();
                 hover = HandLayout.hoverIndexFor(w, h, live.size(), hover, mx, my);
@@ -201,8 +226,10 @@ public final class BattlefieldPrototype extends ApplicationAdapter {
     private void resetAll() {
         board.clear();
         hand.clear();
+        stack.clear();
         phase = Phase.MAIN;
         modal = Modal.NONE;
+        examining = -1;
         yourLife = 20;
         theirLife = 20;
         yourGy = 0;
@@ -210,12 +237,12 @@ public final class BattlefieldPrototype extends ApplicationAdapter {
         hover = -1;
         pressHand = -1;
         draggingHand = false;
+        dragInHand = false;
         draggingBoard = false;
         pressedPerm = null;
         selected = null;
         choiceHand = null;
         choicePerm = null;
-        shockCard = null;
         clearShockLock();
         shockHover = null;
         note = "Main. The board stays put until you play, tap, attack, or activate.";
@@ -234,10 +261,11 @@ public final class BattlefieldPrototype extends ApplicationAdapter {
         addCreature(true, "Cursed Knight", 4, 4, false, 0, 2, null, "-2/-2", false);
         addCreature(true, "Hero", 1, 1, false, 0, 0, null, null, false).counters = 3;
         addCreature(true, "Veteran", 3, 3, false, 0, 0, null, null, true);
-        addHand("Forest", BattlefieldLayout.Kind.LAND, false, 0, 0);
-        addHand("Grizzly", BattlefieldLayout.Kind.CREATURE, false, 2, 2);
-        addHand("Cavern of Souls", BattlefieldLayout.Kind.LAND, true, 0, 0);
-        addHand("Shock", BattlefieldLayout.Kind.SPELL, false, 0, 0);
+        addHand("Forest", BattlefieldLayout.Kind.LAND, false, 0, 0, false);
+        addHand("Grizzly", BattlefieldLayout.Kind.CREATURE, false, 2, 2, false);
+        addHand("Cavern of Souls", BattlefieldLayout.Kind.LAND, true, 0, 0, false);
+        addHand("Shock", BattlefieldLayout.Kind.SPELL, false, 0, 0, true);
+        addHand("Shock", BattlefieldLayout.Kind.SPELL, false, 0, 0, true);
         layout(0f);
     }
 
@@ -270,11 +298,13 @@ public final class BattlefieldPrototype extends ApplicationAdapter {
         return p;
     }
 
-    private void addHand(String name, BattlefieldLayout.Kind kind, boolean choice, int power, int toughness) {
+    private void addHand(String name, BattlefieldLayout.Kind kind, boolean choice, int power, int toughness,
+                          boolean instant) {
         HandCard c = new HandCard();
         c.name = name;
         c.kind = kind;
         c.choice = choice;
+        c.instant = instant;
         c.power = power;
         c.toughness = toughness;
         c.tex = nextArt();
@@ -316,6 +346,7 @@ public final class BattlefieldPrototype extends ApplicationAdapter {
 
     private void newTurn() {
         cancelModal();
+        while (!stack.isEmpty()) cancelTop();
         phase = Phase.MAIN;
         for (Perm p : board) {
             if (!p.alive) continue;
@@ -355,26 +386,41 @@ public final class BattlefieldPrototype extends ApplicationAdapter {
     }
 
     private void play(HandCard c) {
-        if (c == null || modal != Modal.NONE) return;
+        if (c == null || !c.alive || modal != Modal.NONE) return;
         draggingHand = false;
+        dragInHand = false;
         pressHand = -1;
         hover = -1;
-        if (c.kind == BattlefieldLayout.Kind.SPELL) {
-            c.parked = true;
-            shockCard = c;
-            modal = Modal.SHOCK;
-            clearShockLock();
-            shockLine = "Shock deals 2. Click a creature or a life total.";
+        BattlefieldLayout.Speed speed = c.instant ? BattlefieldLayout.Speed.INSTANT : BattlefieldLayout.Speed.SORCERY;
+        if (!BattlefieldLayout.mayCast(speed, stack.size())) {
+            note = c.name + " waits until the stack is empty.";
             return;
         }
-        if (c.choice) {
-            c.parked = true;
-            choiceHand = c;
-            choicePerm = null;
-            modal = Modal.CHOOSE_TYPE;
+        if (c.kind == BattlefieldLayout.Kind.SPELL || c.choice) {
+            queue(c);
             return;
         }
         spawn(c, null);
+    }
+
+    /** The card leaves the pointer and becomes the top line of the stack log. */
+    private void queue(HandCard c) {
+        boolean needsTarget = c.kind == BattlefieldLayout.Kind.SPELL;
+        BattlefieldLayout.StackEntry entry = BattlefieldLayout.castSpell(c.name, needsTarget);
+        StackItem item = new StackItem();
+        item.card = c;
+        item.name = entry.name;
+        item.fullText = entry.fullText;
+        item.needsTarget = entry.needsTarget;
+        item.needsChoice = c.choice && !needsTarget;
+        c.alive = false;
+        c.parked = false;
+        stack.add(item);
+        examining = -1;
+        clearShockLock();
+        shockHover = null;
+        if (item.needsTarget) note = BattlefieldLayout.TARGET_PROMPT;
+        else if (item.needsChoice) note = "Choose a creature type. It stays printed on the card.";
     }
 
     private void spawn(HandCard c, String type) {
@@ -401,6 +447,15 @@ public final class BattlefieldPrototype extends ApplicationAdapter {
     }
 
     private void choose(String type) {
+        StackItem top = top();
+        if (top != null && top.needsChoice && top.card != null) {
+            String name = top.card.name;
+            spawn(top.card, type);
+            stack.remove(stack.size() - 1);
+            if (examining >= stack.size()) examining = -1;
+            note = type + " stays on " + name + ".";
+            return;
+        }
         if (choiceHand != null) {
             spawn(choiceHand, type);
             note = type + " stays on " + choiceHand.name + ".";
@@ -575,70 +630,119 @@ public final class BattlefieldPrototype extends ApplicationAdapter {
             modal = Modal.NONE;
             return;
         }
-        if (modal == Modal.SHOCK && shockLocked()) {
-            resolveShock();
-        }
     }
 
     private void resolveShock() {
-        if (shockLock != null) {
-            int printed = BattlefieldLayout.shownToughness(shockLock.toughness, shockLock.buff,
-                    shockLock.debuff, shockLock.counters);
-            String line = BattlefieldLayout.shockOnCreature(shockLock.name, printed,
-                    shockLock.damage, BattlefieldLayout.SHOCK_DAMAGE);
-            shockLock.damage += BattlefieldLayout.SHOCK_DAMAGE;
-            if (shockLock.damage >= printed) kill(shockLock);
+        StackItem top = top();
+        if (top == null || !top.needsTarget) return;
+        if (top.targetPerm != null) {
+            Perm target = top.targetPerm;
+            int printed = BattlefieldLayout.shownToughness(target.toughness, target.buff,
+                    target.debuff, target.counters);
+            String line = BattlefieldLayout.shockOnCreature(target.name, printed,
+                    target.damage, BattlefieldLayout.SHOCK_DAMAGE);
+            target.damage += BattlefieldLayout.SHOCK_DAMAGE;
+            if (target.damage >= printed) kill(target);
             note = line;
-        } else if (shockLockYou) {
+        } else if (top.targetYou) {
             int before = yourLife;
             yourLife -= BattlefieldLayout.SHOCK_DAMAGE;
             note = BattlefieldLayout.lifeChange("You", before, BattlefieldLayout.SHOCK_DAMAGE);
-        } else if (shockLockThem) {
+        } else if (top.targetThem) {
             int before = theirLife;
             theirLife -= BattlefieldLayout.SHOCK_DAMAGE;
             note = BattlefieldLayout.lifeChange("Them", before, BattlefieldLayout.SHOCK_DAMAGE);
+        } else {
+            return;
         }
-        if (shockCard != null) {
-            shockCard.alive = false;
-            shockCard.parked = false;
+        if (top.card != null) {
+            top.card.alive = false;
+            top.card.parked = false;
         }
-        shockCard = null;
-        modal = Modal.NONE;
-        clearShockLock();
+        yourGy++;
+        stack.remove(stack.size() - 1);
+        if (examining >= stack.size()) examining = -1;
+        applyLockFromTop();
+        StackItem next = top();
+        if (next != null && BattlefieldLayout.waitingForTarget(
+                new BattlefieldLayout.StackEntry(next.name, next.fullText, next.needsTarget, next.targetLabel))) {
+            note = note + "  " + BattlefieldLayout.TARGET_PROMPT;
+        }
     }
 
     private void clickShockTarget() {
+        if (!targeting() || examining >= 0) return;
         updateShockHover();
+        StackItem top = top();
+        if (top == null) return;
         if (shockHover != null) {
+            BattlefieldLayout.TargetAssignment assigned = BattlefieldLayout.clickTarget(
+                    BattlefieldLayout.castSpell(top.name, true), shockHover.name);
+            top.targetLabel = assigned.entry.target;
+            top.targetPerm = shockHover;
+            top.targetYou = false;
+            top.targetThem = false;
             shockLock = shockHover;
             shockLockYou = false;
             shockLockThem = false;
-            shockLine = BattlefieldLayout.shockOnCreature(shockLock.name, toughness(shockLock),
-                    shockLock.damage, BattlefieldLayout.SHOCK_DAMAGE);
+            top.preview = BattlefieldLayout.stackOutcome(top.name, assigned.entry.target);
         } else if (shockHoverYou) {
+            BattlefieldLayout.TargetAssignment assigned = BattlefieldLayout.clickTarget(
+                    BattlefieldLayout.castSpell(top.name, true), "You");
+            top.targetLabel = assigned.entry.target;
+            top.targetPerm = null;
+            top.targetYou = true;
+            top.targetThem = false;
             shockLock = null;
             shockLockYou = true;
             shockLockThem = false;
-            shockLine = BattlefieldLayout.lifeChange("You", yourLife, BattlefieldLayout.SHOCK_DAMAGE);
+            top.preview = BattlefieldLayout.stackOutcome(top.name, assigned.entry.target);
         } else if (shockHoverThem) {
+            BattlefieldLayout.TargetAssignment assigned = BattlefieldLayout.clickTarget(
+                    BattlefieldLayout.castSpell(top.name, true), "Them");
+            top.targetLabel = assigned.entry.target;
+            top.targetPerm = null;
+            top.targetYou = false;
+            top.targetThem = true;
             shockLock = null;
             shockLockYou = false;
             shockLockThem = true;
-            shockLine = BattlefieldLayout.lifeChange("Them", theirLife, BattlefieldLayout.SHOCK_DAMAGE);
+            top.preview = BattlefieldLayout.stackOutcome(top.name, assigned.entry.target);
         }
     }
 
     private void updateShockHover() {
-        shockHover = snapCreature(mx, my);
-        float h = Gdx.graphics.getHeight();
-        float r = BattlefieldLayout.SNAP_RADIUS_FRAC * h;
-        shockHoverYou = shockHover == null && (youBadge.contains(mx, my) || dist(mx, my, youBadge.x, youBadge.y) <= r);
-        shockHoverThem = shockHover == null && !shockHoverYou
-                && (themBadge.contains(mx, my) || dist(mx, my, themBadge.x, themBadge.y) <= r);
-    }
-
-    private boolean shockLocked() {
-        return shockLock != null || shockLockYou || shockLockThem;
+        shockHover = null;
+        shockHoverYou = false;
+        shockHoverThem = false;
+        List<Perm> creatures = new ArrayList<>();
+        for (Perm p : board) {
+            if (p.alive && p.kind == BattlefieldLayout.Kind.CREATURE) creatures.add(p);
+        }
+        int n = creatures.size();
+        float[] cx = new float[n];
+        float[] cy = new float[n];
+        float[] ww = new float[n];
+        float[] hh = new float[n];
+        for (int i = 0; i < n; i++) {
+            Perm p = creatures.get(i);
+            cx[i] = p.cx;
+            cy[i] = p.cy;
+            ww[i] = p.w;
+            hh[i] = p.h;
+        }
+        int hit = BattlefieldLayout.stickIndexIfInside(mx, my, cx, cy, ww, hh);
+        if (hit >= 0) {
+            shockHover = creatures.get(hit);
+            return;
+        }
+        if (youBadge.contains(mx, my)) {
+            shockHoverYou = true;
+            return;
+        }
+        if (themBadge.contains(mx, my)) {
+            shockHoverThem = true;
+        }
     }
 
     private void clearShockLock() {
@@ -647,16 +751,39 @@ public final class BattlefieldPrototype extends ApplicationAdapter {
         shockLockThem = false;
     }
 
-    private void cancelModal() {
-        if (choiceHand != null) choiceHand.parked = false;
-        if (shockCard != null) shockCard.parked = false;
-        choiceHand = null;
-        choicePerm = null;
-        shockCard = null;
+    /** The arrow follows the top spell's target after that spell becomes the top. */
+    private void applyLockFromTop() {
         clearShockLock();
         shockHover = null;
+        StackItem top = top();
+        if (top == null) return;
+        shockLock = top.targetPerm;
+        shockLockYou = top.targetYou;
+        shockLockThem = top.targetThem;
+    }
+
+    private void cancelModal() {
+        if (choiceHand != null) choiceHand.parked = false;
+        choiceHand = null;
+        choicePerm = null;
         modal = Modal.NONE;
         note = "Cancelled.";
+    }
+
+    private void cancelTop() {
+        if (stack.isEmpty()) return;
+        StackItem item = stack.remove(stack.size() - 1);
+        if (item.card != null) {
+            item.card.alive = true;
+            item.card.parked = false;
+        }
+        if (examining >= stack.size()) examining = -1;
+        applyLockFromTop();
+        note = item.name + " is back in your hand.";
+        StackItem next = top();
+        if (next != null && next.needsTarget && (next.targetLabel == null || next.targetLabel.isBlank())) {
+            note = item.name + " is back in your hand. " + BattlefieldLayout.TARGET_PROMPT;
+        }
     }
 
     private void kill(Perm p) {
@@ -733,6 +860,7 @@ public final class BattlefieldPrototype extends ApplicationAdapter {
             }
         }
         layoutHand(w, h, dt);
+        layoutStack(w, h);
         layoutChrome(w, h);
     }
 
@@ -763,12 +891,38 @@ public final class BattlefieldPrototype extends ApplicationAdapter {
                 if (dt > 0f) easeHand(c, dt);
                 continue;
             }
-            HandLayout.Pose pose = HandLayout.layoutPose(w, h, n, i, hover, draggingHand);
+            HandLayout.Pose pose = draggingHand
+                    ? HandLayout.dragLayoutPose(w, h, n, i, hover, dragInHand, pressHand, mx, my)
+                    : HandLayout.layoutPose(w, h, n, i, hover, false);
             c.tcx = pose.cx; c.tcy = pose.cy; c.tw = pose.w; c.th = pose.h; c.trot = pose.rotationDeg;
             if (dt <= 0f) snapHand(c);
             else easeHand(c, dt);
         }
         if (pressHand >= 0) pressTime += dt;
+    }
+
+    private void layoutStack(float w, float h) {
+        float colW = BattlefieldLayout.stackColumnWidth(w);
+        float cx = BattlefieldLayout.stackColumnCenterX(w);
+        HandLayout.Pose thumb = BattlefieldLayout.stackThumbnail(w, h);
+        float y = BattlefieldLayout.STACK_TOP_FRAC * h;
+        stackBottomY = y;
+        for (int visual = 0; visual < stack.size(); visual++) {
+            int i = stack.size() - 1 - visual;
+            StackItem item = stack.get(i);
+            boolean examined = i == examining;
+            float rh = BattlefieldLayout.stackRowHeight(h, examined);
+            item.rowW = colW;
+            item.rowH = rh;
+            item.rowX = cx;
+            item.rowY = y - rh / 2f;
+            item.thumbW = thumb.w;
+            item.thumbH = thumb.h;
+            item.thumbX = cx - colW / 2f + thumb.w / 2f + 8f;
+            item.thumbY = item.rowY;
+            y -= rh + 0.008f * h;
+            stackBottomY = y;
+        }
     }
 
     private void layoutChrome(float w, float h) {
@@ -798,14 +952,32 @@ public final class BattlefieldPrototype extends ApplicationAdapter {
         if (modal == Modal.NONE && hover >= 0 && hover < live().size()) {
             stack(x, y, bw, bh, "play", "Play");
         }
-        if (modal == Modal.ABILITY || (modal == Modal.SHOCK && shockLocked())) {
+        if (modal == Modal.ABILITY) {
             stack(0.50f * w - 0.08f * w, 0.57f * h, 0.12f * w, bh, "confirm", "Confirm");
             stack(0.50f * w + 0.08f * w, 0.57f * h, 0.12f * w, bh, "cancel", "Cancel");
         }
-        if (modal == Modal.CHOOSE_TYPE) {
+        boolean choosing = modal == Modal.CHOOSE_TYPE || (top() != null && top().needsChoice);
+        float choiceY = choosing ? Math.min(stackBottomY - bh * 0.2f, 0.50f * h) : 0.50f * h;
+        if (choosing && !stack.isEmpty() && top().needsChoice) {
+            float bx = BattlefieldLayout.stackColumnCenterX(w);
+            stack(bx, choiceY, bw * 0.7f, bh, "type-dragon", "Dragon");
+            stack(bx, choiceY - bh * 1.25f, bw * 0.7f, bh, "type-elf", "Elf");
+            stack(bx, choiceY - bh * 2.5f, bw * 0.7f, bh, "type-goblin", "Goblin");
+            stack(bx, choiceY - bh * 3.75f, bw * 0.7f, bh, "cancel", "Cancel");
+        } else if (modal == Modal.CHOOSE_TYPE) {
             stack(0.38f * w, 0.57f * h, 0.12f * w, bh, "type-dragon", "Dragon");
             stack(0.52f * w, 0.57f * h, 0.12f * w, bh, "type-elf", "Elf");
             stack(0.66f * w, 0.57f * h, 0.12f * w, bh, "type-goblin", "Goblin");
+        }
+        if (modal != Modal.ABILITY && !stack.isEmpty() && (top() == null || !top().needsChoice)) {
+            float bx = BattlefieldLayout.stackColumnCenterX(w);
+            float by = Math.min(stackBottomY - bh * 0.15f, 0.52f * h);
+            if (topHasTarget()) {
+                stack(bx, by, bw * 0.75f, bh, "resolve", "Resolve");
+                stack(bx, by - bh * 1.3f, bw * 0.75f, bh, "cancel", "Cancel");
+            } else {
+                stack(bx, by, bw * 0.75f, bh, "cancel", "Cancel");
+            }
         }
     }
 
@@ -829,7 +1001,11 @@ public final class BattlefieldPrototype extends ApplicationAdapter {
             case "confirm-blocks" -> confirmBlocks();
             case "activate" -> activate();
             case "confirm" -> confirmModal();
-            case "cancel" -> cancelModal();
+            case "resolve" -> { if (topHasTarget()) resolveShock(); }
+            case "cancel" -> {
+                if (modal != Modal.NONE) cancelModal();
+                else cancelTop();
+            }
             case "play" -> { if (hover >= 0 && hover < live().size()) play(live().get(hover)); }
             case "type-dragon" -> choose("Dragon");
             case "type-elf" -> choose("Elf");
@@ -880,19 +1056,6 @@ public final class BattlefieldPrototype extends ApplicationAdapter {
         return null;
     }
 
-    private Perm snapCreature(float x, float y) {
-        List<Perm> creatures = new ArrayList<>();
-        for (Perm p : board) if (p.alive && p.kind == BattlefieldLayout.Kind.CREATURE) creatures.add(p);
-        float[] xs = new float[creatures.size()];
-        float[] ys = new float[creatures.size()];
-        for (int i = 0; i < creatures.size(); i++) {
-            xs[i] = creatures.get(i).cx;
-            ys[i] = creatures.get(i).cy;
-        }
-        int idx = BattlefieldLayout.snapNearest(x, y, xs, ys, BattlefieldLayout.SNAP_RADIUS_FRAC * Gdx.graphics.getHeight());
-        return idx < 0 ? null : creatures.get(idx);
-    }
-
     private Perm snapAttacker(float x, float y) {
         List<Perm> attackers = new ArrayList<>();
         for (Perm p : board) if (p.alive && !p.you && p.attacking) attackers.add(p);
@@ -914,9 +1077,18 @@ public final class BattlefieldPrototype extends ApplicationAdapter {
     }
 
     private String bannerText() {
+        if (examining >= 0 && examining < stack.size()) {
+            return "Reading the stack. Click the entry again, or click the board, to go back to targeting.";
+        }
+        StackItem top = top();
+        if (top != null && top.needsChoice) return "Choose a creature type. It stays printed on the card.";
+        if (top != null && top.needsTarget) {
+            if (top.preview != null && !top.preview.isBlank()) return top.preview;
+            if (note != null && !note.isBlank()) return note;
+            return BattlefieldLayout.TARGET_PROMPT;
+        }
         if (modal == Modal.CHOOSE_TYPE) return "Choose a creature type. It stays printed on the card.";
         if (modal == Modal.ABILITY) return abilityLine + "  Confirm to resolve.";
-        if (modal == Modal.SHOCK) return shockLine;
         if (phase == Phase.BLOCKERS) {
             Perm atk = opponentAttacker();
             Perm blk = yourBlocker();
@@ -943,8 +1115,13 @@ public final class BattlefieldPrototype extends ApplicationAdapter {
     @Override
     public void render() {
         float dt = Math.min(Gdx.graphics.getDeltaTime(), 0.05f);
-        readPointer(Gdx.input.getX(), Gdx.graphics.getHeight() - Gdx.input.getY());
-        if (modal == Modal.SHOCK) updateShockHover();
+        readPointer(Gdx.input.getX(), Gdx.input.getY());
+        if (targeting() && examining < 0) updateShockHover();
+        else {
+            shockHover = null;
+            shockHoverYou = false;
+            shockHoverThem = false;
+        }
         layout(dt);
         float w = Gdx.graphics.getWidth(), h = Gdx.graphics.getHeight();
         batch.getProjectionMatrix().setToOrtho2D(0, 0, w, h);
@@ -955,7 +1132,7 @@ public final class BattlefieldPrototype extends ApplicationAdapter {
         Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
 
         List<HandCard> live = live();
-        boolean willCast = draggingHand && pressHand >= 0 && pressHand < live.size()
+        boolean willCast = draggingHand && !dragInHand && pressHand >= 0 && pressHand < live.size()
                 && live.get(pressHand).cy > HandLayout.castLineY(h);
 
         shapes.begin(ShapeRenderer.ShapeType.Filled);
@@ -983,6 +1160,19 @@ public final class BattlefieldPrototype extends ApplicationAdapter {
                 shapes.rect(p.cx - p.w / 2f - 8f, p.cy - p.h / 2f - 8f, p.w + 16f, p.h + 16f);
             }
         }
+        for (StackItem item : stack) {
+            boolean active = item == top();
+            boolean examined = stack.indexOf(item) == examining;
+            shapes.setColor(examined ? 0.24f : 0.10f, examined ? 0.18f : 0.10f, 0.08f, 0.94f);
+            shapes.rect(item.rowX - item.rowW / 2f, item.rowY - item.rowH / 2f, item.rowW, item.rowH);
+            shapes.setColor(active ? GOLD.r : 0.45f, active ? GOLD.g : 0.40f, active ? GOLD.b : 0.28f, active ? 1f : 0.75f);
+            float left = item.rowX - item.rowW / 2f;
+            float bottom = item.rowY - item.rowH / 2f;
+            shapes.rect(left, bottom, item.rowW, 3f);
+            shapes.rect(left, bottom + item.rowH - 3f, item.rowW, 3f);
+            shapes.rect(left, bottom, 3f, item.rowH);
+            shapes.rect(left + item.rowW - 3f, bottom, 3f, item.rowH);
+        }
         shapes.end();
 
         batch.begin();
@@ -993,11 +1183,6 @@ public final class BattlefieldPrototype extends ApplicationAdapter {
                 if ((pass == 0) == top) continue;
                 drawHand(live.get(i), willCast && i == pressHand);
             }
-        }
-        if (shockCard != null && shockCard.parked) {
-            float pw = HandLayout.hoverOpenWidth(h);
-            float ph = HandLayout.hoverOpenHeight(h);
-            drawHandAt(shockCard, w / 2f, HandLayout.castLineY(h) + ph * 0.2f, pw, ph, 0f);
         }
         font.setColor(Color.WHITE);
         big.setColor(Color.WHITE);
@@ -1013,9 +1198,10 @@ public final class BattlefieldPrototype extends ApplicationAdapter {
             case BLOCKERS -> "Combat: blockers";
         };
         drawBig(phaseLabel, 0.62f * w, 0.52f * h);
-        font.draw(batch, "Hover the hand. Drag above the line to play. Click a permanent to tap.", 24f, h - 18f);
-        font.draw(batch, "Drag up to attack. Drag onto their attacker to block. Activate, then Confirm. N new turn, R reset, Esc quits.", 24f, h - 40f);
+        font.draw(batch, "Drag out of the hand to queue a spell. One click targets the top spell. Click the log to read it.", 24f, h - 18f);
+        font.draw(batch, "Cast another instant onto the stack. Resolve takes only the top. Esc cancels the top spell.", 24f, h - 40f);
         drawCentered(bannerText(), w / 2f, 0.505f * h, GOLD);
+        drawStackLog();
         batch.end();
 
         shapes.begin(ShapeRenderer.ShapeType.Filled);
@@ -1025,15 +1211,16 @@ public final class BattlefieldPrototype extends ApplicationAdapter {
     }
 
     private void drawArrows(float w, float h) {
-        if (modal == Modal.SHOCK && shockCard != null) {
-            float x0 = w / 2f;
-            float y0 = HandLayout.castLineY(h) + HandLayout.hoverOpenHeight(h) * 0.2f;
+        StackItem top = top();
+        if (top != null && top.needsTarget && examining < 0) {
+            float x0 = top.thumbX;
+            float y0 = top.thumbY;
             float x1 = mx, y1 = my;
-            if (shockLock != null) { x1 = shockLock.cx; y1 = shockLock.cy; }
-            else if (shockLockThem || shockHoverThem) { x1 = themBadge.x; y1 = themBadge.y; }
-            else if (shockLockYou || shockHoverYou) { x1 = youBadge.x; y1 = youBadge.y; }
+            if (top.targetPerm != null) { x1 = top.targetPerm.cx; y1 = top.targetPerm.cy; }
+            else if (top.targetThem || shockHoverThem) { x1 = themBadge.x; y1 = themBadge.y; }
+            else if (top.targetYou || shockHoverYou) { x1 = youBadge.x; y1 = youBadge.y; }
             else if (shockHover != null) { x1 = shockHover.cx; y1 = shockHover.cy; }
-            curveArrow(x0, y0, x1, y1);
+            curveArrow(x0, y0, x1, y1, 3.5f);
         }
         for (Perm p : board) {
             if (!p.alive || !p.attacking) continue;
@@ -1061,6 +1248,10 @@ public final class BattlefieldPrototype extends ApplicationAdapter {
     }
 
     private void curveArrow(float x0, float y0, float x1, float y1) {
+        curveArrow(x0, y0, x1, y1, 12f);
+    }
+
+    private void curveArrow(float x0, float y0, float x1, float y1, float width) {
         float cx = (x0 + x1) / 2f;
         float cy = (y0 + y1) / 2f + 40f;
         float px = x0, py = y0;
@@ -1070,20 +1261,104 @@ public final class BattlefieldPrototype extends ApplicationAdapter {
             float u = 1f - t;
             float x = u * u * x0 + 2f * u * t * cx + t * t * x1;
             float y = u * u * y0 + 2f * u * t * cy + t * t * y1;
-            shapes.rectLine(px, py, x, y, 12f);
-            if (i == n) arrowHead(px, py, x, y);
+            shapes.rectLine(px, py, x, y, width);
+            if (i == n) arrowHead(px, py, x, y, width);
             px = x;
             py = y;
         }
     }
 
     private void arrowHead(float x0, float y0, float x1, float y1) {
+        arrowHead(x0, y0, x1, y1, 12f);
+    }
+
+    private void arrowHead(float x0, float y0, float x1, float y1, float width) {
         float dx = x1 - x0, dy = y1 - y0;
         float len = (float) Math.sqrt(dx * dx + dy * dy);
         if (len < 0.001f) return;
         dx /= len; dy /= len;
-        float bx = x1 - dx * 26f, by = y1 - dy * 26f;
-        shapes.triangle(x1, y1, bx + -dy * 14f, by + dx * 14f, bx - -dy * 14f, by - dx * 14f);
+        float reach = Math.max(10f, width * 2.2f);
+        float wing = Math.max(5f, width * 1.2f);
+        float bx = x1 - dx * reach, by = y1 - dy * reach;
+        shapes.triangle(x1, y1, bx + -dy * wing, by + dx * wing, bx - -dy * wing, by - dx * wing);
+    }
+
+    private void drawStackLog() {
+        if (stack.isEmpty()) return;
+        float scale = font.getData().scaleX;
+        for (int i = stack.size() - 1; i >= 0; i--) {
+            StackItem item = stack.get(i);
+            boolean examined = i == examining;
+            float textScale = examined ? 1.55f : 1.15f;
+            font.getData().setScale(textScale);
+            float textX = item.thumbX + item.thumbW / 2f + 8f;
+            float textW = item.rowX + item.rowW / 2f - 8f - textX;
+            float textTop = item.rowY + item.rowH / 2f - 8f;
+            if (item.card != null && item.card.tex != null) {
+                batch.setColor(Color.WHITE);
+                drawTex(item.card.tex, item.thumbX, item.thumbY, item.thumbW, item.thumbH, 0f);
+            } else {
+                batch.setColor(0.35f, 0.36f, 0.4f, 1f);
+                drawTex(pixel(), item.thumbX, item.thumbY, item.thumbW, item.thumbH, 0f);
+                batch.setColor(Color.WHITE);
+            }
+            font.setColor(GOLD);
+            font.draw(batch, item.name, textX, textTop, textW, Align.left, true);
+            glyphs.setText(font, item.name);
+            float y = textTop - glyphs.height - 4f;
+            font.setColor(Color.WHITE);
+            font.draw(batch, item.fullText, textX, y, textW, Align.left, true);
+            glyphs.setText(font, item.fullText, Color.WHITE, textW, Align.left, true);
+            y -= glyphs.height + 6f;
+            font.setColor(GOLD);
+            String extra = item.needsTarget
+                    ? (item.preview == null || item.preview.isBlank() ? BattlefieldLayout.TARGET_PROMPT : item.preview)
+                    : (item.needsChoice ? "Choose a creature type." : "");
+            if (!extra.isEmpty()) font.draw(batch, extra, textX, y, textW, Align.left, true);
+        }
+        font.getData().setScale(scale);
+        font.setColor(Color.WHITE);
+        batch.setColor(Color.WHITE);
+    }
+
+    private boolean hitStack(float x, float y) {
+        for (int i = stack.size() - 1; i >= 0; i--) {
+            StackItem item = stack.get(i);
+            if (Math.abs(x - item.rowX) <= item.rowW / 2f && Math.abs(y - item.rowY) <= item.rowH / 2f) {
+                examining = examining == i ? -1 : i;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private StackItem top() {
+        return stack.isEmpty() ? null : stack.get(stack.size() - 1);
+    }
+
+    private boolean targeting() {
+        StackItem top = top();
+        return modal == Modal.NONE && top != null && top.needsTarget;
+    }
+
+    private boolean topHasTarget() {
+        StackItem top = top();
+        return top != null && top.needsTarget && top.targetLabel != null && !top.targetLabel.isBlank();
+    }
+
+    /** Insert the gripped live card at {@code to}. Cards already on the stack keep their places. */
+    private void reorderLive(int from, int to) {
+        List<HandCard> cards = live();
+        int n = cards.size();
+        if (from < 0 || from >= n) return;
+        int[] order = HandLayout.movedOrder(n, from, to);
+        HandCard[] next = new HandCard[n];
+        for (int i = 0; i < n; i++) next[i] = cards.get(order[i]);
+        int li = 0;
+        for (int i = 0; i < hand.size(); i++) {
+            HandCard c = hand.get(i);
+            if (c.alive && !c.parked) hand.set(i, next[li++]);
+        }
     }
 
     private void drawBadge(UiButton b, Color color) {
@@ -1182,7 +1457,7 @@ public final class BattlefieldPrototype extends ApplicationAdapter {
 
     private void readPointer(int sx, int sy) {
         mx = sx;
-        my = Gdx.graphics.getHeight() - sy;
+        my = BattlefieldLayout.screenYToLayoutY(Gdx.graphics.getHeight(), sy);
     }
 
     private static void easeHand(HandCard c, float dt) {
@@ -1223,10 +1498,22 @@ public final class BattlefieldPrototype extends ApplicationAdapter {
         float tx, ty, tw, th, trot;
     }
 
+    private static final class StackItem {
+        HandCard card;
+        String name = "";
+        String fullText = "";
+        String targetLabel;
+        String preview = "";
+        Perm targetPerm;
+        boolean needsTarget, needsChoice, targetYou, targetThem;
+        float rowX, rowY, rowW, rowH;
+        float thumbX, thumbY, thumbW, thumbH;
+    }
+
     private static final class HandCard {
         String name;
         BattlefieldLayout.Kind kind;
-        boolean choice, alive = true, parked;
+        boolean choice, instant, alive = true, parked;
         int power, toughness;
         Texture tex;
         float cx, cy, w, h, rotation;
