@@ -76,6 +76,9 @@ public class Game {
     private final PlayerCollection ingamePlayers = new PlayerCollection();
     private final PlayerCollection lostPlayers = new PlayerCollection();
     private GameEntityViewMap<Player, PlayerView> playerCache = new GameEntityViewMap<Player, PlayerView>();
+    /** >0 while {@link #onPlayerLost} / snapshoting {@link #getCardsInGame} runs. */
+    private final java.util.concurrent.atomic.AtomicInteger playerLostCardWalkDepth =
+            new java.util.concurrent.atomic.AtomicInteger();
 
     private List<Card> activePlanes = null;
 
@@ -966,8 +969,18 @@ public class Game {
     public void forEachCardInGame(Visitor<Card> visitor) {
         forEachCardInGame(visitor, false);
     }
-    // Allows visiting cards in game without allocating a temporary list.
+    /**
+     * Visit every card in the game. Hot paths (replacement/static/trigger) walk
+     * live zone lists without allocating. During {@link #onPlayerLost}, snapshot
+     * each zone first so a concurrent Game-* pool / net thread mutating zones
+     * cannot throw {@link java.util.ConcurrentModificationException} from
+     * {@code resetActiveTriggers} and similar nested walks.
+     */
     public void forEachCardInGame(Visitor<Card> visitor, boolean withSideboard) {
+        if (playerLostCardWalkDepth.get() > 0) {
+            forEachCardInGameSnapshot(visitor, withSideboard);
+            return;
+        }
         for (final Player player : getPlayers()) {
             if (!visitor.visitAll(player.getZone(ZoneType.Graveyard).getCards())) {
                 return;
@@ -996,25 +1009,61 @@ public class Game {
         }
         visitor.visitAll(getStackZone().getCards());
     }
+
+    private void forEachCardInGameSnapshot(Visitor<Card> visitor, boolean withSideboard) {
+        // Copy the player list too: onPlayerLost removes from ingamePlayers.
+        final List<Player> players = Lists.newArrayList(getPlayers());
+        for (final Player player : players) {
+            if (!visitor.visitAll(CardCollection.getView(player.getZone(ZoneType.Graveyard).getCards(), true))) {
+                return;
+            }
+            if (!visitor.visitAll(CardCollection.getView(player.getZone(ZoneType.Hand).getCards(), true))) {
+                return;
+            }
+            if (!visitor.visitAll(CardCollection.getView(player.getZone(ZoneType.Library).getCards(), true))) {
+                return;
+            }
+            if (!visitor.visitAll(CardCollection.getView(player.getZone(ZoneType.Battlefield).getCards(false), true))) {
+                return;
+            }
+            if (!visitor.visitAll(CardCollection.getView(player.getZone(ZoneType.Exile).getCards(), true))) {
+                return;
+            }
+            if (!visitor.visitAll(CardCollection.getView(player.getCardsIn(ZoneType.PART_OF_COMMAND_ZONE), true))) {
+                return;
+            }
+            if (withSideboard
+                    && !visitor.visitAll(CardCollection.getView(player.getZone(ZoneType.Sideboard).getCards(), true))) {
+                return;
+            }
+            if (!visitor.visitAll(CardCollection.getView(player.getInboundTokens(), true))) {
+                return;
+            }
+        }
+        visitor.visitAll(CardCollection.getView(getStackZone().getCards(), true));
+    }
+
     /**
-     * Snapshot every zone into a fresh collection. Prefer this over
-     * {@link #forEachCardInGame} when the caller may race zone mutations
-     * (notably {@link #onPlayerLost}): replacement/static/trigger hot paths keep
-     * the allocation-free live walk; only this entry copies.
+     * Snapshot every zone into a fresh collection (safe across concurrent zone
+     * mutations). Used by {@link #onPlayerLost} and other callers that need a
+     * stable list rather than a live walk.
      */
     public CardCollectionView getCardsInGame() {
         final CardCollection all = new CardCollection();
-        // Copy player list: onPlayerLost removes from ingamePlayers.
-        for (final Player player : Lists.newArrayList(getPlayers())) {
-            all.addAll(CardCollection.getView(player.getZone(ZoneType.Graveyard).getCards(), true));
-            all.addAll(CardCollection.getView(player.getZone(ZoneType.Hand).getCards(), true));
-            all.addAll(CardCollection.getView(player.getZone(ZoneType.Library).getCards(), true));
-            all.addAll(CardCollection.getView(player.getZone(ZoneType.Battlefield).getCards(false), true));
-            all.addAll(CardCollection.getView(player.getZone(ZoneType.Exile).getCards(), true));
-            all.addAll(CardCollection.getView(player.getCardsIn(ZoneType.PART_OF_COMMAND_ZONE), true));
-            all.addAll(CardCollection.getView(player.getInboundTokens(), true));
+        Visitor<Card> visitor = new Visitor<Card>() {
+            @Override
+            public boolean visit(Card card) {
+                all.add(card);
+                return true;
+            }
+        };
+        // Always snapshot: return value outlives the walk and onPlayerLost races.
+        playerLostCardWalkDepth.incrementAndGet();
+        try {
+            forEachCardInGame(visitor);
+        } finally {
+            playerLostCardWalkDepth.decrementAndGet();
         }
-        all.addAll(CardCollection.getView(getStackZone().getCards(), true));
         return all;
     }
 
@@ -1087,6 +1136,15 @@ public class Game {
     }
 
     public void onPlayerLost(Player p) {
+        playerLostCardWalkDepth.incrementAndGet();
+        try {
+            onPlayerLostInner(p);
+        } finally {
+            playerLostCardWalkDepth.decrementAndGet();
+        }
+    }
+
+    private void onPlayerLostInner(Player p) {
         //set for Avatar
         p.setHasLost(true);
         // CR 800.4 Losing a Multiplayer game
