@@ -813,9 +813,22 @@ Steve: there should be no reason building a deck here is harder than on Moxfield
 - **Stats panel**: mana curve, color pie vs land sources, type breakdown, average cost; land count suggestion.
 - **Sample hand** (draw 7, mulligan, draw next) and **legality** shown live with the reason for each illegal card.
 - **Deck tags and folders**, duplicate deck, and **export** in Arena text (feeds Moxfield) per MX1.
+- **More Moxfield-grade tools** (Steve, 2026-10-12): **goldfish playtesting** (play out several turns solo); an **odds
+  calculator** (chance of N lands plus a given card by turn T; hitting the commander's colors on curve); a **mana base
+  helper** (sources needed per color for what the deck casts, with a warning when short); **custom card tags** (ramp,
+  removal, draw, win-con) with role counts; **deck versions and compare**; **deck value in our economy** (total dust
+  and materials to finish it, instead of a dollar price).
 - Controller and mouse both first-class. Works for every format the planes use (60-card, 40-card limited, Commander).
 - Tests: Arena-format text with headers imports to the right sections; the search syntax parses the listed keys;
   stats match a known deck; legality flags a card out of rotation.
+- **The deck builder knows the world** (Steve, 2026-10-12; design in `Design-Agenda.md` § Deck builder): every missing
+  card shows how to get it (craft cost in dust and color materials, which known stall has it, or an expedition), a
+  rotation forecast per deck, a chase list that feeds the morning report, hints from the player's own collection, and
+  a collection browser mode. Build the parts whose systems exist (craft cost, rotation forecast, chase list, hints);
+  wire ledger, expeditions and the morning report as those systems land.
+- **Deck suggestions** (Steve, 2026-10-12; `Design-Agenda.md`): start a deck from a commander, creature type, color
+  pair, mechanic or single card; the builder drafts a list (owned first, then missing with how to get each), with an
+  "only what I own" to "dream deck" slider and a reason on every suggestion. Check Forge's existing deck generation first.
 
 ## Gathering
 
@@ -1084,6 +1097,12 @@ current sets; the window just has room for one more.
 or the Core Set Collection, so Standard opens with 2 sets. The **first two seasons are short** (7 in-game days,
 tunable) and each adds a set the player picks from the shortlist, so Standard reaches 4 sets within the first month;
 from then on normal seasons rotate one set in and the oldest out.
+
+**Deck size follows the seasons (Steve, 2026-10-12).** The 40-card minimum (`minDeckSize`) is only for the opening:
+while Standard still holds just the starting sets (before the first new set arrives), decks need 40 cards. From the
+moment the first season adds a set, the minimum becomes **60** (tunable `sn1MinDeckSizeAfterFirstSeason`). Warn the
+player at the season change ("Decks now need 60 cards") and in the deck editor; existing 40-card decks stay saved but
+are flagged as too small until they're filled out. Limited events (drafts, sealed) keep their own 40-card rule.
 
 **Seasons.** Forge Adventure has no world clock today (the day/night look is only a cosmetic background tint), so SN1
 adds an in-game calendar, shown on the HUD and Status screen (all numbers tunable, decided with Steve 2026-10-10):
