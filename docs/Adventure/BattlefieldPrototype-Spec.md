@@ -3,10 +3,37 @@
 **Status: approved by Steve, 2026-10-12** (drafted by Vex from Steve's ask; drag-first and the targeting arrow added
 at Steve's direction). Ready for Grok.
 
-**Purpose.** The hand prototype proved the hand feel (`HandPrototype-Spec.md`). This one proves the **battlefield**:
-how played cards land, how the board is laid out, and above all how **attacking and blocking** feel. Same approach:
+**Purpose.** The hand prototype proved the hand feel (`HandPrototype-Spec.md`). Steve accepted that feel on
+2026-10-12 ("beautiful. that feels good"). This one proves the **battlefield**: a stable board you can play onto,
+tap, attack, and activate, and above all **what a card shows** so those actions are readable. Same approach:
 a small standalone libGDX window, fake scripted state, no Forge rules. Steve plays it for a few minutes and says yes
 or no. If yes, it becomes the battlefield component of the new duel screen.
+
+## Stable board and what a card shows (Steve, 2026-10-12)
+The board starts already set, and it stays put until Steve does something. He needs that frozen picture so he can
+test playing, tapping, attacking, and activating without the layout jumping underneath him.
+
+Every permanent shows its state on the card itself, large enough to read without zooming:
+
+- **Tapped:** the card rotates, eased, the same as a real tap. Click again untaps (prototype only).
+- **Summoning sickness:** a sick creature is dimmed and will not attack or activate. The dim clears if the scenario
+  says it has haste, or after it "untaps" into a new turn (a key, not a real turn clock).
+- **Buffs:** raised power/toughness in green, and a short line naming the buff ("+2/+2 Giant Growth").
+- **Debuffs:** lowered power/toughness in red, and a short red line ("-2/-2").
+- **Counters:** a badge on the card with the count and the kind ("3 +1/+1", "1 loyalty"). It updates when an
+  ability adds or removes one.
+- **A choice stays on the card.** If playing or activating the card asked for a choice, the answer is printed on
+  the permanent after it resolves. Cavern of Souls is the example: choose a creature type, and the card then reads
+  "Dragon" (or whatever was chosen) for the rest of the time it is on the board. The same rule for any modal or
+  "choose a type / color / mode" permanent in the scenario. The choice is not only in a dialog that disappears.
+
+The scenario includes, already on the board: a summoning-sick creature, a buffed creature, a debuffed creature, a
+creature with counters, an untapped land, and a Cavern of Souls whose type is still unchosen. Steve plays the
+Cavern from hand or activates the one on the board, picks a type, and sees that type stay on the card. One creature
+has an activated ability (add a counter, or tap to buff) so the badges change while he watches.
+
+Playing, tapping, attacking, and activating use the drag-first rules below. The hand tucks back down once a card is
+pulled out, so the board and its targets stay visible.
 
 **Reference.** MTG Arena does this well, not perfectly. Take what works (clear rows, arrows,
 satisfying landings) and fix what doesn't (see "Where we beat Arena").
@@ -100,3 +127,18 @@ Steve and Tiny both have hand tremors, so **drags must be forgiving**:
 ## Out of scope
 Real rules, the stack and priority passing (beyond the fake targeting cards), mana payment, the opponent's AI, sounds, network.
 Those come later; this is about the board and combat feel.
+
+## How to run
+The window is `forge.app.BattlefieldPrototype` in `forge-gui-mobile-dev` (1920x1080, title "Battlefield prototype").
+From the repo root, after the copy jar exists:
+
+`javaw -Xmx512m --add-opens java.base/java.lang=ALL-UNNAMED --add-opens java.base/java.util=ALL-UNNAMED -Dfile.encoding=UTF-8 -cp forge-gui-mobile-dev\target\battlefield-prototype-jar-with-dependencies.jar forge.app.BattlefieldPrototype`
+
+`battlefield-prototype.cmd` launches that copy. It does not use the live `forge-gui-mobile-dev` SNAPSHOT jar. Rebuild the copy only when Forge is closed: compile the prototype classes against the existing fat jar, copy that jar, and `jar uf` the copy. Do not `mvn install` the live SNAPSHOT while a game is open.
+
+On screen: hover the hand, drag a card above the line to play, click a permanent to tap, drag a creature upward to attack, drag onto their attacker to block, Activate then Confirm. Keys: 1 your attack, 2 their attack, N new turn, R reset, Esc quit.
+
+## Scripted in this window vs later engine glue
+This pass is a frozen picture plus the gestures. The board starts with lands and creatures on both sides, life totals, and a phase label. Already on board: a summoning-sick Bear Cub, Growth Wolf with a green +2/+2 line, Cursed Knight with a red -2/-2 line, Hero with 3 +1/+1 counters, an unchosen Cavern of Souls, and Veteran (Activate adds a counter to Hero after you confirm the preview). The hand is Forest, Grizzly (enters sick), a second Cavern (the chosen type stays printed), and Shock (arrow, then a damage preview, then Confirm). Their attack is the Ogre; you assign one blocker and the preview says who dies before Confirm.
+
+Later glue is the hard part: real zones, the stack, mana, priority, combat rules, and the opponent. This window does not call Forge game state. The layout math is `BattlefieldLayout` so the duel screen can reuse the fractions without taking the scripted cards with them.
