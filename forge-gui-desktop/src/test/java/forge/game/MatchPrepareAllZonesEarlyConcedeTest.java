@@ -8,7 +8,6 @@ import forge.game.player.Player;
 import forge.game.player.RegisteredPlayer;
 import forge.item.PaperCard;
 import forge.model.FModel;
-import forge.player.LobbyPlayerHuman;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -23,6 +22,8 @@ import java.util.concurrent.atomic.AtomicReference;
  * {@link Match#startGame(Game)} must not throw {@link IndexOutOfBoundsException}
  * in {@code prepareAllZones} (registered seats stay fixed; {@code getPlayers()}
  * shrinks when {@link Game#onPlayerLost} runs).
+ *
+ * <p>Uses AI seats only so {@code startGame} does not need a human GUI.
  */
 public class MatchPrepareAllZonesEarlyConcedeTest extends AITest {
 
@@ -30,9 +31,15 @@ public class MatchPrepareAllZonesEarlyConcedeTest extends AITest {
     public void prepareAllZonesIndexesRegisteredPlayersAfterPreStartConcede() throws Exception {
         final Deck deck = minimalDeck();
         final List<RegisteredPlayer> seats = Lists.newArrayList();
-        seats.add(new RegisteredPlayer(deck).setPlayer(new LobbyPlayerHuman("host")).setTeamNumber(0));
-        seats.add(new RegisteredPlayer(new Deck(deck)).setPlayer(new LobbyPlayerHuman("guest")).setTeamNumber(0));
-        seats.add(new RegisteredPlayer(new Deck(deck)).setPlayer(new LobbyPlayerAi("enemy", null)).setTeamNumber(1));
+        final RegisteredPlayer hostRp = new RegisteredPlayer(deck).setPlayer(new LobbyPlayerAi("host", null));
+        hostRp.setTeamNumber(0);
+        final RegisteredPlayer guestRp = new RegisteredPlayer(new Deck(deck)).setPlayer(new LobbyPlayerAi("guest", null));
+        guestRp.setTeamNumber(0);
+        final RegisteredPlayer enemyRp = new RegisteredPlayer(new Deck(deck)).setPlayer(new LobbyPlayerAi("enemy", null));
+        enemyRp.setTeamNumber(1);
+        seats.add(hostRp);
+        seats.add(guestRp);
+        seats.add(enemyRp);
 
         final GameRules rules = new GameRules(GameType.Constructed);
         rules.setGamesPerMatch(1);
@@ -42,14 +49,22 @@ public class MatchPrepareAllZonesEarlyConcedeTest extends AITest {
         Assert.assertEquals(game.getRegisteredPlayers().size(), 3);
         Assert.assertEquals(game.getPlayers().size(), 3);
 
-        final Player guest = find(game, "guest");
-        guest.concede();
+        final Player guestPlayer = find(game, "guest");
+        guestPlayer.concede();
         game.getAction().checkGameOverCondition();
 
-        Assert.assertTrue(guest.hasLost() || guest.conceded(), "guest seat conceded before start");
+        Assert.assertTrue(guestPlayer.hasLost() || guestPlayer.conceded(), "guest seat conceded before start");
         Assert.assertEquals(game.getRegisteredPlayers().size(), 3, "registered seats stay fixed");
         Assert.assertEquals(game.getPlayers().size(), 2,
                 "ingame players shrink after onPlayerLost — the bug indexed this list");
+
+        // Prove the pre-fix indexing throws (parallel getPlayers vs registered seats).
+        try {
+            game.getPlayers().get(2);
+            Assert.fail("expected IndexOutOfBoundsException on shrunk ingame list");
+        } catch (final IndexOutOfBoundsException expected) {
+            // index 2, length 2 — the prepareAllZones failure mode
+        }
 
         final CountDownLatch finished = new CountDownLatch(1);
         final AtomicReference<Throwable> error = new AtomicReference<>();
