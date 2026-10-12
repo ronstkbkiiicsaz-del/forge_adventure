@@ -1,35 +1,57 @@
-# Shandalar Ascendant: Grok ⇄ Wren handoff
+# Shandalar Ascendant: Grok ⇄ Cursor handoff
 
 > **WHOSE TURN: GROK**
 > Turn passed by Wren on 2026-10-11, 16:17 Phoenix time
+> Review side from this point: Cursor. Older log lines say Wren.
 > Rule: only the side whose turn it is acts. When you finish, update this header and **Outstanding**, add a log entry at the top of the **Log**, flip the turn, then give Steve a copyable paste for the other side.
 
 ## Outstanding
 
-### Waiting on Wren
+### Waiting on Cursor
 - Nothing.
 
 ### Waiting on Grok (priority order)
 | PR | Required |
 |---|---|
+| HP1 | Steve playtested the standalone hand prototype (branch `cursor/hand-prototype-7bab`). Keep the responsiveness and the smooth cast. Reverse the fan: resting cards rotate from −12° (far left) to +12° (far right) and outer cards sit lower on the arc (radius about 2.5× hand width), so the tops are closer. Pinch the bottoms and spread the tops, like cards held in a hand. On hover, scale up and spread the whole hand so cards are not covered (today only the hovered card grows to full size and neighbours shift sideways). Continue on that branch and its files; own PR into `feature/set-start` if there is not one yet. Do not redo the rest of the prototype. **Round 2 (Steve tested `91d2365b2e`, 2026-10-11 ~23:20):** "so much better than before"; keep the fan. One fix: the hand opens too eagerly (any mouse near the bottom pops it). Only open when the cursor is over a card's visible area plus about 0.02H. See `docs/Adventure/HandPrototype-Spec.md` round 2 notes. |
+| BP1 | **After HP1.** Battlefield and combat prototype, spec approved by Steve: `docs/Adventure/BattlefieldPrototype-Spec.md`. Standalone window reusing the HP1 hand: board layout, cards landing in rows, **drag-first** attacking and blocking with forgiving snap-to-target drops (Steve and Tiny have tremors; clicks as backup), a big Arena-style **targeting arrow**, and an outcome preview (skulls, life change) before confirming blocks. Own branch and PR into `feature/set-start`. |
 | #76 | Keep the `CoopOverworldClient` channel-before-sync fix (correct). **Revert the engine-wide copy in `Game.forEachCardInGame`** (~976-1011): it allocates copies of every zone on every call in all games (replacement/static/trigger hot paths) and still iterates live zones, so it only narrows the race. Instead run `concede()` on the game thread (test + `CoopDuelRuntime` ~1107 if off-thread) or snapshot only in `onPlayerLost`/`getCardsInGame`. `GameForEachCardSnapshotTest` uses empty collections; make it meaningful or drop it. |
 | DS1 follow-up | `ArenaDuelScriptedDuelTest`: mana/X/mode/attack/block flags are set without checking game state (paidMana on avatar tap; castXSpell/choseMode right after selectCard; attack/block via `gc.selectCard` and `forceBlockWindow` devModeSet). Assert real state: lands tapped and opponent life, X value and chosen mode, card attacking/blocking via the UI. |
 | Lows | SN1: paid rests can be chained right after waking (consider once per day after a full day). EC1: an undone set pick still in the saved window snapshot can be marked rotated at the next season change. |
 
 **Queue after those:** DS1's later PRs, then **MC1** (multiplayer Commander AI, roadmap), then **AD1** (in-game Advisor chat, roadmap), DB1, GN1, DS5, QL2, the #51 redo, EC2 after FT2.
 
+**Second bot, in parallel with HP1:** GN1 (gather-node variety, `docs/Adventure/Ascendant-Roadmap.md` § GN1). Own branch and PR into `feature/set-start`. Do not touch HP1 files or `cursor/hand-prototype-7bab`.
+
 ### Waiting on Steve (hands-on)
 - Place the LT1 objects in `starter_town.tmx` in Tiled, on unblocked walkable tiles: Mira, Bren, Sela via `townsfolk.tx` (`townsfolkId=havenbrook_mira` / `_bren` / `_sela`); general store `shop.tx` with `commonShopList=GeneralStore` and uncommon/rare/mythic lists **empty** (truly empty, not a space). Town and NPC names are placeholders, rename freely.
 
 ## Standing rules (short)
 - Each package = own branch + PR into `feature/set-start`. Fixes to an unmerged PR go on that PR; follow-ups after merge = new PR.
+- Grok implements on the Grok Bot computer: that computer's terminal and its own checkout. Commit and push the branch and PR into `feature/set-start`. Do not launch a Cursor cloud agent, and do not open a matching chat in the Cursor app.
+- When the turn flips back, Cursor pulls, tests (only when Forge is not running), reviews, and merges or sends the PR back.
 - Single-player build. Co-op gets crash/data-loss fixes only. Parked drafts: #27, #40, #45.
 - Protocol: bump to base + 1 only when the PR changes the wire, right before review.
 - Tests use the isolated temp user dir and never touch the real Forge folder. No test runs while Steve is playing Forge.
 - Never edit `starter_town.tmx`. Never soften a quality check; fix the content.
-- Bugs Steve reports from play jump the queue. So do Tiny's, which arrive via `docs/FEEDBACK.md` (written by Tiny's AI, Sam; Wren triages).
+- Bugs Steve reports from play jump the queue. So do Tiny's, which arrive via `docs/FEEDBACK.md` (written by Tiny's AI, Sam; Cursor triages).
 
 ## Log (newest first)
+
+### 2026-10-12 05:45 · Phoenix, Vex (claude.ai design chat, for Steve) → Grok
+- Not a turn flip: still Grok's turn. Design notes only, no code.
+- **HP1 round 2:** Steve tested `91d2365b2e`. Much better; keep the fan. Fix the hover zone (opens too eagerly). Added to the HP1 row.
+- **BP1 queued after HP1:** battlefield and combat prototype, spec approved by Steve: `docs/Adventure/BattlefieldPrototype-Spec.md`.
+- Also new: `docs/Adventure/Design-Agenda.md` (Steve and Vex's design agenda: economy, shops, time and travel, base production, fishing and cooking, art direction). Design only, nothing to build from it yet.
+
+### 2026-10-11 18:04 · Phoenix, Cursor → Grok
+- A second bot is starting **GN1** in parallel with HP1, on its own branch. Do not share files with `cursor/hand-prototype-7bab`.
+
+### 2026-10-11 17:53 · Cursor → Grok
+- Steve playtested the hand prototype (`cursor/hand-prototype-7bab`): responsiveness and the smooth cast stay.
+  Fan is backwards (rest pose −12°→+12°, outer cards lower on the arc, tops closer). He wants bottoms pinched and
+  tops spread, like a held hand. On hover the whole hand should grow and spread so cards are not covered. **HP1**
+  jumps the queue. Do not redo the rest.
 
 ### 2026-10-11 16:17 · Wren → Grok
 - Merged **#72 SN1 r3**, **#74 EC1 r3**, **#70 DS1 r3** (all approved; 873 desktop + 444 mobile green on the Linux
