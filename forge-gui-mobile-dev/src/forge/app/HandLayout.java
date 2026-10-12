@@ -25,6 +25,11 @@ public final class HandLayout {
     /** HP1: the spread hand may use at most this fraction of the window width (scale shrinks to fit). */
     public static final float HOVER_MAX_WIDTH_FRAC = 0.92f;
     public static final float LEAVE_HAND_ABOVE_FRAC = 0.05f;
+    /**
+     * Extra hit margin around each card when deciding whether to open or keep the hand open,
+     * as a fraction of window height. ~0.02H so empty space above/beside the fan does not open it.
+     */
+    public static final float OPEN_HIT_PAD_FRAC = 0.02f;
     public static final float EASE_RATE = 14f;
     public static final float CAST_LINE_FRAC = 0.45f;
     public static final float DRAG_TILT_MAX_DEG = 8f;
@@ -214,16 +219,66 @@ public final class HandLayout {
     }
 
     /**
-     * Hover target for a pointer. Keeps the current hover while the pointer is still over that
-     * (spread) card's column, so the hand does not flicker as it spreads; otherwise picks the
-     * nearest centre column. Returns -1 when the pointer is outside the hand area.
+     * True if {@code (px, py)} lies inside the rotated card rectangle, expanded by {@code pad}
+     * on every side. libGDX rotation is counter-clockwise degrees about the card centre.
+     */
+    public static boolean pointHitsPose(Pose pose, float px, float py, float pad) {
+        float dx = px - pose.cx;
+        float dy = py - pose.cy;
+        double rad = Math.toRadians(pose.rotationDeg);
+        float cos = (float) Math.cos(rad);
+        float sin = (float) Math.sin(rad);
+        float lx = dx * cos + dy * sin;
+        float ly = -dx * sin + dy * cos;
+        return Math.abs(lx) <= pose.w / 2f + pad && Math.abs(ly) <= pose.h / 2f + pad;
+    }
+
+    /**
+     * Resting-hand hit: the topmost card whose rotated quad (minus parts covered by cards drawn
+     * later / higher index) contains the pointer. Equivalent to testing full quads from front to
+     * back and taking the first hit. {@code pad} expands each quad.
+     */
+    public static int restingVisibleHit(float windowW, float h, int n, float pointerX, float pointerY,
+                                        float pad) {
+        if (n <= 0) {
+            return -1;
+        }
+        for (int i = n - 1; i >= 0; i--) {
+            if (pointHitsPose(restPose(windowW, h, n, i), pointerX, pointerY, pad)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    /** True while the pointer is over any card of the opened (spread) hand, plus {@code pad}. */
+    public static boolean pointerOverOpenedCards(float windowW, float h, int n, int hoverIndex,
+                                                 float pointerX, float pointerY, float pad) {
+        if (n <= 0 || hoverIndex < 0 || hoverIndex >= n) {
+            return false;
+        }
+        for (int i = 0; i < n; i++) {
+            if (pointHitsPose(hoverPose(windowW, h, n, i, hoverIndex), pointerX, pointerY, pad)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Hover target for a pointer. Opens only when the pointer is over a resting card's visible
+     * area (rotated quad minus neighbour coverage), padded by {@link #OPEN_HIT_PAD_FRAC} * H.
+     * Once open, stays open while the pointer is over any opened-hand card plus the same pad,
+     * and picks the card by centre-column hysteresis so the hand does not flicker. Returns -1
+     * when the pointer leaves.
      */
     public static int hoverIndexFor(float windowW, float h, int n, int currentHover, float pointerX, float pointerY) {
         if (n <= 0) {
             return -1;
         }
+        float pad = OPEN_HIT_PAD_FRAC * h;
         if (currentHover >= 0 && currentHover < n) {
-            if (!pointerInHandArea(windowW, h, n, currentHover, pointerX, pointerY)) {
+            if (!pointerOverOpenedCards(windowW, h, n, currentHover, pointerX, pointerY, pad)) {
                 return -1;
             }
             Pose cur = hoverPose(windowW, h, n, currentHover, currentHover);
@@ -232,29 +287,16 @@ public final class HandLayout {
             }
             return nearestCard(windowW, h, n, pointerX, currentHover);
         }
-        int nearest = nearestCard(windowW, h, n, pointerX);
-        return pointerInHandArea(windowW, h, n, nearest, pointerX, pointerY) ? nearest : -1;
+        return restingVisibleHit(windowW, h, n, pointerX, pointerY, pad);
     }
 
     /**
-     * True while the pointer is still considered "over the hand": inside the (spread) hand's
-     * horizontal span and not more than {@link #LEAVE_HAND_ABOVE_FRAC} * H above the
-     * hovered card's top.
+     * True while the pointer is still considered "over the opened hand": over any spread card
+     * plus {@link #OPEN_HIT_PAD_FRAC} * H. Kept for callers that already hold a hover index.
      */
     public static boolean pointerInHandArea(float windowW, float h, int n, int hoverIndex,
                                            float pointerX, float pointerY) {
-        if (n <= 0 || hoverIndex < 0 || hoverIndex >= n) {
-            return false;
-        }
-        float handW = Math.max(handWidth(windowW, h, n), hoverHandWidth(windowW, h, n, hoverIndex));
-        float left = (windowW - handW) / 2f;
-        float pad = fullWidth(h) * 0.5f;
-        if (pointerX < left - pad || pointerX > left + handW + pad) {
-            return false;
-        }
-        Pose hover = hoverPose(windowW, h, n, hoverIndex, hoverIndex);
-        float top = hover.cy + hover.h / 2f;
-        return pointerY <= top + LEAVE_HAND_ABOVE_FRAC * h;
+        return pointerOverOpenedCards(windowW, h, n, hoverIndex, pointerX, pointerY, OPEN_HIT_PAD_FRAC * h);
     }
 
     public static final class Pose {
