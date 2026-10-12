@@ -348,7 +348,8 @@ public final class HandPrototype extends ApplicationAdapter {
             drawTex(pixel(), cx - cw / 2f, cy - ch / 2f, cw / 2f, ch / 2f, cw, ch, rot);
             batch.setColor(1, 1, 1, alpha);
             glyphs.setText(font, c.label);
-            font.draw(batch, c.label, cx - glyphs.width / 2f, cy + 6);
+            // Label near the top so it stays readable when the hand is tucked.
+            font.draw(batch, c.label, cx - glyphs.width / 2f, cy + ch * 0.35f);
         }
         batch.setColor(Color.WHITE);
     }
