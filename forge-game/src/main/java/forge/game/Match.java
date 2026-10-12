@@ -227,7 +227,10 @@ public class Match {
         Multimap<Player, PaperCard> removedAnteCards = ArrayListMultimap.create();
         Map<Player, List<PaperCard>> unsupported = new HashMap<>();
 
-        final FCollectionView<Player> players = game.getPlayers();
+        // Use registered (all) players — not ingamePlayers. A seat may have conceded
+        // before startGame (co-op guest drop), shrinking getPlayers() while match
+        // RegisteredPlayer seats stay fixed → IndexOutOfBounds on parallel index.
+        final FCollectionView<Player> players = game.getRegisteredPlayers();
         final List<RegisteredPlayer> playersConditions = game.getMatch().getPlayers();
 
         boolean isFirstGame = gameOutcomes.isEmpty();

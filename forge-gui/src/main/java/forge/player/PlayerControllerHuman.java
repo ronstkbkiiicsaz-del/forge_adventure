@@ -3818,18 +3818,32 @@ public class PlayerControllerHuman extends PlayerController implements IGameCont
 
     @Override
     public void concede() {
-        if (player != null) {
+        if (player == null) {
+            return;
+        }
+        final Game game = getGame();
+        if (game == null) {
             player.concede();
-            getGame().getAction().checkGameOverCondition();
-            if (getGame().isGameOver()) {
-                // Remote-client controllers on the server have no FControlGameEventHandler,
-                // so their input queues won't be released by the normal event path.
-                // Iterate registered players (not getPlayers(), which excludes the
-                // conceding player after onPlayerLost removes them from ingamePlayers).
-                for (Player p : getGame().getRegisteredPlayers()) {
-                    if (p.getController() instanceof PlayerControllerHuman pch) {
-                        pch.getInputQueue().onGameOver(true);
-                    }
+            return;
+        }
+        // onPlayerLost → getCardsInGame walks live zone lists. Running that off the
+        // game thread races zone mutations (replacement/net/EDT) and throws CME.
+        // CoopDuelRuntime / HostedMatch already invoke on the game thread for some
+        // paths; marshal here so every off-thread concede (UI, disconnect, tests) is safe.
+        if (!ThreadUtil.isGameThread()) {
+            game.getAction().invoke(this::concede);
+            return;
+        }
+        player.concede();
+        game.getAction().checkGameOverCondition();
+        if (game.isGameOver()) {
+            // Remote-client controllers on the server have no FControlGameEventHandler,
+            // so their input queues won't be released by the normal event path.
+            // Iterate registered players (not getPlayers(), which excludes the
+            // conceding player after onPlayerLost removes them from ingamePlayers).
+            for (Player p : game.getRegisteredPlayers()) {
+                if (p.getController() instanceof PlayerControllerHuman pch) {
+                    pch.getInputQueue().onGameOver(true);
                 }
             }
         }
