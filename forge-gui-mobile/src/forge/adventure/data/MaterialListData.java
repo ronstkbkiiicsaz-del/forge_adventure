@@ -199,6 +199,27 @@ public final class MaterialListData {
         return out;
     }
 
+    /**
+     * GN1: gatherable family → the materials.json biome that defines it (logs → forest,
+     * ash → mountain, ...), in file order. Lets any biome borrow another biome's family.
+     */
+    public static Map<String, String> gatherFamilyHomeBiomes() {
+        return gatherFamilyHomeBiomes(new Array.ArrayIterator<>(getAll()));
+    }
+
+    /** {@link #gatherFamilyHomeBiomes()} over an explicit material list (tests / tooling). */
+    public static Map<String, String> gatherFamilyHomeBiomes(Iterable<MaterialData> materials) {
+        Map<String, String> out = new LinkedHashMap<>();
+        if (materials == null)
+            return out;
+        for (MaterialData m : materials) {
+            if (m == null || !m.isGatherNode() || m.family == null || m.family.isEmpty())
+                continue;
+            out.putIfAbsent(m.family.toLowerCase(), m.biome.toLowerCase());
+        }
+        return out;
+    }
+
     /** All gem materials (Mining rare rolls). */
     public static Array<MaterialData> getGems() {
         return byFamily("gems");

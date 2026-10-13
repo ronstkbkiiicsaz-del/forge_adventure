@@ -183,6 +183,33 @@ public class ConfigData {
     public int gatherYieldMin = 1;
     /** Max units gathered per channel at high skill (levels 40 / 70 add +1 each). */
     public int gatherYieldMax = 3;
+
+    // ---- GN1: gather-node family variety (Ascendant only; stock keeps the legacy split). ----
+
+    /**
+     * GN1 master switch. Default false so stock worlds (whose config.json has no GN1 block)
+     * keep the legacy family split; Shandalar Ascendant turns it on. Also needs {@link #ascendantRules}.
+     */
+    public boolean gn1GatherVariety = false;
+    /** Share of node spawns that use the biome's primary family (default 0.5). */
+    public float gn1PrimaryShare = 0.5f;
+    /** Share of node spawns that are trees / logs, borrowed from the forest biome (default 0.2). */
+    public float gn1LogsShare = 0.2f;
+    /** Share of node spawns drawn from the weighted mix of other families (default 0.3). */
+    public float gn1SecondaryShare = 0.3f;
+    /** Weight for any secondary family not listed in {@link #gn1SecondaryWeights} for a biome (default 1). */
+    public float gn1OtherFamilyWeight = 1f;
+    /**
+     * materials.json biome → primary family (e.g. mountain → ore, forest → plants).
+     * Missing biome: the first non-log gatherable family defined on that biome.
+     */
+    public ObjectMap<String, String> gn1PrimaryFamily;
+    /**
+     * materials.json biome → (family → weight) for the secondary mix. Families that fit the
+     * biome get a higher weight; unlisted families use {@link #gn1OtherFamilyWeight}.
+     * Families are borrowed from their home biome in materials.json (logs from forest, etc.).
+     */
+    public ObjectMap<String, ObjectMap<String, Float>> gn1SecondaryWeights;
     /** Skill levels that bump yield by +1 (first / second bump). */
     public int gatherYieldLevel2 = 40;
     public int gatherYieldLevel3 = 70;
