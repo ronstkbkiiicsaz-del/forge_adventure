@@ -64,14 +64,11 @@ public final class PlaneGenerator {
 
         for (int y = 0; y < n; y++) {
             for (int x = 0; x < n; x++) {
-                float dx = x - cx;
-                float dy = y - cy;
-                float r = (float) Math.hypot(dx, dy);
-                float theta = (float) Math.atan2(dy, dx);
+                float r = (float) Math.hypot(x - cx, y - cy);
+                float rw = warpedRadius(noise, x, y, r, warpR);
+                float theta = (float) Math.atan2(y - cy, x - cx);
                 float wa = noise.fbm(x, y, "warpA", 3, 140f);
-                float wr = noise.fbm(x, y, "warpR", 3, 90f);
                 float tw = (float) (theta + warpA * (wa - 0.5f) * 2f + rot);
-                float rw = r + warpR * (wr - 0.5f) * 2f;
                 byte b;
                 if (rw < rCore) {
                     b = core;
@@ -90,12 +87,17 @@ public final class PlaneGenerator {
 
     private void paintSeaAndCoast(byte[] terrain, byte[] biome, HashNoise noise, int n, int cx, int cy) {
         float rCoast = profile.layout.get("R_COAST").getAsFloat();
+        float warpR = profile.layout.get("BORDER_WARP_RADIUS").getAsFloat();
+        // Scale coast jitter with map size (WG1: ~33 @ N=2000) plus a longer bay/peninsula octave.
+        float coastAmp = 10f * (n / 600f);
         for (int y = 0; y < n; y++) {
             for (int x = 0; x < n; x++) {
                 int i = y * n + x;
                 float r = (float) Math.hypot(x - cx, y - cy);
-                float coastN = noise.fbm(x, y, "coast", 4, 45f);
-                boolean ocean = r > rCoast + 30f * (coastN - 0.5f);
+                float rw = warpedRadius(noise, x, y, r, warpR);
+                float coastN = noise.fbm(x, y, "coast", 5, 45f);
+                float bayN = noise.fbm(x, y, "bay", 3, 180f);
+                boolean ocean = rw > rCoast + coastAmp * (coastN - 0.35f) + warpR * 0.55f * (bayN - 0.5f);
                 if (x < 4 || y < 4 || x >= n - 4 || y >= n - 4) {
                     ocean = true;
                 }
@@ -348,5 +350,11 @@ public final class PlaneGenerator {
                 }
             }
         }
+    }
+
+    /** Same radial warp used for biomes and coastline so wedges and shore stay aligned. */
+    static float warpedRadius(HashNoise noise, int x, int y, float r, float warpR) {
+        float wr = noise.fbm(x, y, "warpR", 3, 90f);
+        return r + warpR * (wr - 0.5f) * 2f;
     }
 }

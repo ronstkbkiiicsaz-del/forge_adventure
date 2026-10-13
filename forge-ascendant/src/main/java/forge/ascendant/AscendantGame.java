@@ -208,8 +208,8 @@ public final class AscendantGame extends ApplicationAdapter {
             OrthogonalTiledMapRenderer renderer = townMaps.rendererFor(site);
             TiledMap map = townMaps.mapFor(site);
             renderer.getBatch().setProjectionMatrix(camera.combined);
-            // TMX row 0 = top; after skipRowsTop, remaining rows map to site.y..site.y+h-1 with y-up.
-            // Draw tall tiles at native region size, anchored on the tile foot.
+            // TownMaps loads with flipY=false, so getCell(x,y) matches TMX CSV row y (top=0).
+            // Flip onto world y-up the same way PlaneGenerator.applyStamp does.
             renderer.getBatch().begin();
             for (com.badlogic.gdx.maps.MapLayer layer : map.getLayers()) {
                 if (!(layer instanceof TiledMapTileLayer tileLayer) || !layer.isVisible()) {

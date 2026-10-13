@@ -58,6 +58,50 @@ public class PlaneGeneratorTest {
         Assert.assertNotEquals(a, n.fbm(101, 200, "obst", 3, 13f), 0f);
     }
 
+    @Test
+    public void coastlineIsNotAPureCircle() throws Exception {
+        Path maps = resolveMaps();
+        if (!Files.isRegularFile(maps.resolve("map/ascendant/havenbrook.tmx"))) {
+            System.out.println("Skip: havenbrook.tmx not found at " + maps);
+            return;
+        }
+        PlaneProfile profile = PlaneProfile.loadClasspath("/profiles/home_shandalar.json");
+        PlaneData plane = new PlaneGenerator(profile, maps).generate(7L);
+        int n = plane.size;
+        int cx = n / 2;
+        int cy = n / 2;
+        float[] radii = new float[32];
+        int hits = 0;
+        for (int a = 0; a < radii.length; a++) {
+            double ang = a * (Math.PI * 2 / radii.length);
+            float dx = (float) Math.cos(ang);
+            float dy = (float) Math.sin(ang);
+            float hit = 0;
+            for (float r = 500; r < n; r += 2) {
+                int x = cx + Math.round(dx * r);
+                int y = cy + Math.round(dy * r);
+                if (x < 0 || y < 0 || x >= n || y >= n) {
+                    break;
+                }
+                if (plane.terrainAt(x, y) == Terrain.OCEAN) {
+                    hit = r;
+                    break;
+                }
+            }
+            if (hit > 0) {
+                radii[hits++] = hit;
+            }
+        }
+        Assert.assertTrue("need enough coast samples", hits >= 24);
+        float min = radii[0];
+        float max = radii[0];
+        for (int i = 1; i < hits; i++) {
+            min = Math.min(min, radii[i]);
+            max = Math.max(max, radii[i]);
+        }
+        Assert.assertTrue("coast radius span too circular: min=" + min + " max=" + max, max - min > 80f);
+    }
+
     private static Path resolveMaps() {
         Path[] candidates = {
                 Paths.get("forge-gui/res/adventure/common/maps"),
