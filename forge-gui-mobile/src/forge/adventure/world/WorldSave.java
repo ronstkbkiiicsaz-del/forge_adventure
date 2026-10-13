@@ -143,7 +143,30 @@ public class WorldSave {
         }
     }
 
+    /**
+     * QL1: non-creating lookup — returns null when this POI has no changes entry yet.
+     * Prefer this for read-only checks (e.g. navigation) so the save is not filled with empties.
+     */
+    public PointOfInterestChanges findPointOfInterestChanges(String id) {
+        if (id == null) {
+            return null;
+        }
+        return pointOfInterestChanges.get(id);
+    }
+
+    /** Bumped when a POI is marked visited; invalidates QL1 discovered-target caches. */
+    private long poiDiscoveryStamp;
+
+    public long getPoiDiscoveryStamp() {
+        return poiDiscoveryStamp;
+    }
+
+    public void notePoiDiscovered() {
+        poiDiscoveryStamp++;
+    }
+
     static public boolean load(int currentSlot) {
+        forge.adventure.util.InteriorMapSave.clearPending();
         JSONStringLoader.clearCache();
         CardUtil.clearPriceCache();
         EnemyThemeDecks.clearCache();
@@ -160,7 +183,8 @@ public class WorldSave {
                  ObjectInputStream oos = new ObjectInputStream(inf)) {
                 currentSave.header = (WorldSaveHeader) oos.readObject();
                 SaveFileData mainData = (SaveFileData) oos.readObject();
-                currentSave.player.load(mainData.readSubData("player"));
+                SaveFileData playerData = mainData.readSubData("player");
+                currentSave.player.load(playerData);
                 GamePlayerUtil.getGuiPlayer().setName(currentSave.player.getName());
                 try {
                     currentSave.world.load(mainData.readSubData("world"));
@@ -169,8 +193,10 @@ public class WorldSave {
 
                 } catch (Exception e) {
                     System.err.println("Generating New World");
-                    if (!currentSave.world.generateNew(0))
+                    if (!currentSave.world.generateNew(0)) {
+                        forge.adventure.util.InteriorMapSave.clearPending();
                         return false;
+                    }
                 }
 
                 // MV1: multi-plane registry, or wrap legacy single-world saves as home.
@@ -239,11 +265,15 @@ public class WorldSave {
                     FortressService.get().clear();
                 }
 
+                // SV1: interior location lives on the WorldSave player blob only (not co-op .chr).
+                forge.adventure.util.InteriorMapSave.readPending(playerData);
+
                 currentSave.onLoadList.emit();
 
             }
         } catch (ClassNotFoundException | IOException e) {
             e.printStackTrace();
+            forge.adventure.util.InteriorMapSave.clearPending();
             return false;
         }
         return true;
@@ -290,7 +320,7 @@ public class WorldSave {
 
     /**
      * @param homePlaneFormat Package K: format for the home plane (null → config default /
-     *                        Bellwarden Standard). Ascendant only.
+     *                        Shandalar Standard). Ascendant only.
      */
     public static WorldSave generateNewWorld(String name, boolean male, int race, int avatarIndex, ColorSet startingColorIdentity, DifficultyData diff, AdventureModes mode, int customDeckIndex, CardEdition starterEdition, long seed, String homePlaneFormat) {
         Forge.getLocalizer().loadAdventureBundle(Config.instance().getPlanePath(Config.instance().getSettingData().plane) + "languages/");
@@ -310,6 +340,11 @@ public class WorldSave {
         currentSave.player.setWorldPosY((int) (currentSave.world.getData().playerStartPosY * currentSave.world.getData().height * currentSave.world.getTileSize()));
         currentSave.player.setWorldPosX((int) (currentSave.world.getData().playerStartPosX * currentSave.world.getData().width * currentSave.world.getTileSize()));
         if (Config.ascendant()) {
+            // Sealed already inits the season in createSealedStart; other modes start here.
+            if (mode != AdventureModes.Sealed) {
+                currentSave.player.getSeason().initNewGame(currentSave.player.getStandardWindow());
+            }
+            AscendantCardEconomy.bindSeasonCalendar(currentSave.player.getSeason());
             currentSave.multiverse.initHomeFromLive(
                     currentSave.world.getSeed(),
                     currentSave.player.getWorldPosX(),
@@ -360,6 +395,10 @@ public class WorldSave {
         starterDeck.setName(FModel.getMagicDb().getEditions().get(setCode).getName() + " Sealed");
         currentSave.player.create(name, starterDeck, male, race, avatarIndex, false, false, diff, AdventureModes.Sealed);
         currentSave.player.getStandardWindow().init(coreCode == null ? List.of(setCode) : List.of(coreCode, setCode));
+        if (Config.ascendant()) {
+            currentSave.player.getSeason().initNewGame(currentSave.player.getStandardWindow());
+            AscendantCardEconomy.bindSeasonCalendar(currentSave.player.getSeason());
+        }
         RewardData.invalidateCardPool();
         // MV2: Planar Gates on the home plane for the starting Standard window.
         try {
@@ -452,6 +491,8 @@ public class WorldSave {
                 currentSave.multiverse.updateCurrentSeed(currentSave.world.getSeed());
 
                 SaveFileData player = currentSave.player.save();
+                // SV1: attach interior keys only to WorldSave slots — never to co-op .chr via player.save().
+                forge.adventure.util.InteriorMapSave.write(player);
                 SaveFileData world = currentSave.world.save();
                 SaveFileData worldStage = WorldStage.getInstance().save();
                 SaveFileData poiChanges = currentSave.pointOfInterestChanges.save();
@@ -762,7 +803,7 @@ public class WorldSave {
     public boolean canTravelToPlane(String planeId) {
         lastPlaneSwitchError = "";
         if (!Config.ascendant()) {
-            lastPlaneSwitchError = "Multi-plane requires Ascendant";
+            lastPlaneSwitchError = "Multi-plane requires Shandalar Ascendant";
             return false;
         }
         if (planeId == null || planeId.isEmpty()) {
@@ -816,7 +857,7 @@ public class WorldSave {
     public boolean switchPlane(String planeId) {
         lastPlaneSwitchError = "";
         if (!Config.ascendant()) {
-            lastPlaneSwitchError = "Multi-plane requires Ascendant";
+            lastPlaneSwitchError = "Multi-plane requires Shandalar Ascendant";
             return false;
         }
         if (planeId == null || planeId.isEmpty()) {

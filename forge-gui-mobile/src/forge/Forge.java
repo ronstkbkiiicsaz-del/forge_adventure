@@ -240,6 +240,11 @@ public class Forge implements ApplicationListener {
 
         textureFiltering = getForgePreferences().getPrefBoolean(FPref.UI_LIBGDX_TEXTURE_FILTERING);
         showFPS = getForgePreferences().getPrefBoolean(FPref.UI_SHOW_FPS);
+        // DS3: restore local hover-preview on/off + details (not networked).
+        // Do not set magnify=true here — that enables hover for Android gamepad users
+        // before any mouse move; mouseMoved / M sets magnify when appropriate.
+        magnifyToggle = getForgePreferences().getPrefBoolean(FPref.UI_MAGNIFIER_TOGGLE);
+        magnifyShowDetails = getForgePreferences().getPrefBoolean(FPref.UI_MAGNIFIER_SHOW_DETAILS);
         reversedPrompt = getForgePreferences().getPrefBoolean(FPref.UI_REVERSE_PROMPT_BUTTON);
         autoAIDeckSelection = getForgePreferences().getPrefBoolean(FPref.UI_AUTO_AIDECK_SELECTION);
         altPlayerLayout = getForgePreferences().getPrefBoolean(FPref.UI_ALT_PLAYERINFOLAYOUT);
@@ -409,6 +414,8 @@ public class Forge implements ApplicationListener {
         clearScreenStack();
         openHomeScreen(-1, null); //default for startup
         isMobileAdventureMode = false;
+        // Full clear: leaving Adventure must not leave AU1 hooks for constructed matches.
+        forge.adventure.sound.Au1Sounds.resetAllStaticState();
         MusicPlaylist.invalidateMusicPlaylist();
         SoundSystem.instance.setBackgroundMusic(MusicPlaylist.MENUS);
         if (isLandscapeMode()) { //open preferred new game screen by default if landscape mode
@@ -426,6 +433,7 @@ public class Forge implements ApplicationListener {
         GuiBase.setAdventureDirectory(ForgeConstants.ADVENTURE_COMMON_DIR);
         advStartup = false;
         isMobileAdventureMode = true;
+        forge.adventure.sound.Au1Sounds.refreshRegistration();
         //force it for adventure mode if the prefs is not updated from boolean value to string value
         if ("true".equalsIgnoreCase(FModel.getPreferences().getPref(FPref.UI_ALT_PLAYERZONETABS)) ||
             "false".equalsIgnoreCase(FModel.getPreferences().getPref(FPref.UI_ALT_PLAYERZONETABS))) {
@@ -489,6 +497,7 @@ public class Forge implements ApplicationListener {
                         //preload adventure resources to speedup startup if selector is adventure. Needs in edt when setting up worldstage
                         loadAdventureResources(false);
                         isMobileAdventureMode = true;
+                        forge.adventure.sound.Au1Sounds.refreshRegistration();
                     }
                     //selection transition
                     setTransitionScreen(new TransitionScreen(() -> {
@@ -1367,10 +1376,14 @@ public class Forge implements ApplicationListener {
         @Override
         public boolean touchDown(int x, int y, int pointer, int button) {
             lastInputWasController = false;
-            //mouse button 4 (back side button) presses OK during a match
-            if (button == Input.Buttons.BACK && currentScreen instanceof MatchScreen matchScreen
-                    && matchScreen.getActivePrompt() != null) {
-                matchScreen.getActivePrompt().getBtnOk().trigger();
+            // Mouse side buttons during a match: forward (MB5) = primary/OK, back (MB4) = secondary/Cancel.
+            // trigger() only fires when that prompt button is enabled.
+            if ((button == Input.Buttons.FORWARD || button == Input.Buttons.BACK)
+                    && currentScreen instanceof MatchScreen matchScreen && matchScreen.getActivePrompt() != null) {
+                if (button == Input.Buttons.FORWARD)
+                    matchScreen.getActivePrompt().getBtnOk().trigger();
+                else
+                    matchScreen.getActivePrompt().getBtnCancel().trigger();
                 return true;
             }
             if (transitionScreen != null) {
@@ -1443,6 +1456,22 @@ public class Forge implements ApplicationListener {
             try {
                 for (FDisplayObject listener : potentialListeners) {
                     if (listener.tap(listener.screenToLocalX(x), listener.screenToLocalY(y), count)) {
+                        return true;
+                    }
+                }
+                return false;
+            } catch (Exception ex) {
+                BugReporter.reportException(ex);
+                return true;
+            }
+        }
+
+        @Override
+        public boolean rightClick(float x, float y) {
+            // No Shift+flick — right-click must not select a whole stack.
+            try {
+                for (FDisplayObject listener : potentialListeners) {
+                    if (listener.rightClick(listener.screenToLocalX(x), listener.screenToLocalY(y))) {
                         return true;
                     }
                 }

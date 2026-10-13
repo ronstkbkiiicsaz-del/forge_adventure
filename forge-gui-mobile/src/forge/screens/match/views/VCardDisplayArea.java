@@ -31,6 +31,7 @@ import forge.model.FModel;
 import forge.screens.match.CardFlightOverlay;
 import forge.screens.match.MatchController;
 import forge.screens.match.MatchScreen;
+import forge.screens.match.ModernDuelActions;
 import forge.screens.match.ModernDuelController;
 import forge.screens.match.ModernDuelGestures;
 import forge.screens.match.ModernDuelScreen;
@@ -238,10 +239,34 @@ public abstract class VCardDisplayArea extends VDisplayArea implements ActivateH
         orderedCards.get().clear();
         infoGhostCardIds.get().clear();
 
+        // DS1 Arena: fan the hand / opened piles (GY, exile, library) card-aspect.
+        if (this instanceof VZoneDisplay zone
+                && VZoneDisplay.isArenaFannedZone(zone.getZoneType())
+                && forge.screens.match.ArenaDuelUi.isActive()) {
+            return layoutArenaHandFan(visibleWidth, visibleHeight);
+        }
+
         float x = 0;
         float y = 0;
         float cardHeight = visibleHeight;
         float cardWidth = getCardWidth(cardHeight);
+
+        // Arena field rows: with a small board the cards naturally sit left in a
+        // wide lane. Center the group so the lane doesn't look empty on the right.
+        final boolean arenaField = this instanceof VField.FieldRow
+                && forge.screens.match.ArenaDuelUi.isActive();
+        if (arenaField) {
+            float totalW = 0f;
+            for (CardAreaPanel cardPanel : new ArrayList<>(cardPanels.get())) {
+                if (cardPanel != null) {
+                    final int stack = 1 + countStackDepth(cardPanel);
+                    totalW += cardWidth + (stack - 1) * cardWidth * getCardStackOffset();
+                }
+            }
+            if (totalW > 0f && totalW < visibleWidth) {
+                x = (visibleWidth - totalW) / 2f;
+            }
+        }
 
         for (CardAreaPanel cardPanel : new ArrayList<>(cardPanels.get())) {
             if (cardPanel != null) {
@@ -250,7 +275,50 @@ public abstract class VCardDisplayArea extends VDisplayArea implements ActivateH
             }
         }
 
-        return new ScrollBounds(x, visibleHeight);
+        return new ScrollBounds(Math.max(x, visibleWidth), visibleHeight);
+    }
+
+    private int countStackDepth(final CardAreaPanel cardPanel) {
+        int n = 0;
+        CardAreaPanel p = cardPanel.getNextPanelInStack();
+        while (p != null) {
+            n++;
+            p = p.getNextPanelInStack();
+        }
+        return n;
+    }
+
+    private ScrollBounds layoutArenaHandFan(float visibleWidth, float visibleHeight) {
+        final List<CardAreaPanel> panels = new ArrayList<>(cardPanels.get());
+        final int count = panels.size();
+        final boolean[] playable = new boolean[count];
+        for (int i = 0; i < count; i++) {
+            final CardAreaPanel p = panels.get(i);
+            playable[i] = p != null && ModernDuelActions.isHandCastableFromViews(
+                    p.getCard(), p.getCard() == null ? null : p.getCard().getController());
+        }
+        int hover = -1;
+        for (int i = 0; i < count; i++) {
+            if (panels.get(i) != null && panels.get(i).isHovered()) {
+                hover = i;
+                break;
+            }
+        }
+        final List<forge.screens.match.ArenaHandFan.CardPose> poses =
+                forge.screens.match.ArenaHandFan.fan(count, visibleWidth, visibleHeight, hover, playable);
+        float maxRight = visibleWidth;
+        for (int i = 0; i < poses.size(); i++) {
+            final forge.screens.match.ArenaHandFan.CardPose pose = poses.get(i);
+            final CardAreaPanel panel = panels.get(pose.index);
+            if (panel == null) {
+                continue;
+            }
+            orderedCards.get().add(panel.getCard());
+            panel.setBounds(pose.x, pose.y, pose.w, pose.h);
+            // Slight vertical lift already baked into pose.y for hover.
+            maxRight = Math.max(maxRight, pose.x + pose.w);
+        }
+        return new ScrollBounds(maxRight, visibleHeight);
     }
 
     @Override
@@ -571,10 +639,12 @@ public abstract class VCardDisplayArea extends VDisplayArea implements ActivateH
             }
         }
 
-        private void runSingleTapAction() {
+        private void runSingleTapAction(final int buttonAtPress) {
             //must invoke in game thread in case a dialog needs to be shown
             ThreadUtil.invokeInGameThread(() -> {
-                if (GuiBase.getInterface().isRunningOnDesktop() && Forge.mouseButtonID == Input.Buttons.RIGHT) {
+                // Capture button at press/tap time — Forge.mouseButtonID may change
+                // before a deferred modern single-tap fires.
+                if (GuiBase.getInterface().isRunningOnDesktop() && buttonAtPress == Input.Buttons.RIGHT) {
                     FThreads.invokeInEdtLater(CardAreaPanel.this::showZoom);
                 } else if (!selectCard(false)) {
                     //if no cards in stack can be selected, just show zoom/details for card
@@ -582,6 +652,16 @@ public abstract class VCardDisplayArea extends VDisplayArea implements ActivateH
                         FThreads.invokeInEdtLater(CardAreaPanel.this::showZoom);
                 }
             });
+        }
+
+        @Override
+        public boolean rightClick(float x, float y) {
+            if (!renderedCardContains(x, y)) {
+                return false;
+            }
+            // Immediate CardZoom — not tap (no select/activate, no Shift+flick, no deferral).
+            FThreads.invokeInEdtLater(CardAreaPanel.this::showZoom);
+            return true;
         }
 
         @Override
@@ -604,6 +684,8 @@ public abstract class VCardDisplayArea extends VDisplayArea implements ActivateH
                 if (modern) {
                     ModernDuelController.get().markTouchInput();
                 }
+                // Button at press time (deferred modern path must not re-read later).
+                final int buttonAtPress = Forge.mouseButtonID;
                 // Defer modern single-tap until the double-tap window passes so the
                 // first tap of a double-tap does not select/activate the card.
                 if (ModernDuelGestures.shouldDeferSingleTap(modern, count)) {
@@ -612,13 +694,13 @@ public abstract class VCardDisplayArea extends VDisplayArea implements ActivateH
                         @Override
                         public void run() {
                             deferredSingleTap = null;
-                            runSingleTapAction();
+                            runSingleTapAction(buttonAtPress);
                         }
                     };
                     Timer.schedule(deferredSingleTap, ModernDuelGestures.DOUBLE_TAP_WINDOW_SEC);
                     return true;
                 }
-                runSingleTapAction();
+                runSingleTapAction(buttonAtPress);
                 return true;
             }
             return false;

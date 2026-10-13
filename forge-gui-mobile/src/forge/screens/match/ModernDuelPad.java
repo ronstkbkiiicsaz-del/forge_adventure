@@ -26,7 +26,11 @@ public final class ModernDuelPad {
         NONE,
         PEEK,
         MANA,
-        PHASE
+        PHASE,
+        /** Arena primary context button (prompt OK). */
+        CONTEXT,
+        /** Arena secondary context button (prompt Cancel). */
+        CANCEL
     }
 
     /**
@@ -34,15 +38,38 @@ public final class ModernDuelPad {
      *
      * @param handCardFocused true if the focus cursor is on a hand card
      * @param manaAvailable   floating mana bar is showing (paying / pool non-empty)
+     * @param arenaScreen     true when the Arena duel screen hosts context buttons
      */
     public static Focus chooseXTarget(final boolean handCardFocused, final boolean manaAvailable) {
+        return chooseXTarget(handCardFocused, manaAvailable, false);
+    }
+
+    public static Focus chooseXTarget(final boolean handCardFocused, final boolean manaAvailable,
+            final boolean arenaScreen) {
         if (handCardFocused) {
             return Focus.PEEK;
         }
         if (manaAvailable) {
             return Focus.MANA;
         }
+        // Arena: prefer the big context button so pad can reach OK/Cancel chrome.
+        if (arenaScreen) {
+            return Focus.CONTEXT;
+        }
         return Focus.PHASE;
+    }
+
+    /** Cycle Arena chrome focus: CONTEXT ↔ CANCEL ↔ PHASE. */
+    public static Focus cycleArenaChrome(final Focus current, final int delta) {
+        final Focus[] order = {Focus.CONTEXT, Focus.CANCEL, Focus.PHASE};
+        int idx = 0;
+        for (int i = 0; i < order.length; i++) {
+            if (order[i] == current) {
+                idx = i;
+                break;
+            }
+        }
+        return order[cycle(idx, order.length, delta)];
     }
 
     /** Cycle an index in {@code [0, size)} by {@code delta} (-1 or +1). */

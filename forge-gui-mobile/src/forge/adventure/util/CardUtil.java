@@ -9,6 +9,8 @@ import forge.adventure.data.GeneratedDeckData;
 import forge.adventure.data.GeneratedDeckTemplateData;
 import forge.adventure.data.MaterialData;
 import forge.adventure.data.RewardData;
+import forge.adventure.player.AdventurePlayer;
+import forge.adventure.pointofintrest.PointOfInterestChanges;
 import forge.card.*;
 import forge.card.DeckHints.Type;
 import forge.card.mana.ManaCost;
@@ -330,7 +332,7 @@ public class CardUtil {
 
     public static List<PaperCard> generateCards(Iterable<PaperCard> cards, final RewardData data, final int count,
             Random r) {
-        boolean allCardVariants = Config.instance().getSettingData().useAllCardVariants;
+        boolean allCardVariants = SourcePrintings.useAllCardVariants();
 
         final List<PaperCard> result = new ArrayList<>();
         List<PaperCard> pool = getPredicateResult(cards, data);
@@ -338,7 +340,14 @@ public class CardUtil {
             for (int i = 0; i < count; i++) {
                 PaperCard candidate = pool.get(r.nextInt(pool.size()));
                 if (candidate != null) {
-                    if (allCardVariants) {
+                    if (SourcePrintings.enabled()) {
+                        // CS0: pin to source set / rotation; never random variants.
+                        // resolve may return null when allowedEditions excludes every printing.
+                        PaperCard resolved = SourcePrintings.resolve(candidate, data);
+                        if (resolved != null) {
+                            result.add(resolved);
+                        }
+                    } else if (allCardVariants) {
                         // Get a random variant, preserving edition when specified
                         PaperCard finalCandidate = CardUtil.getCardByNameAndEdition(candidate.getCardName(), candidate.getEdition());
                         result.add(finalCandidate);
@@ -378,8 +387,29 @@ public class CardUtil {
     }
 
     public static int getCardPrice(PaperCard card) {
+        PointOfInterestChanges market = null;
+        try {
+            AdventurePlayer player = Current.player();
+            if (player != null)
+                // EC1: price from the active shop's own POI only — never the last inn visit.
+                market = player.getActiveShopMarket();
+        } catch (Exception ignored) {
+        }
+        return getCardPrice(card, market);
+    }
+
+    /**
+     * Card gold price. For EC1, {@code market} must be the shop's own
+     * {@link PointOfInterestChanges} (map shops use their POI); {@code null} means no
+     * local market pressure (outside a shop / selling outside town).
+     */
+    public static int getCardPrice(PaperCard card, PointOfInterestChanges market) {
         if (card == null)
             return 0;
+        // EC1: Ascendant life-cycle prices. Stock / ec1GamePrices=false keep price-list stubs.
+        if (AscendantCardEconomy.enabled()) {
+            return AscendantCardEconomy.cardValue(card, market);
+        }
         CardRarity effectiveRarity = card.getRarity();
 
         if (card.getRarity() == CardRarity.BasicLand
@@ -425,11 +455,16 @@ public class CardUtil {
      }
     
     public static int getRewardPrice(Reward reward) {
+        return getRewardPrice(reward, null);
+    }
+
+    /** Shop buy price using the shop's own market when {@code market} is non-null. */
+    public static int getRewardPrice(Reward reward, PointOfInterestChanges market) {
         PaperCard card = reward.getCard();
         Deck booster = reward.getDeck();
 
         if (card != null)
-            return getCardPrice(card);
+            return market != null ? getCardPrice(card, market) : getCardPrice(card);
         if (reward.getItem() != null)
             return reward.getItem().cost;
         if (reward.getType() == Reward.Type.Material) {
@@ -603,7 +638,7 @@ public class CardUtil {
         int red = 0, blue = 0, green = 0, white = 0, black = 0, colorless = 0;
         int cardCount = nonLands.size();
         List<PaperCard> cards = new ArrayList<>();
-        boolean allCardVariants = Config.instance().getSettingData().useAllCardVariants;
+        boolean allCardVariants = SourcePrintings.useAllCardVariants();
         boolean useSnowLands = false;
 
         for (PaperCard nonLand : nonLands) {
@@ -771,7 +806,7 @@ public class CardUtil {
     }
 
     private static Collection<PaperCard> generateLands(String landName, int count, String edition) {
-        boolean allCardVariants = Config.instance().getSettingData().useAllCardVariants;
+        boolean allCardVariants = SourcePrintings.useAllCardVariants();
         Collection<PaperCard> ret = new ArrayList<>();
 
         if (allCardVariants) {
@@ -925,9 +960,18 @@ public class CardUtil {
     }
 
     public static PaperCard getCardByName(String cardName) {
+        if (SourcePrintings.enabled()) {
+            // CS0: single path — rotation / most-recent normal (filters online, funny,
+            // collector, restrictedEditions, PLST/MB1, special sheets). Do not fall
+            // through to the stock unique/variants picker (that would reintroduce
+            // world-random printings under Ascendant).
+            PaperCard fromSource = SourcePrintings.printingFromRotation(cardName);
+            return fromSource != null ? fromSource : getReplacement(cardName, "Wastes");
+        }
         List<PaperCard> validCards;
         ConfigData configData = Config.instance().getConfigData();
-        if (Config.instance().getSettingData().useAllCardVariants) {
+        // Stock worlds: honour useAllCardVariants; pick with the world-seeded Random.
+        if (SourcePrintings.useAllCardVariants()) {
             Predicate<PaperCard> editionFilter;
             if (configData.allowedEditions != null && configData.allowedEditions.length > 0) {
                 Set<String> allowed = new HashSet<>(Arrays.asList(configData.allowedEditions));
@@ -988,7 +1032,14 @@ public class CardUtil {
                 return getCardByName(cardName);
             }
         }
-        List<PaperCard> cardPool = Config.instance().getSettingData().useAllCardVariants
+        if (SourcePrintings.enabled()) {
+            PaperCard pinned = SourcePrintings.printingFromSet(cardName, edition);
+            if (pinned != null) {
+                return pinned;
+            }
+            return getCardByName(cardName);
+        }
+        List<PaperCard> cardPool = SourcePrintings.useAllCardVariants()
                 ? FModel.getMagicDb().getCommonCards().getAllCardsNoAlt(cardName)
                 : List.of(FModel.getMagicDb().getCommonCards().getUniqueByNameNoAlt(cardName));
         List<PaperCard> validCards = cardPool.stream()

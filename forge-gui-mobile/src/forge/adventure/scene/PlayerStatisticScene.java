@@ -24,6 +24,7 @@ import forge.adventure.stage.GameHUD;
 import forge.adventure.util.Config;
 import forge.adventure.util.Controls;
 import forge.adventure.util.Current;
+import forge.adventure.util.MoxfieldMx1;
 import forge.adventure.util.Paths;
 import forge.adventure.world.WorldSave;
 import forge.assets.FBufferedImage;
@@ -35,6 +36,7 @@ import forge.localinstance.achievements.CardActivationAchievements;
 import forge.localinstance.achievements.PlaneswalkerAchievements;
 import forge.model.FModel;
 import forge.player.GamePlayerUtil;
+import forge.util.Localizer;
 import forge.util.TextUtil;
 import org.apache.commons.lang3.tuple.Pair;
 
@@ -49,6 +51,7 @@ public class PlayerStatisticScene extends UIScene {
     TextraLabel winloss, lossWinRatio, eventLossWinRatio, eventMatchLossWinRatio;
     TextraLabel headerAchievements, headerAvatar, headerName, headerWinLoss;
     TypingLabel playerName;
+    TypingLabel playerTitle;
     TextraButton back, toggleAward;
     private final Table scrollContainer, achievementContainer;
     TextraLabel blessingScroll;
@@ -77,10 +80,12 @@ public class PlayerStatisticScene extends UIScene {
         // AC1: Awards is Ascendant-only and added in code so stock statistic.json stays unchanged.
         if (Config.ascendant()) {
             addAscendantAwardsButton();
+            addAscendantSeasonLabel();
         }
         avatar = ui.findActor("avatar");
         avatarBorder = ui.findActor("avatarBorder");
         playerName = ui.findActor("playerName");
+        playerTitle = ui.findActor("playerTitle");
         life = ui.findActor("lifePoints");
         money = ui.findActor("money");
         shards = ui.findActor("shards");
@@ -215,6 +220,22 @@ public class PlayerStatisticScene extends UIScene {
             playerName.setText(gender + GamePlayerUtil.getGuiPlayer().getName());
             playerName.skipToTheEnd();
         }
+        if (playerTitle != null) {
+            String titleText = "";
+            if (Config.ascendant()) {
+                try {
+                    String equipped = forge.adventure.player.AchievementService.get()
+                            .getProgress().getEquippedTitle();
+                    titleText = forge.adventure.util.AdventureTitles.statusTitleLabelText(equipped);
+                } catch (Throwable ignored) {
+                    // Achievement service unavailable in some test harnesses.
+                }
+            }
+            playerTitle.setText(titleText);
+            playerTitle.setVisible(titleText != null && !titleText.isEmpty());
+            playerTitle.skipToTheEnd();
+        }
+        refreshAscendantSeasonLabel();
         if (avatar != null) {
             avatar.setDrawable(new TextureRegionDrawable(Current.player().avatar()));
         }
@@ -238,6 +259,7 @@ public class PlayerStatisticScene extends UIScene {
                 dust.setText("");
             }
         }
+        ensureMoxfieldExportStatus();
         if (totalWins != null) {
             totalWins.setText(String.valueOf(Current.player().getStatistic().totalWins()));
         }
@@ -326,11 +348,126 @@ public class PlayerStatisticScene extends UIScene {
         return true;
     }
 
+    private com.github.tommyettinger.textra.TextraLabel seasonStatusLabel;
+
+    private void addAscendantSeasonLabel() {
+        if (ui.findActor("seasonStatus") != null) {
+            seasonStatusLabel = ui.findActor("seasonStatus");
+            return;
+        }
+        seasonStatusLabel = Controls.newTextraLabel("");
+        seasonStatusLabel.setName("seasonStatus");
+        // Both orientations sit on the dark chrome (footer / Awards band) — white text.
+        seasonStatusLabel.setColor(com.badlogic.gdx.graphics.Color.WHITE);
+        float[] b = seasonStatusStageBounds(Forge.isLandscapeMode(), ui.getHeight());
+        seasonStatusLabel.setBounds(b[0], b[1], b[2], b[3]);
+        seasonStatusLabel.setVisible(false);
+        ui.addActor(seasonStatusLabel);
+    }
+
+    private void refreshAscendantSeasonLabel() {
+        if (seasonStatusLabel == null || !Config.ascendant())
+            return;
+        try {
+            AdventurePlayer player = Current.player();
+            if (player == null || player.getSeason() == null || !player.getSeason().isConfigured()) {
+                seasonStatusLabel.setVisible(false);
+                return;
+            }
+            String line = player.getSeason().statusLine(player.getStandardWindow());
+            if (line == null || line.isEmpty()) {
+                seasonStatusLabel.setVisible(false);
+                return;
+            }
+            seasonStatusLabel.setText("[%50][WHITE]" + line);
+            seasonStatusLabel.layout();
+            seasonStatusLabel.setVisible(true);
+        } catch (Throwable ignored) {
+            seasonStatusLabel.setVisible(false);
+        }
+    }
+
+    /**
+     * Stage-space (y-up) season status line for the statistic layouts.
+     * Landscape: footer strip under the nav row (below scrollWindow stageY≈17).
+     * Portrait: right of Awards band.
+     */
+    public static float[] seasonStatusStageBounds(boolean landscape, float layoutH) {
+        if (landscape) {
+            // json (8, 254, 275, 14) → stageY = 2; clear of scrollWindow (~17) / nav chrome.
+            float jx = 8f, jy = 254f, jw = 275f, jh = 14f;
+            return new float[] { jx, layoutH - jy - jh, jw, jh };
+        }
+        // Right of Awards — match Awards height so the band stays clear of scrollWindow.
+        // json (82, 408, 180, 28).
+        float jx = 82f, jy = 408f, jw = 180f, jh = 28f;
+        return new float[] { jx, layoutH - jy - jh, jw, jh };
+    }
+
     /**
      * Ascendant-only Awards entry. Stock {@code statistic.json} is unchanged.
      * JSON layout y is top-down ({@code yDown}); {@link Actor#setBounds} is y-up,
      * so positions use {@code layoutH - jsonY - h}.
      */
+    /**
+     * MX1: show "Collection exported &lt;time&gt;" on the Status screen with a How-to
+     * scene dialog (controller-reachable). Ascendant + {@code mx1ExportStatusUi} only.
+     */
+    private void ensureMoxfieldExportStatus() {
+        Actor existing = ui.findActor("mx1ExportStatus");
+        if (!MoxfieldMx1.statusUiEnabled()) {
+            if (existing != null) {
+                existing.setVisible(false);
+            }
+            Actor how = ui.findActor("mx1ExportHowTo");
+            if (how != null) {
+                how.setVisible(false);
+            }
+            return;
+        }
+        TypingLabel status;
+        if (existing instanceof TypingLabel) {
+            status = (TypingLabel) existing;
+        } else {
+            status = Controls.newTypingLabel("");
+            status.setName("mx1ExportStatus");
+            status.setWrap(true);
+            boolean landscape = Forge.isLandscapeMode();
+            if (landscape) {
+                status.setBounds(300, 210, 160, 28);
+            } else {
+                status.setBounds(8, 380, 200, 28);
+            }
+            ui.addActor(status);
+        }
+        status.setText("[BLACK]" + MoxfieldMx1.exportStatusLine());
+        status.setVisible(true);
+        status.skipToTheEnd();
+
+        Actor howActor = ui.findActor("mx1ExportHowTo");
+        TextraButton howTo;
+        if (howActor instanceof TextraButton) {
+            howTo = (TextraButton) howActor;
+        } else {
+            Localizer loc = Forge.getLocalizer();
+            howTo = Controls.newTextButton(loc.getMessage("lblHowTo"), () -> showDialog(createGenericDialog(
+                    loc.getMessage("lblMoxfieldCollection"),
+                    MoxfieldMx1.moxfieldHowToBody(),
+                    loc.getMessage("lblOK"), null,
+                    PlayerStatisticScene.this::removeDialog, null)));
+            howTo.setName("mx1ExportHowTo");
+            boolean landscape = Forge.isLandscapeMode();
+            if (landscape) {
+                howTo.setBounds(300, 238, 70, 22);
+            } else {
+                howTo.setBounds(210, 380, 70, 28);
+            }
+            ui.addActor(howTo);
+            addToSelectable(howTo);
+        }
+        howTo.setVisible(true);
+    }
+
     private void addAscendantAwardsButton() {
         if (ui.findActor("achievements") != null) {
             ui.onButtonPress("achievements",

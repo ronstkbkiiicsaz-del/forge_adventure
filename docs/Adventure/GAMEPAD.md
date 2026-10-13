@@ -23,7 +23,7 @@ Controls:
   - Button Y - Decrease Difficulty in NewGame Plus/Zoom or Text Mode in Deck Editor
   - Left/Right Shoulder Button - Scroll Up or Scroll Down on some UIScenes
 
-- Achievements (Ascendant Status → Awards)
+- Achievements (Shandalar Ascendant Status → Awards)
   - DPAD Up/Down - Move between Back / Status / Skills / Quests and scroll the list
   - Button A - Activate the focused button
   - Button B - Back to Status
@@ -66,13 +66,16 @@ Controls:
   - Button B - Cancel/Hide
   - Button Y - Show Zoom
   - Button Back - Show Menu Tabs
+  - Desktop keyboard (DS3): **right-click** a duel card opens CardZoom (picture + oracle text; Space/Tab toggles). Right-click does nothing on buttons, avatars, stack items, or deck-editor rows. **M** toggles hover preview on/off; **Shift+M** toggles hover-preview details (plain M only — not Ctrl/Alt+M). HUD note shows state (e.g. "Hover preview: off") and prefs persist locally — never toggled by right-click. Controller and touch are unchanged.
 
-- Match/Battle — modern duel screen (Auto = Adventure duels in Ascendant only; or Settings → Modern duel screen = Always)
+- Match/Battle — modern / Arena duel screen (DS1; Auto = Adventure duels in Shandalar Ascendant only; or Settings → Modern duel screen = Always)
 
-  Stock bindings above still apply when you are not in a modern pad mode. Modern modes use **X** as the mode key (unused in stock match) and **B** to back out of any modern mode. **A** on a **castable** hand card **picks it up** (view-based castability — lands you can still play, or CMC ≤ mana in pool **plus untapped lands**; the engine still validates). A second **A** on the **same** hand card or while aimed at the board **casts**; a second **A** on a **different** hand card **reorders**. **A** picks up your creature while **InputAttack** / **InputBlock** is up for attack/block aiming. Otherwise **A** is stock tap/activate (mana, abilities, loyalty, uncastable hand).
+  Ascendant opens the **Arena skeleton** (`ArenaDuelScreen`): opponent top, you bottom, centre stack column, fanned hand, phase rail, big **Pass / Attack / Done / Resolve** context button, **Pass until EOT**, and DS4 Take back beside the prompt. Prompts without a custom view still use Forge dialogs. Stock bindings above still apply when you are not in a modern pad mode. Modern modes use **X** as the mode key (unused in stock match) and **B** to back out of any modern mode. **A** on a **castable** hand card **picks it up** (view-based castability — lands you can still play, or CMC ≤ mana in pool **plus untapped lands**; the engine still validates). A second **A** on the **same** hand card or while aimed at the board **casts**; a second **A** on a **different** hand card **reorders**. **A** picks up your creature while **InputAttack** / **InputBlock** is up for attack/block aiming. Otherwise **A** is stock tap/activate (mana, abilities, loyalty, uncastable hand).
 
   | Action | Binding |
   | --- | --- |
+  | Context button (Pass / Attack / Done / Resolve) | **Left Trigger** / prompt OK (same `selectButtonOk` seam); touch/click the big context button |
+  | Pass until end of turn | Touch/click **Pass until EOT**; or existing End Turn yield binding |
   | Cast / play from hand | **A** to pick up a castable hand card, aim with **DPAD**, **A** again to cast (or **A** again on the same card to confirm). Touch: drag onto the board. |
   | Attack / block (two-press aim) | **A** to pick up your creature during InputAttack/InputBlock, aim with **DPAD**, **A** to drop on the target |
   | Stock tap / activate (no drag / not castable) | **A** (unchanged — pays mana, abilities, loyalty; uncastable hand cards) |
@@ -88,5 +91,15 @@ Controls:
   | Floating mana (while paying) | **X** when mana pips are showing (and hand is not focused) → mana mode; **DPAD Left/Right** cycle pips; **A** spends the focused pip. Tap on a pip is touch input. |
   | Phase stops | **X** when neither peek nor mana applies → phase mode on your rail; **DPAD Left/Right** cycle phases; **A** toggles stop on/off. Tap on a phase label is touch input. |
   | Target spells / abilities | During a selection prompt, **DPAD** to the target; amber arrow from the prompt source follows focus **after the pad has been used** (never at match start before input); **A** confirms (stock select). No pick-up. Touch clears stale pad focus so arrows follow the touched source. |
-  | Zoom card | **Y** (controller). Touch: **double-tap** a card to zoom — the first tap is deferred so it does not select/activate; only the double-tap zooms (hand long-press peeks). |
+  | Zoom card | **Y** (controller). Touch: **double-tap** a card to zoom — the first tap is deferred so it does not select/activate; only the double-tap zooms (hand long-press peeks). Desktop: **right-click** opens CardZoom (same as rewards/shop). |
+  | Hover preview (desktop) | **M** on/off; **Shift+M** details — HUD note with state + local prefs; not toggled by right-click |
+  | Take back last action (DS4) | **Start**, or **Ctrl+Z** / gamepad **Z**, when a Take back snapshot is available. Button appears on the prompt only while eligible. Unlimited uses until a draw, shuffle, reveal, random choice, opponent action, resolved trigger or phase/priority change locks it. Stock mana Undo on Cancel is unchanged. Hidden / disabled in co-op duels (short note if pressed). |
   | Zone tabs / player panels / prompts | **R1** / **L1** / triggers (unchanged) |
+
+- Match/Battle — Take back (DS4; Shandalar Ascendant single-player adventure duels)
+
+  | Action | Binding |
+  | --- | --- |
+  | Take back last land / spell / ability | Prompt **Take back** button (only when a snapshot succeeded), **Ctrl+Z**, or controller **Start** / **Z** |
+  | Stock mana undo | Cancel button when it shows Undo (unchanged) |
+  | Co-op duel | Button hidden; **Ctrl+Z** / **Start** show a short “single-player only” note (no wire / no protocol bump) |

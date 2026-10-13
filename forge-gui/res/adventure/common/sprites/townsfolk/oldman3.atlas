@@ -1,0 +1,95 @@
+oldman3.png
+size: 64,112
+format: RGBA8888
+filter: Nearest,Nearest
+repeat: none
+WalkDown
+  xy: 0, 0
+  size: 16, 16
+WalkDown
+  xy: 0, 16
+  size: 16, 16
+WalkDown
+  xy: 0, 32
+  size: 16, 16
+WalkDown
+  xy: 0, 48
+  size: 16, 16
+IdleDown
+  xy: 0, 64
+  size: 16, 16
+AttackDown
+  xy: 0, 80
+  size: 16, 16
+HitDown
+  xy: 0, 64
+  size: 16, 16
+WalkUp
+  xy: 16, 0
+  size: 16, 16
+WalkUp
+  xy: 16, 16
+  size: 16, 16
+WalkUp
+  xy: 16, 32
+  size: 16, 16
+WalkUp
+  xy: 16, 48
+  size: 16, 16
+IdleUp
+  xy: 16, 64
+  size: 16, 16
+AttackUp
+  xy: 16, 80
+  size: 16, 16
+HitUp
+  xy: 16, 64
+  size: 16, 16
+WalkLeft
+  xy: 32, 0
+  size: 16, 16
+WalkLeft
+  xy: 32, 16
+  size: 16, 16
+WalkLeft
+  xy: 32, 32
+  size: 16, 16
+WalkLeft
+  xy: 32, 48
+  size: 16, 16
+IdleLeft
+  xy: 32, 64
+  size: 16, 16
+AttackLeft
+  xy: 32, 80
+  size: 16, 16
+HitLeft
+  xy: 32, 64
+  size: 16, 16
+WalkRight
+  xy: 48, 0
+  size: 16, 16
+WalkRight
+  xy: 48, 16
+  size: 16, 16
+WalkRight
+  xy: 48, 32
+  size: 16, 16
+WalkRight
+  xy: 48, 48
+  size: 16, 16
+IdleRight
+  xy: 48, 64
+  size: 16, 16
+AttackRight
+  xy: 48, 80
+  size: 16, 16
+HitRight
+  xy: 48, 64
+  size: 16, 16
+Death
+  xy: 0, 96
+  size: 16, 16
+Avatar
+  xy: 0, 64
+  size: 16, 16

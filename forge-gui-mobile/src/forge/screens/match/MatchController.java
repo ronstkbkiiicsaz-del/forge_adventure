@@ -229,9 +229,13 @@ public class MatchController extends NetworkGuiGame {
                     playerPanel.setBottomPlayer(true);
             }
         }
-        view = new MatchScreen(playerPanels);
-        // Per-match gate: Adventure flag / Ascendant may differ from the previous match.
+        // DS1: Ascendant (Auto) / Always + ds1ArenaDuelScreen → Arena skeleton;
+        // Never / stock / flag off → classic MatchScreen (gestures still follow enabled()).
         ModernDuelScreen.invalidate();
+        view = ModernDuelScreen.useArenaLayout()
+                ? new ArenaDuelScreen(playerPanels)
+                : new MatchScreen(playerPanels);
+        // Per-match gate: Adventure flag / Ascendant may differ from the previous match.
         ModernDuelController.get().reset();
         if(GuiBase.isNetPlay(this))
             view.resetFields();
@@ -279,6 +283,12 @@ public class MatchController extends NetworkGuiGame {
         btn2.setText(label2);
         btn1.setEnabled(enable1);
         btn2.setEnabled(enable2);
+        // DS4: refresh Take back visibility whenever prompt buttons update.
+        prompt.refreshTakeBackButton();
+        final VPrompt active = view.getActivePrompt();
+        if (active != null && active != prompt) {
+            active.refreshTakeBackButton();
+        }
     }
 
     @Override
@@ -288,6 +298,17 @@ public class MatchController extends NetworkGuiGame {
     @Override
     public void alertUser() {
         //TODO
+    }
+
+    /**
+     * DS4: duel-screen note that paints via MatchScreen overlay (Classic.render).
+     * Do not use FOptionPane/SOptionPane here — they do not draw in adventure scenes.
+     */
+    @Override
+    public void showMatchNote(final String message) {
+        if (view != null) {
+            view.showDuelNote(message);
+        }
     }
 
     private PlayerView lastPlayer;

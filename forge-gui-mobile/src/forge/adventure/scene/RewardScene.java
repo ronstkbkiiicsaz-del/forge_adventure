@@ -182,6 +182,11 @@ public class RewardScene extends UIScene {
         openNextPack = null;
         hasNextPack = null;
         nextPackButton.setVisible(false);
+        try {
+            if (type == Type.Shop)
+                Current.player().setActiveShopMarket(null);
+        } catch (Exception ignored) {
+        }
         for (int i = 0; i < generated.size; i++) {
             Actor actor = generated.get(i);
             if (actor instanceof RewardActor rewardActor) {
@@ -229,20 +234,29 @@ public class RewardScene extends UIScene {
     }
 
     void clearGenerated() {
+        boolean grantedLoot = false;
         for (int i = 0; i < generated.size; i++) {
             Actor actor = generated.get(i);
             if (!(actor instanceof RewardActor rewardActor)) {
                 continue;
             }
-            if (type == Type.Loot || type == Type.EventReward)
+            if (type == Type.Loot || type == Type.EventReward) {
                 AdventurePlayer.current().addReward(rewardActor.getReward());
-            if (type == Type.QuestReward)
+                grantedLoot = true;
+            }
+            if (type == Type.QuestReward) {
                 AdventurePlayer.current().addReward(rewardActor.getReward()); // TODO Want to customize this soon to have selectable rewards which will be handled different here
+                grantedLoot = true;
+            }
             rewardActor.clearLabel();
             try {
                 stage.getActors().removeValue(rewardActor, true);
             } catch (Exception e) {
             }
+        }
+        // AU1: one item-pickup sting when loot is taken into the inventory (not per card).
+        if (grantedLoot && forge.adventure.sound.Au1Sounds.enabled()) {
+            forge.adventure.sound.Au1Sounds.playItemPickup();
         }
     }
 
@@ -435,8 +449,10 @@ public class RewardScene extends UIScene {
         if (type == Type.Shop) {
             this.shopActor = shopActor;
             this.changes = shopActor.getMapStage().getChanges();
+            Current.player().setActiveShopMarket(this.changes);
             addToSelectable(restockButton);
         } else {
+            Current.player().setActiveShopMarket(null);
             doneButton.setText("[+OK]");
             doneShowsReveal = false;
         }
@@ -705,7 +721,8 @@ public class RewardScene extends UIScene {
             setWidth(actor.getWidth());
             setX(actor.getX());
             setY(actor.getY() - getHeight());
-            price = CardUtil.getRewardPrice(actor.getReward());
+            // EC1: buy price from this shop's own POI market (not the last inn visit).
+            price = CardUtil.getRewardPrice(actor.getReward(), changes);
             price *= Current.player().goldModifier();
             price *= shopModifier;
             price *= Current.player().getSkills().shopPriceFactor(); //Bartering skill discount
@@ -721,6 +738,10 @@ public class RewardScene extends UIScene {
                         Current.player().takeGold(price);
                         Current.player().getSkills().onShopPurchase(price);
                         Current.player().addReward(rewardActor.getReward());
+                        // EC1: buying a card raises its local price in this shop's town only.
+                        if (Reward.Type.Card.equals(reward.getType()) && reward.getCard() != null) {
+                            forge.adventure.util.AscendantCardEconomy.noteBought(changes, reward.getCard(), 1);
+                        }
 
                         HapticEngine.vibrate(FPref.UI_VIBRATE_ON_SHOP_ACTION, 5);
                         SoundSystem.instance.play(SoundEffectType.FlipCoin, false);

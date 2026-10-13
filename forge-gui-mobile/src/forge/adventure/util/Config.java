@@ -64,6 +64,7 @@ public class Config {
     /** Test helper: drop the singleton so the next {@link #instance()} rebuilds. */
     public static void resetInstanceForTest() {
         currentConfig = null;
+        forge.adventure.data.TownsfolkListData.clearCache();
     }
 
     /**
@@ -73,6 +74,22 @@ public class Config {
     public static void installConfigDataForTest(ConfigData data) {
         Config cfg = instance();
         cfg.configData = data == null ? new ConfigData() : data;
+        SourcePrintings.clearCaches();
+        forge.adventure.data.TownsfolkListData.clearCache();
+        // allowedEditions / restricted* feed the adventure reward filter and card pool.
+        forge.adventure.data.RewardData.invalidateCardPool();
+        try {
+            forge.adventure.sound.Au1Sounds.refreshRegistration();
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /**
+     * AU1: Ascendant sound overhaul configured on. Prefer {@link forge.adventure.sound.Au1Sounds#enabled()}
+     * for playback (also requires Adventure mode so constructed/quest/draft stay stock).
+     */
+    public static boolean au1SoundOverhaul() {
+        return ascendant() && instance().configData != null && instance().configData.au1SoundOverhaul;
     }
 
     private Config() {
@@ -135,6 +152,8 @@ public class Config {
             e.printStackTrace();
             configData = new ConfigData();
         }
+        SourcePrintings.clearCaches();
+        forge.adventure.data.TownsfolkListData.clearCache();
         // MV2: register PlanarGate so saves with gates resolve after restart.
         if (configData != null && configData.ascendantRules) {
             try {
@@ -142,6 +161,12 @@ public class Config {
             } catch (Throwable ignored) {
                 // Headless / missing res — gates register again on first use.
             }
+        }
+        // AU1: register (or clear) Ascendant sound enrichment against SoundSystem.
+        try {
+            forge.adventure.sound.Au1Sounds.refreshRegistration();
+        } catch (Throwable ignored) {
+            // Headless tests without SoundSystem prefs still load config.
         }
     }
 
@@ -169,6 +194,11 @@ public class Config {
     /** True when the current world uses the Shandalar Ascendant rules (skills, rotation, vaults, sealed start...). */
     public static boolean ascendant() {
         return instance().configData != null && instance().configData.ascendantRules;
+    }
+
+    /** QL1: Ascendant quest-tracking behaviour (Track button, discovered side-quest targets). */
+    public static boolean ql1QuestTracking() {
+        return ascendant() && instance().configData != null && instance().configData.ql1QuestTracking;
     }
 
     // Push the plane's allowed/restricted editions and restricted token pairs into TokenDb.

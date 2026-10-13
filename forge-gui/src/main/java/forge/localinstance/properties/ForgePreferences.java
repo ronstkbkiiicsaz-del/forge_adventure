@@ -54,6 +54,10 @@ public class ForgePreferences extends AbstractPreferences<ForgePreferences.FPref
         UI_ENABLE_BORDER_MASKING("Crop"),
         UI_ENABLE_MATCH_SCROLL_INDICATOR("false"),
         UI_ENABLE_MAGNIFIER("true"),
+        /** Desktop/local: last hover-preview on/off choice (M key). Not networked. */
+        UI_MAGNIFIER_TOGGLE("true"),
+        /** Desktop/local: last magnifier details choice (Shift+M). Not networked. */
+        UI_MAGNIFIER_SHOW_DETAILS("false"),
         UI_SHOW_FPS("false"),
         UI_ENABLE_DISPOSE_TEXTURES("false"),
         UI_AUTO_CACHE_SIZE("false"),
@@ -168,6 +172,7 @@ public class ForgePreferences extends AbstractPreferences<ForgePreferences.FPref
         UI_ENABLE_SOUNDS ("true"),
         UI_ENABLE_MUSIC ("true"),
         UI_VOL_SOUNDS ("100"),
+        UI_VOL_UI ("100"),
         UI_VOL_MUSIC ("100"),
         UI_PAUSE_MUSIC_ON_FOCUS_LOSS ("true"),
         UI_ALT_SOUND_SYSTEM ("false"),

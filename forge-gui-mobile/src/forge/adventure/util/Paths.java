@@ -9,6 +9,8 @@ public class Paths {
     public static final String WORLD = "world/world.json";
     public static final String HEROES = "world/heroes.json";
     public static final String POINTS_OF_INTEREST = "world/points_of_interest.json";
+    /** Ascendant LT1 named townsfolk (homes, sprites, dialog file refs). */
+    public static final String TOWNSFOLK = "world/townsfolk.json";
     public static final String ITEMS = "world/items.json";
     public static final String MATERIALS = "world/materials.json";
     public static final String NODE_VARIANTS = "world/node_variants.json";
@@ -38,6 +40,8 @@ public class Paths {
      * Loaded only when {@link Config#ascendant()} — stock {@link #ITEMS_ATLAS} stays untouched.
      */
     public static final String ASCENDANT_ITEMS_ATLAS = "sprites/ascendant_items.atlas";
+    /** Ascendant-only material icons, one 16x16 region per material id (Wren drafts, Steve retouches). */
+    public static final String MATERIAL_ICONS_ATLAS = "sprites/material_icons.atlas";
     public static final String PIXELMANA_ATLAS = "sprites/pixelmana.atlas";
     public static final String KEYS_ATLAS = "skin/keys.atlas";
     public static final String COLOR_FRAME_ATLAS = "ui/color_frames.atlas";

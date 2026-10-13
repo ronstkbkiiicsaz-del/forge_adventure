@@ -11,6 +11,7 @@ import forge.adventure.data.RewardData;
 import forge.adventure.data.SkillTreeListData;
 import forge.card.CardEdition;
 import java.util.List;
+import com.badlogic.gdx.scenes.scene2d.ui.Dialog;
 import com.badlogic.gdx.scenes.scene2d.ui.ScrollPane;
 import com.badlogic.gdx.scenes.scene2d.ui.Table;
 import com.badlogic.gdx.scenes.scene2d.ui.Window;
@@ -19,11 +20,15 @@ import com.github.tommyettinger.textra.TypingLabel;
 import forge.Adventure;
 import forge.Forge;
 import forge.adventure.player.AdventurePlayer;
+import forge.adventure.player.AdventureSeason;
 import forge.adventure.player.PlayerSkills;
 import forge.adventure.player.StandardWindow;
+import forge.adventure.util.CollectionExporter;
 import forge.adventure.util.Config;
 import forge.adventure.util.Controls;
 import forge.adventure.util.Current;
+import forge.adventure.util.MoxfieldMx1;
+import forge.util.Localizer;
 
 /**
  * Lists every skill with its level, XP and progress to the next level.
@@ -106,25 +111,78 @@ public class SkillsScene extends UIScene {
             addRow("[BLACK]Gym badges", "[BLACK]" + Current.player().getBadgeCount() + "/8",
                     "[DARK_GRAY]" + league);
             addRow("[BLACK]Plane format", "", "[DARK_GRAY]" + planeFmt);
+            if (MoxfieldMx1.statusUiEnabled()) {
+                addMoxfieldExportStatusRow();
+            }
+            try {
+                String equipped = forge.adventure.player.AchievementService.get()
+                        .getProgress().getEquippedTitle();
+                if (equipped != null && !equipped.isEmpty()) {
+                    addRow("[BLACK]Title", "", "[DARK_GRAY]"
+                            + forge.adventure.util.AdventureTitles.titleDisplayName(equipped));
+                }
+            } catch (Throwable ignored) {
+                // Achievement service unavailable in some test harnesses.
+            }
         }
 
         StandardWindow window = Current.player().getStandardWindow();
+        AdventureSeason season = Current.player().getSeason();
         if (window.isActive()) {
             StringBuilder sets = new StringBuilder();
             for (String code : window.getSets())
                 sets.append(sets.length() == 0 ? "" : ", ").append(StandardWindow.setName(code));
             addRow("[BLACK]Standard", "", "[DARK_GRAY]" + sets);
+            if (Config.ascendant() && season.isEnabled()) {
+                TypingLabel seasonLine = label("[DARK_GRAY]" + season.statusLine(window));
+                seasonLine.setWrap(true);
+                scrollContainer.add(seasonLine).colspan(3).align(Align.left).padLeft(10).growX();
+                scrollContainer.row().padTop(4);
+            }
             int[] p = window.masteryProgress(Current.player().getCards());
             int pct = p[1] == 0 ? 0 : Math.round(100f * p[0] / p[1]);
-            String status = window.isSetUnlockedThisWorld() ? " (next set: New Game+)" : "";
+            String status = "";
+            if (Config.ascendant() && season.isEnabled()) {
+                if (season.isChoicePending())
+                    status = " (season pick ready)";
+            } else if (window.isSetUnlockedThisWorld()) {
+                status = " (next set: New Game+)";
+            }
             addRow("[BLACK]Mastery: " + StandardWindow.setName(window.newestSet()), "[BLACK]" + pct + "%",
                     "[DARK_GRAY]" + String.format("%,d / %,d", p[0], p[1]) + status);
             if (window.isChoicePending())
                 addSetChoice(window);
+            if (Config.ascendant() && season.isEnabled() && season.isUndoAvailable())
+                addSeasonUndo(window, season);
+            if (Config.ascendant() && season.isEnabled() && season.canPin() && season.getPinnedSet() == null)
+                addSeasonPin(window, season);
         }
         if (Config.ascendant() && Current.player().getMasterySurgePicksUnspent() > 0)
             addMasterySurgeChoice();
         performTouch(scrollPaneOfActor(scrollContainer)); //mouse wheel scrolling
+    }
+
+    /** MX1: "Collection exported &lt;time&gt;" plus a How-to scene dialog (not FOptionPane). */
+    private void addMoxfieldExportStatusRow() {
+        TypingLabel status = label("[BLACK]" + MoxfieldMx1.exportStatusLine());
+        // No wrap/growX: a wrapping label spanning columns collapsed the skill name and XP columns.
+        scrollContainer.add(status).colspan(2).align(Align.left).padLeft(10);
+        Localizer loc = Forge.getLocalizer();
+        TextraButton howTo = Controls.newTextButton(loc.getMessage("lblHowTo"));
+        howTo.addListener(new ClickListener() {
+            @Override
+            public void clicked(InputEvent event, float x, float y) {
+                showDialog(createGenericDialog(loc.getMessage("lblMoxfieldCollection"),
+                        MoxfieldMx1.moxfieldHowToBody(),
+                        loc.getMessage("lblOK"), null,
+                        SkillsScene.this::removeDialog, null));
+            }
+        });
+        scrollContainer.add(howTo).align(Align.right).padRight(10);
+        scrollContainer.row().padTop(4);
+        addToSelectable(howTo);
+        // Touch CollectionExporter so last_export.txt is considered after a save in another scene.
+        CollectionExporter.lastExportDisplay();
     }
 
     private void addSkillRow(PlayerSkills.Skill skill, int level, String progress, PlayerSkills skills) {
@@ -154,14 +212,33 @@ public class SkillsScene extends UIScene {
         scrollContainer.row().padTop(3);
     }
 
-    /** After mastering a set: pick the next Standard set from every set with packs. */
+    /** After mastering a set / season end: pick the next Standard set (SN1 shortlist or full list). */
     private void addSetChoice(StandardWindow window) {
+        AdventureSeason season = Current.player().getSeason();
+        final boolean sn1 = Config.ascendant() && season.isEnabled() && season.isChoicePending();
+        final List<String> shortCodes = sn1 ? new java.util.ArrayList<>(season.getShortlist()) : null;
         List<CardEdition> choices = window.choosableSets();
         if (choices.isEmpty())
             return;
         Array<String> names = new Array<>();
-        for (CardEdition e : choices)
-            names.add(e.getName() + " (" + e.getCode() + ")");
+        final List<String> codes = new java.util.ArrayList<>();
+        if (sn1 && shortCodes != null && !shortCodes.isEmpty()) {
+            for (String code : shortCodes) {
+                codes.add(code);
+                names.add(StandardWindow.setName(code) + " (" + code + ")");
+            }
+            int anyCost = Config.instance().getConfigData().sn1ChooseAnyGoldCost;
+            String anyLabel = season.getPlanarKeys() > 0
+                    ? "Choose any set (1 Planar Key)"
+                    : "Choose any set (" + anyCost + " gold)";
+            names.add(anyLabel);
+            codes.add("__ANY__");
+        } else {
+            for (CardEdition e : choices) {
+                codes.add(e.getCode());
+                names.add(e.getName() + " (" + e.getCode() + ")");
+            }
+        }
         SelectBox<String> box = Controls.newComboBox();
         box.setItems(names);
         box.addListener(new ClickListener() {
@@ -175,30 +252,158 @@ public class SkillsScene extends UIScene {
             @Override
             public void clicked(InputEvent event, float x, float y) {
                 int i = box.getSelectedIndex();
-                if (i < 0 || i >= choices.size())
+                if (i < 0 || i >= codes.size())
                     return;
-                String rotated = window.chooseNextSet(choices.get(i).getCode());
-                if (rotated != null) {
-                    // Rotation: nothing moves; rotated cards stay yours and remain playable in Historic
-                    int out = Current.player().countRotatedOut();
-                    if (out > 0)
-                        showDialog(createGenericDialog("Rotation", StandardWindow.setName(rotated) + " rotated out of Standard. "
-                                + out + " of your cards are no longer Standard-legal, but you keep them all and they're still "
-                                + "playable in Historic decks. Standard decks that use them are now Locked; switch them to "
-                                + "Historic on the deck screen to keep playing them.",
-                                Forge.getLocalizer().getMessage("lblOK"), null, SkillsScene.this::removeDialog, null));
+                String selected = codes.get(i);
+                boolean chooseAny = "__ANY__".equals(selected);
+                String code = selected;
+                if (chooseAny) {
+                    // Second combo: every choosable set.
+                    List<CardEdition> all = window.choosableSets();
+                    if (all.isEmpty())
+                        return;
+                    // Use the first choosable as a default when the player confirms Choose any
+                    // without a nested picker — SkillsScene keeps one SelectBox for pad focus.
+                    // Offer the full list by replacing the shortlist selection with all sets.
+                    showChooseAnyDialog(window, all);
+                    return;
                 }
-                RewardData.invalidateCardPool();
-                buildList();
+                applySetPick(window, code, false);
             }
         });
         scrollContainer.row().padTop(10);
-        scrollContainer.add(label("[BLACK]Choose your next set:")).align(Align.left).padLeft(10).colspan(3);
+        scrollContainer.add(label(sn1 ? "[BLACK]Season pick — shortlist:" : "[BLACK]Choose your next set:"))
+                .align(Align.left).padLeft(10).colspan(3);
         scrollContainer.row().padTop(4);
         scrollContainer.add(box).colspan(2).fillX().padLeft(10);
         scrollContainer.add(unlock).padRight(10);
         addToSelectable(box);
         addToSelectable(unlock);
+        if (sn1) {
+            TextraButton later = Controls.newTextButton("Later");
+            later.addListener(new ClickListener() {
+                @Override
+                public void clicked(InputEvent event, float x, float y) {
+                    season.deferChoice();
+                    buildList();
+                }
+            });
+            scrollContainer.row().padTop(4);
+            scrollContainer.add(later).padLeft(10).align(Align.left);
+            addToSelectable(later);
+        }
+    }
+
+    private void showChooseAnyDialog(StandardWindow window, List<CardEdition> all) {
+        AdventureSeason season = Current.player().getSeason();
+        Array<String> names = new Array<>();
+        for (CardEdition e : all)
+            names.add(e.getName() + " (" + e.getCode() + ")");
+        SelectBox<String> box = Controls.newComboBox();
+        box.setItems(names);
+        String costLine = season.getPlanarKeys() > 0
+                ? "Spend 1 Planar Key?"
+                : "Spend " + Config.instance().getConfigData().sn1ChooseAnyGoldCost + " gold?";
+        Dialog dialog = createGenericDialog("Any set", null,
+                Forge.getLocalizer().getMessage("lblOK"), Forge.getLocalizer().getMessage("lblCancel"),
+                () -> {
+                    int i = box.getSelectedIndex();
+                    if (i < 0 || i >= all.size()) {
+                        removeDialog();
+                        return;
+                    }
+                    String code = all.get(i).getCode();
+                    removeDialog();
+                    // Confirm cost before spending the key / gold.
+                    confirmChooseAny(window, code, costLine);
+                }, this::removeDialog);
+        dialog.getContentTable().add(Controls.newTextraLabel("Choose any set (" + costLine + "):")).pad(4).row();
+        dialog.getContentTable().add(box).width(280).pad(4);
+        showDialog(dialog);
+    }
+
+    private void confirmChooseAny(StandardWindow window, String code, String costLine) {
+        String body = costLine + "\nUnlock " + StandardWindow.setName(code) + "?";
+        showDialog(createGenericDialog("Confirm", body,
+                Forge.getLocalizer().getMessage("lblOK"), Forge.getLocalizer().getMessage("lblCancel"),
+                () -> {
+                    removeDialog();
+                    applySetPick(window, code, true);
+                }, this::removeDialog));
+    }
+
+    private void applySetPick(StandardWindow window, String code, boolean chooseAny) {
+        AdventureSeason season = Current.player().getSeason();
+        boolean pendingBefore = season != null && season.isChoicePending();
+        String rotated = window.chooseNextSet(code, chooseAny);
+        boolean stillPending = season != null && season.isChoicePending();
+        if (chooseAny && pendingBefore && stillPending) {
+            String err = season.getLastPickError();
+            showDialog(createGenericDialog("Choose any set",
+                    err != null ? err : "Could not unlock that set.",
+                    Forge.getLocalizer().getMessage("lblOK"), null,
+                    SkillsScene.this::removeDialog, null));
+            buildList();
+            return;
+        }
+        if (rotated != null) {
+            int out = Current.player().countRotatedOut();
+            if (out > 0)
+                showDialog(createGenericDialog("Rotation", StandardWindow.setName(rotated) + " rotated out of Standard. "
+                        + out + " of your cards are no longer Standard-legal, but you keep them all and they're still "
+                        + "playable in Historic decks. Standard decks that use them are now Locked; switch them to "
+                        + "Historic on the deck screen to keep playing them.",
+                        Forge.getLocalizer().getMessage("lblOK"), null, SkillsScene.this::removeDialog, null));
+        }
+        RewardData.invalidateCardPool();
+        buildList();
+    }
+
+    private void addSeasonUndo(StandardWindow window, AdventureSeason season) {
+        TextraButton undo = Controls.newTextButton("Undo set pick");
+        undo.addListener(new ClickListener() {
+            @Override
+            public void clicked(InputEvent event, float x, float y) {
+                season.undoPick(window);
+                RewardData.invalidateCardPool();
+                buildList();
+            }
+        });
+        scrollContainer.row().padTop(6);
+        scrollContainer.add(undo).padLeft(10).align(Align.left);
+        addToSelectable(undo);
+    }
+
+    private void addSeasonPin(StandardWindow window, AdventureSeason season) {
+        Array<String> names = new Array<>();
+        List<String> codes = new java.util.ArrayList<>();
+        for (String code : window.getSets()) {
+            codes.add(code);
+            names.add(StandardWindow.setName(code) + " (" + code + ")");
+        }
+        if (codes.isEmpty())
+            return;
+        SelectBox<String> box = Controls.newComboBox();
+        box.setItems(names);
+        TextraButton pin = Controls.newTextButton("Pin set");
+        pin.addListener(new ClickListener() {
+            @Override
+            public void clicked(InputEvent event, float x, float y) {
+                int i = box.getSelectedIndex();
+                if (i < 0 || i >= codes.size())
+                    return;
+                season.pinSet(codes.get(i), window);
+                buildList();
+            }
+        });
+        scrollContainer.row().padTop(8);
+        scrollContainer.add(label("[DARK_GRAY]Pin a favourite set (skips one rotation):"))
+                .align(Align.left).padLeft(10).colspan(3);
+        scrollContainer.row().padTop(4);
+        scrollContainer.add(box).colspan(2).fillX().padLeft(10);
+        scrollContainer.add(pin).padRight(10);
+        addToSelectable(box);
+        addToSelectable(pin);
     }
 
     /** Spend unspent Mastery Surge picks (INV1). */

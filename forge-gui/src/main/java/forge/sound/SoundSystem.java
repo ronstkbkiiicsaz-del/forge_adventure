@@ -12,6 +12,7 @@ import forge.player.GamePlayerUtil;
 import java.io.File;
 import java.io.FilenameFilter;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Manages playback of all sounds for the client.
@@ -26,7 +27,8 @@ public class SoundSystem {
 
     private static final IAudioClip emptySound = new NoSoundClip();
     private static final Map<SoundEffectType, IAudioClip> loadedClips = new EnumMap<>(SoundEffectType.class);
-    private static final Map<String, IAudioClip> loadedScriptClips = new HashMap<>();
+    /** Concurrent: scripted SVar:SoundEffect clips can load from game + UI threads. */
+    private static final Map<String, IAudioClip> loadedScriptClips = new ConcurrentHashMap<>();
 
     private final EventVisualizer visualizer;
 
@@ -34,8 +36,31 @@ public class SoundSystem {
     private boolean hasWindowFocus = true;
     private boolean ignorePlayRequests = false;
 
+    /** Optional Ascendant/client policy (AU1). Null keeps stock behaviour. */
+    private static volatile ISoundPlaybackHooks playbackHooks;
+
     private SoundSystem() {
         this.visualizer = new EventVisualizer(GamePlayerUtil.getGuiPlayer());
+    }
+
+    /** Register or clear client playback hooks (e.g. Ascendant AU1 sound overhaul). */
+    public static void setPlaybackHooks(final ISoundPlaybackHooks hooks) {
+        playbackHooks = hooks;
+    }
+
+    public static ISoundPlaybackHooks getPlaybackHooks() {
+        return playbackHooks;
+    }
+
+    /**
+     * Notify hooks that the current match/game ended. Clears per-match burst state
+     * (AU1) without dropping Adventure registration for the next duel.
+     */
+    public static void notifyMatchEnded() {
+        final ISoundPlaybackHooks hooks = playbackHooks;
+        if (hooks != null) {
+            hooks.onMatchEnded();
+        }
     }
 
     private static boolean isUsingAltSystem() {
@@ -50,11 +75,10 @@ public class SoundSystem {
      *         was unavailable or failed to load.
      */
     protected IAudioClip fetchResource(final SoundEffectType type) {
-        if (GuiBase.getInterface().isLibgdxPort()) {
-            if (FModel.getPreferences().getPrefInt(FPref.UI_VOL_SOUNDS)<1) {
-                return emptySound;
-            }
-        } else if (!FModel.getPreferences().getPrefBoolean(FPref.UI_ENABLE_SOUNDS)) {
+        // Volume gating lives in play()/resolveCategoryVolume so UI clips can still
+        // load and play when effects volume is 0 (AU1 UI slider is independent).
+        if (!GuiBase.getInterface().isLibgdxPort()
+                && !FModel.getPreferences().getPrefBoolean(FPref.UI_ENABLE_SOUNDS)) {
             return emptySound;
         }
 
@@ -77,11 +101,9 @@ public class SoundSystem {
      *         was unavailable or failed to load.
      */
     protected IAudioClip fetchResource(final String fileName) {
-        if (GuiBase.getInterface().isLibgdxPort()) {
-            if (FModel.getPreferences().getPrefInt(FPref.UI_VOL_SOUNDS)<1) {
-                return emptySound;
-            }
-        } else if (!FModel.getPreferences().getPrefBoolean(FPref.UI_ENABLE_SOUNDS)) {
+        // Do not gate on UI_VOL_SOUNDS here — UI category uses UI_VOL_UI independently.
+        if (!GuiBase.getInterface().isLibgdxPort()
+                && !FModel.getPreferences().getPrefBoolean(FPref.UI_ENABLE_SOUNDS)) {
             return emptySound;
         }
 
@@ -105,7 +127,18 @@ public class SoundSystem {
      * ("synchronized" with other sounds of the same kind means: only one can play at a time).
      */
     public void play(final String resourceFileName, final boolean isSynchronized) {
+        play(resourceFileName, isSynchronized, SoundCategory.EFFECTS);
+    }
+
+    /**
+     * Play a named clip under a volume category (AU1: EFFECTS vs UI). Missing files fail safe.
+     */
+    public void play(final String resourceFileName, final boolean isSynchronized, final SoundCategory category) {
         if (ignorePlayRequests) {
+            return;
+        }
+        final float volume = resolveCategoryVolume(category);
+        if (volume < 0.01f) {
             return;
         }
 
@@ -118,7 +151,11 @@ public class SoundSystem {
         else {
             final IAudioClip snd = fetchResource(resourceFileName);
             if (!isSynchronized || snd.isDone()) {
-                snd.play(FModel.getPreferences().getPrefInt(FPref.UI_VOL_SOUNDS)/100f);
+                try {
+                    snd.play(volume);
+                } catch (Exception e) {
+                    System.err.println("AU1/SoundSystem: failed to play " + resourceFileName + ": " + e.getMessage());
+                }
             }
         }
     }
@@ -127,7 +164,15 @@ public class SoundSystem {
      * Play the sound associated with the Sounds enumeration element.
      */
     public void play(final SoundEffectType type, final boolean isSynchronized) {
+        play(type, isSynchronized, SoundCategory.EFFECTS);
+    }
+
+    public void play(final SoundEffectType type, final boolean isSynchronized, final SoundCategory category) {
         if (ignorePlayRequests) {
+            return;
+        }
+        final float volume = resolveCategoryVolume(category);
+        if (volume < 0.01f) {
             return;
         }
 
@@ -139,13 +184,32 @@ public class SoundSystem {
         } else {
             final IAudioClip snd = fetchResource(type);
             if (!isSynchronized || snd.isDone()) {
-                snd.play(FModel.getPreferences().getPrefInt(FPref.UI_VOL_SOUNDS)/100f);
+                try {
+                    snd.play(volume);
+                } catch (Exception e) {
+                    System.err.println("SoundSystem: failed to play " + type + ": " + e.getMessage());
+                }
             }
         }
     }
 
+    private float resolveCategoryVolume(final SoundCategory category) {
+        final ISoundPlaybackHooks hooks = playbackHooks;
+        if (hooks != null) {
+            final float scaled = hooks.categoryVolume(category == null ? SoundCategory.EFFECTS : category);
+            if (scaled >= 0f) {
+                return scaled;
+            }
+        }
+        return FModel.getPreferences().getPrefInt(FPref.UI_VOL_SOUNDS) / 100f;
+    }
+
     @Subscribe
     public void receiveEvent(final GameEvent evt) {
+        final ISoundPlaybackHooks hooks = playbackHooks;
+        if (hooks != null && hooks.handleGameEvent(evt)) {
+            return;
+        }
         final SoundEffectType effect = evt.visit(visualizer);
         if (null == effect) {
             return;
@@ -162,6 +226,10 @@ public class SoundSystem {
 
     @Subscribe
     public void receiveEvent(final UiEvent evt) {
+        final ISoundPlaybackHooks hooks = playbackHooks;
+        if (hooks != null && hooks.handleUiEvent(evt)) {
+            return;
+        }
         final SoundEffectType effect = evt.visit(visualizer);
         if (null != effect) {
             play(effect, effect.isSynced());
@@ -251,7 +319,7 @@ public class SoundSystem {
             currentTrack = null;
         }
 
-        if (currentPlaylist == null || isMuted()) {
+        if (currentPlaylist == null || isMuted() || isAmbienceMutedFor(currentPlaylist)) {
             return;
         }
 
@@ -342,6 +410,28 @@ public class SoundSystem {
         return GuiBase.getInterface().isLibgdxPort()
                 ? FModel.getPreferences().getPrefInt(FPref.UI_VOL_MUSIC) < 1
                 : !FModel.getPreferences().getPrefBoolean(FPref.UI_ENABLE_MUSIC);
+    }
+
+    /** AU1: mute overworld biome music playlists when "Mute biome music" is on. */
+    private boolean isAmbienceMutedFor(final MusicPlaylist playlist) {
+        if (playlist == null) {
+            return false;
+        }
+        final ISoundPlaybackHooks hooks = playbackHooks;
+        if (hooks == null || !hooks.muteAmbience()) {
+            return false;
+        }
+        switch (playlist) {
+            case WHITE:
+            case BLUE:
+            case BLACK:
+            case RED:
+            case GREEN:
+            case COLORLESS:
+                return true;
+            default:
+                return false;
+        }
     }
 
     private static final Map<Integer, List<String>> soundResourceDirectoryCache = new HashMap<>();

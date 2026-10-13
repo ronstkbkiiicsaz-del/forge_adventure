@@ -194,6 +194,13 @@ public class PlayerSkills {
         showXpDrop(skill, amount);
         if (after > before) {
             notify("[GOLD]" + skill.displayName + " level " + after + "![]");
+            if (forge.adventure.sound.Au1Sounds.enabled()) {
+                if (skill == Skill.DUELING) {
+                    forge.adventure.sound.Au1Sounds.playLevelUp();
+                } else {
+                    forge.adventure.sound.Au1Sounds.playSkillUp();
+                }
+            }
             onLevelUp(skill, before, after);
         }
         return after - before;
@@ -496,7 +503,7 @@ public class PlayerSkills {
 
     public String canBuyRank(Skill skill, String nodeId) {
         if (!rulesOn())
-            return "Skill trees are Ascendant-only.";
+            return "Skill trees are only available in Shandalar Ascendant.";
         SkillTreeData tree = SkillTreeListData.get(skill);
         SkillTreeNodeData node = tree.findNode(nodeId);
         if (node == null)
@@ -544,7 +551,7 @@ public class PlayerSkills {
 
     public String canSlotPerk(String nodeId) {
         if (!rulesOn())
-            return "Skill trees are Ascendant-only.";
+            return "Skill trees are only available in Shandalar Ascendant.";
         SkillTreeNodeData node = SkillTreeListData.findNode(nodeId);
         if (node == null || !node.duelPerk)
             return "Not a duel perk.";
@@ -574,7 +581,7 @@ public class PlayerSkills {
      */
     public String respec(Skill skill) {
         if (!rulesOn())
-            return "Skill trees are Ascendant-only.";
+            return "Skill trees are only available in Shandalar Ascendant.";
         int spent = talentPointsSpent(skill);
         if (spent <= 0 && !hasSkillCape(skill))
             return "Nothing to respec.";

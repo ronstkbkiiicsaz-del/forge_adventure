@@ -120,10 +120,22 @@ public class VZoneDisplay extends VCardDisplayArea {
         return !Forge.altZoneTabs || !"Horizontal".equalsIgnoreCase(Forge.altZoneTabMode);
     }
 
+    /** Arena zones that use the same card-aspect fan as the hand band. */
+    public static boolean isArenaFannedZone(final ZoneType zt) {
+        return zt == ZoneType.Hand || zt == ZoneType.Graveyard
+                || zt == ZoneType.Exile || zt == ZoneType.Library;
+    }
+
     @Override
     protected ScrollBounds layoutAndGetScrollBounds(float visibleWidth, float visibleHeight) {
         if (!isVisible()) { //if zone not visible, don't spend time laying out cards
             return new ScrollBounds(visibleWidth, visibleHeight);
+        }
+
+        // DS1 Arena hand / opened piles: always use the fanned card-aspect layout from
+        // VCardDisplayArea, even in landscape (classic landscape stacks zones in a side column).
+        if (isArenaDuelScreen() && isArenaFannedZone(zoneType)) {
+            return super.layoutAndGetScrollBounds(visibleWidth, visibleHeight);
         }
 
         orderedCards.get().clear();
@@ -201,9 +213,30 @@ public class VZoneDisplay extends VCardDisplayArea {
         return new ScrollBounds(visibleWidth, scrollHeight);
     }
 
+    private static final com.badlogic.gdx.graphics.Color ARENA_HAND_BAND =
+            new com.badlogic.gdx.graphics.Color(0.16f, 0.18f, 0.22f, 1f);
+
+    @Override
+    protected void drawBackground(Graphics g) {
+        // Arena hand / opened pile: opaque band above the field's unclipped match plate
+        // and below the fanned card children (must write alpha=1 so the GL capture keeps it).
+        if (isArenaDuelScreen() && isArenaFannedZone(zoneType)) {
+            g.resetAlphaComposite();
+            g.fillRect(ARENA_HAND_BAND, 0, 0, getWidth(), getHeight());
+            g.resetAlphaComposite();
+        }
+    }
+
+    private static boolean isArenaDuelScreen() {
+        return forge.screens.match.ArenaDuelUi.isActive();
+    }
+
     @Override
     protected void startClip(Graphics g) {
-        if (Forge.isLandscapeMode()) {
+        // Classic landscape stacks zones in a side column (tight clip). DS1 Arena hand /
+        // opened piles are a bottom/field band like portrait — expanded clip for fans.
+        final boolean arenaFan = isArenaDuelScreen() && isArenaFannedZone(zoneType);
+        if (Forge.isLandscapeMode() && !arenaFan) {
             g.startClip(0, 0, getWidth(), getHeight());
         }
         else {

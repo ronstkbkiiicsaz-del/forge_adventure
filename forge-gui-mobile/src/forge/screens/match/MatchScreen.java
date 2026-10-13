@@ -15,8 +15,10 @@ import forge.adventure.scene.GameScene;
 import forge.animation.ForgeAnimation;
 import forge.assets.FImage;
 import forge.card.CardImageRenderer;
+import forge.card.CardMagnifierControls;
 import forge.card.CardRenderer;
 import forge.card.CardZoom;
+import forge.card.HoverMagnifierPreview;
 import forge.game.spellability.StackItemView;
 import forge.screens.match.views.VField;
 import forge.screens.match.views.VReveal;
@@ -98,6 +100,9 @@ public class MatchScreen extends FScreen {
     private ViewWinLose viewWinLose = null;
     private static List<FDisplayObject> potentialListener;
     private int selectedPlayer;
+    /** DS4: short duel-screen note (e.g. take-back failed). Drawn in {@link #drawOverlay}. */
+    private String duelNote;
+    private long duelNoteUntilMs;
 
 
     private final Map<Integer, Vector2> endpoints;
@@ -339,6 +344,14 @@ public class MatchScreen extends FScreen {
 
     @Override
     protected void doLayout(float startY, float width, float height) {
+        layoutMatchChrome(startY, width, height);
+    }
+
+    /**
+     * Classic match chrome (menu / scroller / prompts). {@link ArenaDuelScreen}
+     * overrides for the DS1 Arena skeleton.
+     */
+    protected void layoutMatchChrome(float startY, float width, float height) {
         float scrollerWidth = width;
         if (topPlayerPrompt != null) {
             topPlayerPrompt.setBounds(0, 0, width, VPrompt.HEIGHT);
@@ -350,6 +363,64 @@ public class MatchScreen extends FScreen {
         }
         scroller.setBounds(0, startY, scrollerWidth, height - VPrompt.HEIGHT - startY);
         bottomPlayerPrompt.setBounds(0, height - VPrompt.HEIGHT, width, VPrompt.HEIGHT);
+    }
+
+    /** Field scroller hosting player panels — subclasses reposition it for Arena layout. */
+    protected FScrollPane getFieldScroller() {
+        return scroller;
+    }
+
+    protected VPrompt getBottomPlayerPrompt() {
+        return bottomPlayerPrompt;
+    }
+
+    protected VPrompt getTopPlayerPrompt() {
+        return topPlayerPrompt;
+    }
+
+    /**
+     * Place player panels inside the field scroller. Classic: equal halves in
+     * landscape 2p. Arena overrides for opp-top / player-bottom / centre gap.
+     */
+    protected void layoutPlayerPanelsInScroller(final float visibleWidth, final float totalHeight) {
+        float avatarHeight = VAvatar.HEIGHT;
+        if (is4Player() || is3Player()) {
+            avatarHeight *= 0.5f;
+        }
+        float playerCount = getPlayerPanels().keySet().size();
+
+        if (Forge.isLandscapeMode() && playerCount == 2) {
+            float topPlayerPanelHeight = totalHeight / 2;
+            float bottomPlayerPanelHeight = topPlayerPanelHeight;
+            topPlayerPanel.setBounds(0, 0, visibleWidth, topPlayerPanelHeight);
+            bottomPlayerPanel.setBounds(0, totalHeight - bottomPlayerPanelHeight, visibleWidth, bottomPlayerPanelHeight);
+        } else {
+            float cardRowsHeight = totalHeight - playerCount * avatarHeight;
+            float totalCardRows = 0;
+            for (VPlayerPanel playerPanel : playerPanelsList) {
+                if (playerPanel.getSelectedTab() != null) {
+                    totalCardRows += 1;
+                }
+                totalCardRows += 2;
+            }
+            float y = 0;
+            for (VPlayerPanel playerPanel : playerPanelsList) {
+                float panelHeight;
+                if (playerPanel.getSelectedTab() != null) {
+                    panelHeight = cardRowsHeight * 3f / totalCardRows;
+                } else {
+                    panelHeight = cardRowsHeight * 2f / totalCardRows;
+                }
+                panelHeight += avatarHeight;
+                playerPanel.setBounds(0, y, visibleWidth, panelHeight);
+                y += panelHeight;
+            }
+        }
+    }
+
+    /** DS1: true when this instance is the Arena skeleton screen. */
+    public boolean isArenaDuelScreen() {
+        return false;
     }
 
     @Override
@@ -367,6 +438,42 @@ public class MatchScreen extends FScreen {
 
     private static final FSkinFont ADVICE_TITLE_FONT = FSkinFont.get(24);
     private static final FSkinFont ADVICE_FONT = FSkinFont.get(18);
+    private static final FSkinFont DUEL_NOTE_FONT = FSkinFont.get(16);
+    private static final long DUEL_NOTE_MS = 4000L;
+
+    /**
+     * DS4: show a short note on the duel screen (Classic.render path). Prefer this over
+     * {@code FOptionPane} / GameHUD notifications during an adventure duel.
+     */
+    public void showDuelNote(final String message) {
+        if (message == null || message.isEmpty()) {
+            duelNote = null;
+            duelNoteUntilMs = 0L;
+            return;
+        }
+        duelNote = message;
+        duelNoteUntilMs = System.currentTimeMillis() + DUEL_NOTE_MS;
+    }
+
+    private void drawDuelNote(final Graphics g) {
+        if (duelNote == null) {
+            return;
+        }
+        if (System.currentTimeMillis() > duelNoteUntilMs) {
+            duelNote = null;
+            return;
+        }
+        final float pad = Utils.scale(10);
+        final float w = Math.min(getWidth() * 0.72f, Utils.scale(420));
+        final float h = DUEL_NOTE_FONT.getLineHeight() * 2.4f + pad;
+        final float x = (getWidth() - w) / 2f;
+        // Sit just above the bottom prompt so it stays readable on both classic and modern.
+        final float y = getHeight() - VPrompt.HEIGHT - h - Utils.scale(8);
+        g.fillRect(new Color(0.06f, 0.08f, 0.1f, 0.92f), x, y, w, h);
+        g.drawRect(Utils.scale(2), new Color(0.95f, 0.55f, 0.35f, 1f), x, y, w, h);
+        g.drawText(duelNote, DUEL_NOTE_FONT, Color.WHITE, x + pad, y + pad * 0.5f,
+                w - 2 * pad, h - pad, true, Align.center, true);
+    }
 
     /** While deciding on a mulligan, show the advisor's verdict and reasons large in the middle of the screen. */
     private void drawMulliganAdvice(Graphics g) {
@@ -433,82 +540,130 @@ public class MatchScreen extends FScreen {
         ModernDuelController.get().drawOverlay(g);
         CardFlightOverlay.draw(g, bottomPlayerPanel.getPlayer(), getHeight());
         drawMulliganAdvice(g);
-        if (FModel.getPreferences().getPrefBoolean(ForgePreferences.FPref.UI_ENABLE_MAGNIFIER) && Forge.magnify && Forge.magnifyToggle) {
-            if (Forge.isLandscapeMode() && (!GuiBase.isMobile() || Forge.hasGamepad()) && !CardZoom.isOpen() && potentialListener != null) {
-                for (FDisplayObject object : potentialListener) {
-                    if (object != null) {
-                        if (object instanceof FCardPanel cardPanel) {
-                            try {
-                                if (cardPanel.isHovered()) {
-                                    CardView cardView = cardPanel.getCard();
-                                    VPlayerPanel vPlayerPanel = getPlayerPanel(cardView.getController());
-                                    if (vPlayerPanel == null)
-                                        vPlayerPanel = getPlayerPanel(cardView.getOwner());
-                                    if (vPlayerPanel != null) {
-                                        boolean rotate = CardRendererUtils.needsRotation(cardView) && !Forge.magnifyShowDetails;
-                                        // A ghost's card is in exile, but it sits on the battlefield attached to its
-                                        // host, so position its preview like a battlefield card (on the host's side)
-                                        boolean inBattlefield = ZoneType.Battlefield.equals(cardView.getZone())
-                                                || (cardPanel instanceof CardAreaPanel cap && cap.isGhost());
-                                        float mul = 0.45f;
-                                        float div = inBattlefield ? cardPanel.isTapped() ? 2.7f : 2.4f : 1.6f;
-                                        float adjX = rotate ? cardPanel.getWidth() / div : 0f;
-                                        float adjY = rotate ? cardPanel.getHeight() / 2.2f : 0f;
-                                        float cardW = getHeight() * mul;
-                                        float cardH = FCardPanel.ASPECT_RATIO * cardW;
-                                        float cardX = !inBattlefield ? cardPanel.screenPos.x - (cardW + adjX)
-                                                : cardPanel.screenPos.x + (cardPanel.isTapped() ? cardPanel.getWidth()
-                                                : cardPanel.getWidth() / 1.4f) + adjX;
-                                        if (vPlayerPanel.getSelectedTab() != null && vPlayerPanel.getSelectedTab().isVisible()
-                                                && cardX > vPlayerPanel.getSelectedTab().getDisplayArea().getLeft()) {
-                                            cardX = cardPanel.screenPos.x - (cardW + adjX);
-                                        }
-                                        if ((cardX + cardW + adjX) > scroller.getWidth() + scroller.getLeft())
-                                            cardX = cardPanel.screenPos.x - (cardW + adjX);
-                                        if (vPlayerPanel.getCommandZone() != null
-                                                && vPlayerPanel.getCommandZone().isVisible() && cardX > vPlayerPanel.getCommandZone().screenPos.x)
-                                            cardX = cardPanel.screenPos.x - (cardW + adjX);
-                                        float cardY = (cardPanel.screenPos.y - (cardH - adjY)) + cardPanel.getHeight();
-                                        if (vPlayerPanel.getPlayer() == bottomPlayerPanel.getPlayer()) {
-                                            cardY = bottomPlayerPrompt.screenPos.y - (cardH - adjY);
-                                        } else if (cardY < vPlayerPanel.getField().screenPos.y && vPlayerPanel.getPlayer() != bottomPlayerPanel.getPlayer()) {
-                                            cardY = vPlayerPanel.getField().screenPos.y - adjY;
-                                            if ((cardY + (cardH - adjY)) > bottomPlayerPrompt.screenPos.y)
-                                                cardY = bottomPlayerPrompt.screenPos.y - (cardH - adjY);
-                                        }
-                                        if (Forge.magnifyShowDetails)
-                                            CardImageRenderer.drawDetails(g, cardView, MatchController.instance.getGameView(), false, cardX, cardY, cardW, cardH);
-                                        else
-                                            CardRenderer.drawCard(g, cardView, cardX, cardY, cardW, cardH, CardRenderer.CardStackPosition.Top, rotate, false, false, true);
-                                    }
-                                }
-                            } catch (Exception e) {
-                                e.printStackTrace();
-                            }
-                        } else if (object instanceof VStack.StackInstanceDisplay vstackDisplay) {
-                            try {
-                                CardView cardView = vstackDisplay.stackInstance.getSourceCard();
-                                if (object.isHovered() && cardView != null && getStack().isVisible()) {
-                                    float cardW = getHeight() * 0.45f;
-                                    float cardH = FCardPanel.ASPECT_RATIO * cardW;
-                                    float cardX = object.screenPos.x - cardW - Utils.scale(4);
-                                    float cardY = object.screenPos.y - Utils.scale(2);
-                                    if (cardY < topPlayerPanel.getField().screenPos.y)
-                                        cardY = topPlayerPanel.getField().screenPos.y;
-                                    if ((cardY + cardH) > bottomPlayerPrompt.screenPos.y)
-                                        cardY = bottomPlayerPrompt.screenPos.y - cardH;
-                                    if (Forge.magnifyShowDetails)
-                                        CardImageRenderer.drawDetails(g, cardView, MatchController.instance.getGameView(), false, cardX, cardY, cardW, cardH);
-                                    else
-                                        CardRenderer.drawCard(g, cardView, cardX, cardY, cardW, cardH, CardRenderer.CardStackPosition.Top, false, false, false, true);
-                                }
-                            } catch (Exception e) {
-                                e.printStackTrace();
-                            }
+        drawDuelNote(g);
+        // Hover magnifier is drawn from Classic.render after FOverlays so menus
+        // cannot cover it; see drawHoverMagnifierAfterOverlays.
+    }
+
+    /**
+     * Clean card-image hover preview. Called from {@link forge.Classic} after
+     * FOverlays so dropdowns/menus cannot cover the preview (or its details text).
+     * Preview art never uses battlefield marker overlays — when details mode is
+     * on it shows oracle text instead of the card image.
+     */
+    public void drawHoverMagnifierAfterOverlays(Graphics g) {
+        drawHoverMagnifier(g);
+    }
+
+    private void drawHoverMagnifier(Graphics g) {
+        if (!FModel.getPreferences().getPrefBoolean(ForgePreferences.FPref.UI_ENABLE_MAGNIFIER)
+                || !Forge.magnify || !Forge.magnifyToggle) {
+            return;
+        }
+        if (!Forge.isLandscapeMode() || (GuiBase.isMobile() && !Forge.hasGamepad())
+                || CardZoom.isOpen() || potentialListener == null) {
+            return;
+        }
+        for (FDisplayObject object : potentialListener) {
+            if (object == null) {
+                continue;
+            }
+            if (object instanceof FCardPanel cardPanel) {
+                try {
+                    if (!cardPanel.isHovered()) {
+                        continue;
+                    }
+                    CardView cardView = cardPanel.getCard();
+                    VPlayerPanel vPlayerPanel = getPlayerPanel(cardView.getController());
+                    if (vPlayerPanel == null) {
+                        vPlayerPanel = getPlayerPanel(cardView.getOwner());
+                    }
+                    if (vPlayerPanel == null) {
+                        continue;
+                    }
+                    boolean rotate = CardRendererUtils.needsRotation(cardView) && !Forge.magnifyShowDetails;
+                    // A ghost's card is in exile, but it sits on the battlefield attached to its
+                    // host, so position its preview like a battlefield card (on the host's side)
+                    boolean inBattlefield = ZoneType.Battlefield.equals(cardView.getZone())
+                            || (cardPanel instanceof CardAreaPanel cap && cap.isGhost());
+                    float mul = 0.45f;
+                    float div = inBattlefield ? cardPanel.isTapped() ? 2.7f : 2.4f : 1.6f;
+                    float adjX = rotate ? cardPanel.getWidth() / div : 0f;
+                    float adjY = rotate ? cardPanel.getHeight() / 2.2f : 0f;
+                    float cardW = getHeight() * mul;
+                    float cardH = FCardPanel.ASPECT_RATIO * cardW;
+                    float cardX = !inBattlefield ? cardPanel.screenPos.x - (cardW + adjX)
+                            : cardPanel.screenPos.x + (cardPanel.isTapped() ? cardPanel.getWidth()
+                            : cardPanel.getWidth() / 1.4f) + adjX;
+                    if (vPlayerPanel.getSelectedTab() != null && vPlayerPanel.getSelectedTab().isVisible()
+                            && cardX > vPlayerPanel.getSelectedTab().getDisplayArea().getLeft()) {
+                        cardX = cardPanel.screenPos.x - (cardW + adjX);
+                    }
+                    if ((cardX + cardW + adjX) > scroller.getWidth() + scroller.getLeft()) {
+                        cardX = cardPanel.screenPos.x - (cardW + adjX);
+                    }
+                    if (vPlayerPanel.getCommandZone() != null
+                            && vPlayerPanel.getCommandZone().isVisible()
+                            && cardX > vPlayerPanel.getCommandZone().screenPos.x) {
+                        cardX = cardPanel.screenPos.x - (cardW + adjX);
+                    }
+                    float cardY = (cardPanel.screenPos.y - (cardH - adjY)) + cardPanel.getHeight();
+                    if (vPlayerPanel.getPlayer() == bottomPlayerPanel.getPlayer()) {
+                        cardY = bottomPlayerPrompt.screenPos.y - (cardH - adjY);
+                    } else if (cardY < vPlayerPanel.getField().screenPos.y
+                            && vPlayerPanel.getPlayer() != bottomPlayerPanel.getPlayer()) {
+                        cardY = vPlayerPanel.getField().screenPos.y - adjY;
+                        if ((cardY + (cardH - adjY)) > bottomPlayerPrompt.screenPos.y) {
+                            cardY = bottomPlayerPrompt.screenPos.y - (cardH - adjY);
                         }
                     }
+                    drawHoverMagnifierCard(g, cardView, cardX, cardY, cardW, cardH, rotate);
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            } else if (object instanceof VStack.StackInstanceDisplay vstackDisplay) {
+                try {
+                    CardView cardView = vstackDisplay.stackInstance.getSourceCard();
+                    if (object.isHovered() && cardView != null && getStack().isVisible()) {
+                        float cardW = getHeight() * 0.45f;
+                        float cardH = FCardPanel.ASPECT_RATIO * cardW;
+                        float cardX = object.screenPos.x - cardW - Utils.scale(4);
+                        float cardY = object.screenPos.y - Utils.scale(2);
+                        if (cardY < topPlayerPanel.getField().screenPos.y) {
+                            cardY = topPlayerPanel.getField().screenPos.y;
+                        }
+                        if ((cardY + cardH) > bottomPlayerPrompt.screenPos.y) {
+                            cardY = bottomPlayerPrompt.screenPos.y - cardH;
+                        }
+                        drawHoverMagnifierCard(g, cardView, cardX, cardY, cardW, cardH, false);
+                    }
+                } catch (Exception e) {
+                    e.printStackTrace();
                 }
             }
+        }
+    }
+
+    /**
+     * Draws the hover magnifier for one card.
+     * <ul>
+     *   <li>Details mode ({@code Shift+M}): oracle/details panel — this replaces the
+     *       card image (the usual cause of “text covering” the art).</li>
+     *   <li>Clean image: {@code magnify=true} suppresses damage cracks; never
+     *       {@link CardRenderer#drawCardWithOverlays}.</li>
+     * </ul>
+     * Battlefield markers on the source card are separate; they do not paint onto
+     * this preview.
+     */
+    static void drawHoverMagnifierCard(Graphics g, CardView cardView, float cardX, float cardY,
+                                       float cardW, float cardH, boolean rotate) {
+        if (HoverMagnifierPreview.styleFor(Forge.magnifyShowDetails)
+                == HoverMagnifierPreview.Style.DETAILS_TEXT) {
+            CardImageRenderer.drawDetails(g, cardView, MatchController.instance.getGameView(),
+                    false, cardX, cardY, cardW, cardH);
+        } else {
+            CardRenderer.drawCard(g, cardView, cardX, cardY, cardW, cardH,
+                    CardRenderer.CardStackPosition.Top, rotate, false, false, true);
         }
     }
 
@@ -557,6 +712,10 @@ public class MatchScreen extends FScreen {
         // TODO: make the keyboard shortcuts configurable on Mobile
         if (Forge.hasGamepad() && ((FMenuBar) getHeader()).isShowingMenu(false) && (keyCode == Keys.ESCAPE || keyCode == Keys.ENTER))
             return false;
+        // DS3: M toggles hover preview; Shift+M toggles details (local prefs only).
+        if (CardMagnifierControls.handleKeyDown(keyCode)) {
+            return true;
+        }
         // DS1 modern duel: full pad path (peek / mana / phase / hold / target arrow).
         if (ModernDuelScreen.enabled() && !((FMenuBar) getHeader()).isShowingMenu(true)) {
             final CardView padFocused = focusedCardForController();
@@ -729,10 +888,32 @@ public class MatchScreen extends FScreen {
                     return true;
                 }
                 break;
-            case Keys.Z: //undo on Ctrl+Z
+            case Keys.Z: // DS4 take-back on Ctrl+Z (Ascendant); else stock mana undo
                 if (KeyInputAdapter.isCtrlKeyDown() || Forge.hasGamepad()) {
+                    if (TakeBackActions.featureEnabled()) {
+                        if (TakeBackActions.isCoopDuel()) {
+                            TakeBackActions.notifyUnavailableInCoop();
+                            return true;
+                        }
+                        if (TakeBackActions.canTakeBack()) {
+                            TakeBackActions.takeBack();
+                            return true;
+                        }
+                    }
                     getGameController().undoLastAction();
                     return true;
+                }
+                break;
+            case Keys.BUTTON_START: // DS4 take-back on Start (gamepad; unused in match otherwise)
+                if (TakeBackActions.featureEnabled()) {
+                    if (TakeBackActions.isCoopDuel()) {
+                        TakeBackActions.notifyUnavailableInCoop();
+                        return true;
+                    }
+                    if (TakeBackActions.canTakeBack()) {
+                        TakeBackActions.takeBack();
+                        return true;
+                    }
                 }
                 break;
             case Keys.Y: //auto-yield, always yes, Ctrl+Y on Android, Y when running on desktop
@@ -982,6 +1163,8 @@ public class MatchScreen extends FScreen {
     }
 
     private class FieldScroller extends FScrollPane {
+        private static final Color ARENA_SEAL_PLATE = new Color(0.10f, 0.16f, 0.12f, 1f);
+
         private float extraHeight = 0;
         private String plane = "";
         private String imageName = "";
@@ -989,6 +1172,37 @@ public class MatchScreen extends FScreen {
         @Override
         public void drawBackground(Graphics g) {
             super.drawBackground(g);
+            // DS1 Arena: always paint a full-bleed match backdrop inside the scroller
+            // (before the classic UI_MATCH_IMAGE_VISIBLE early-return). Classic midField
+            // geometry leaves wide landscape lanes empty otherwise.
+            final boolean arenaDuel = ArenaDuelUi.isActive();
+            if (arenaDuel) {
+                FSkinTexture arenaBG = Forge.isMobileAdventureMode ? currentBG : FSkinTexture.BG_MATCH;
+                if (!Forge.isMobileAdventureMode && daytime != null) {
+                    arenaBG = "Day".equals(daytime) ? FSkinTexture.BG_MATCH_DAY : FSkinTexture.BG_MATCH_NIGHT;
+                }
+                // Prefer the higher-contrast adventure match plate when available so
+                // landscape screenshots aren't a near-black void next to portrait.
+                if (FSkinTexture.ADV_BG_MATCH.getWidth() > 0) {
+                    arenaBG = FSkinTexture.ADV_BG_MATCH;
+                }
+                final float aw = getWidth();
+                final float ah = getHeight();
+                // Forest/meadow slice of ADV_BG_MATCH across the whole scroller
+                // (skip the art's dark top band so the opponent half stays textured).
+                g.resetAlphaComposite();
+                g.fillRect(ARENA_SEAL_PLATE, 0, 0, aw, ah);
+                if (arenaBG.getWidth() > 0) {
+                    g.startClip(0, 0, aw, ah);
+                    try {
+                        g.drawImage(arenaBG, 0, -ah * 0.08f, aw, ah / 0.42f);
+                    } finally {
+                        g.endClip();
+                    }
+                }
+                g.resetAlphaComposite();
+                return;
+            }
             if (!FModel.getPreferences().getPrefBoolean(FPref.UI_MATCH_IMAGE_VISIBLE)) {
                 if (!Forge.isMobileAdventureMode)
                     if (!hasActivePlane())
@@ -1060,6 +1274,41 @@ public class MatchScreen extends FScreen {
 
         @Override
         public void drawOverlay(Graphics g) {
+            // DS1 Arena: heal FBO alpha holes across the whole scroller with the
+            // continuous forest plate. Blend writes only where dst alpha is 0 so
+            // cards / P/T / counters stay put (not a card reseal).
+            if (ArenaDuelUi.isActive()) {
+                final float aw = getWidth();
+                final float ah = getHeight();
+                final FSkinTexture arenaBG = FSkinTexture.ADV_BG_MATCH.getWidth() > 0
+                        ? FSkinTexture.ADV_BG_MATCH : FSkinTexture.BG_MATCH;
+                g.resetAlphaComposite();
+                if (arenaBG.getWidth() > 0) {
+                    g.startClip(0, 0, aw, ah);
+                    try {
+                        g.drawImageIntoAlphaHoles(arenaBG, 0, -ah * 0.08f, aw, ah / 0.42f);
+                    } finally {
+                        g.endClip();
+                    }
+                }
+                // Centre gap still gets an opaque seal (no cards there).
+                if (topPlayerPanel != null && bottomPlayerPanel != null) {
+                    final float gapY = topPlayerPanel.getBottom();
+                    final float gapH = bottomPlayerPanel.getTop() - gapY;
+                    if (gapH > 1f) {
+                        g.startClip(0, gapY, aw, gapH);
+                        try {
+                            g.fillRect(ARENA_SEAL_PLATE, 0, gapY, aw, gapH);
+                            if (arenaBG.getWidth() > 0) {
+                                g.drawImage(arenaBG, 0, -ah * 0.08f, aw, ah / 0.42f);
+                            }
+                        } finally {
+                            g.endClip();
+                        }
+                    }
+                }
+                g.resetAlphaComposite();
+            }
             if (Forge.isLandscapeMode()) {
                 if (playerPanelsList.size() > 2) {
                     for (VPlayerPanel playerPanel : playerPanelsList) {
@@ -1123,42 +1372,7 @@ public class MatchScreen extends FScreen {
 
         protected ScrollBounds layoutAndGetScrollBounds(float visibleWidth, float visibleHeight) {
             float totalHeight = visibleHeight + extraHeight;
-            float avatarHeight = VAvatar.HEIGHT;
-            if (is4Player() || is3Player()) {
-                avatarHeight *= 0.5f;
-            }
-            float playerCount = getPlayerPanels().keySet().size();
-
-            if (Forge.isLandscapeMode() && playerCount == 2) {
-                // Ensure that players have equal player panel heights in two player Forge in Landscape mode
-                float topPlayerPanelHeight = totalHeight / 2;
-                float bottomPlayerPanelHeight = topPlayerPanelHeight;
-                topPlayerPanel.setBounds(0, 0, visibleWidth, topPlayerPanelHeight);
-                bottomPlayerPanel.setBounds(0, totalHeight - bottomPlayerPanelHeight, visibleWidth, bottomPlayerPanelHeight);
-            } else {
-                // Determine player panel heights based on visibility of zone displays
-                float cardRowsHeight = totalHeight - playerCount * avatarHeight;
-                float totalCardRows = 0;
-                for (VPlayerPanel playerPanel : playerPanelsList) {
-                    if (playerPanel.getSelectedTab() != null) {
-                        totalCardRows += 1;
-                    }
-                    totalCardRows += 2;
-                }
-                float y = 0;
-                for (VPlayerPanel playerPanel : playerPanelsList) {
-                    float panelHeight;
-                    if (playerPanel.getSelectedTab() != null) {
-                        panelHeight = cardRowsHeight * 3f / totalCardRows;
-                    } else {
-                        panelHeight = cardRowsHeight * 2f / totalCardRows;
-                    }
-                    panelHeight += avatarHeight;
-                    playerPanel.setBounds(0, y, visibleWidth, panelHeight);
-                    y += panelHeight;
-                }
-            }
-
+            layoutPlayerPanelsInScroller(visibleWidth, totalHeight);
             return new ScrollBounds(visibleWidth, totalHeight);
         }
 

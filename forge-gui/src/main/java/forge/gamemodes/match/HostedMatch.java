@@ -69,11 +69,18 @@ public class HostedMatch {
     private final Map<PlayerControllerHuman, NextGameDecision> nextGameDecisions = Maps.newHashMap();
     private boolean isMatchOver = false;
     public int subGameCount = 0;
+    /** DS4: when true, each game enables snapshot take-back (Ascendant adventure duels). */
+    private boolean takeBackEnabled;
 
     public HostedMatch() {}
 
     public void setStartGameHook(Runnable hook) {
         startGameHook = hook;
+    }
+
+    /** DS4: enable dedicated pre-action take-back snapshots for games in this match. */
+    public void setTakeBackEnabled(final boolean enabled) {
+        takeBackEnabled = enabled;
     }
     public void setEndGameHook(Runnable hook) { endGameHook = hook; }
     public void setOnMatchOver(Runnable callback) { onMatchOver = callback; }
@@ -170,7 +177,11 @@ public class HostedMatch {
         SoundSystem.instance.setBackgroundMusic(this.matchPlaylist == null ? MusicPlaylist.MATCH : this.matchPlaylist);
 
         game = match.createGame();
+        // DS4 must not enable the global experimental cancel-path restore — that reroutes
+        // every cancel, switches AI simulation to snapshot copying, and snapshots every
+        // priority pass. Take-back uses its own dedicated pre-action snapshots instead.
         game.EXPERIMENTAL_RESTORE_SNAPSHOT = FModel.getPreferences().getPrefBoolean(FPref.MATCH_EXPERIMENTAL_RESTORE);
+        game.TAKE_BACK_ENABLED = takeBackEnabled;
         game.AI_TIMEOUT = FModel.getPreferences().getPrefInt(FPref.MATCH_AI_TIMEOUT);
 
         StaticData.instance().setSourceImageForClone(FModel.getPreferences().getPrefBoolean(FPref.UI_CLONE_MODE_SOURCE));
@@ -294,14 +305,21 @@ public class HostedMatch {
             // concurrently clears the `game` field while match.startGame() is wrapping up.
             final Game currentGame = game;
 
-            if (humanCount == 0) {
-                // Create FControlGamePlayback in game thread to allow pausing
-                playbackControl = new FControlGamePlayback(humanControllers.get(0));
-                playbackControl.setGame(currentGame);
-                currentGame.subscribeToEvents(playbackControl);
+            // Hold the mutation lock for the match so concede cannot walk zones
+            // while this thread is resolving. Blocking input drops the lock.
+            currentGame.acquireMutationLock();
+            try {
+                if (humanCount == 0) {
+                    // Create FControlGamePlayback in game thread to allow pausing
+                    playbackControl = new FControlGamePlayback(humanControllers.get(0));
+                    playbackControl.setGame(currentGame);
+                    currentGame.subscribeToEvents(playbackControl);
+                }
+                // Actually start the game!
+                match.startGame(currentGame, startGameHook);
+            } finally {
+                currentGame.releaseMutationLock();
             }
-            // Actually start the game!
-            match.startGame(currentGame, startGameHook);
             // this function waits?
             if (endGameHook != null){
                 endGameHook.run();
@@ -378,6 +396,8 @@ public class HostedMatch {
         boolean isMatchOver = game.getView().isMatchOver();
 
         game = null;
+        // Drop per-match AU1 burst/debounce state (hooks stay registered for Adventure).
+        SoundSystem.notifyMatchEnded();
 
         for (final PlayerControllerHuman humanController : humanControllers) {
             humanController.getGui().setGameSpeed(PlaybackSpeed.NORMAL);

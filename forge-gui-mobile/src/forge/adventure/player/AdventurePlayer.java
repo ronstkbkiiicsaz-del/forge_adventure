@@ -219,6 +219,11 @@ public class AdventurePlayer implements Serializable, SaveFileContent {
     final SignalList onEquipmentChange = new SignalList();
     final SignalList onBlessing = new SignalList();
     private PointOfInterestChanges currentLocationChanges;
+    /**
+     * EC1: shop/map POI whose market is used for price + buy/sell recording while shopping.
+     * Null outside a shop — selling outside town must not move any town's market.
+     */
+    private PointOfInterestChanges activeShopMarket;
 
     public AdventurePlayer() {
         clear();
@@ -274,6 +279,8 @@ public class AdventurePlayer implements Serializable, SaveFileContent {
         toolEnchantments.clear();
         camps.clear();
         adventurePlaySeconds = 0d;
+        season.clear();
+        AscendantCardEconomy.resetLifecycleState();
         maxDeckCount = 20;
         clearDecks();
         inventoryItems.clear();
@@ -304,6 +311,7 @@ public class AdventurePlayer implements Serializable, SaveFileContent {
     private final CardPool cards = new CardPool();
     private final PlayerSkills skills = new PlayerSkills();
     private final StandardWindow standardWindow = new StandardWindow();
+    private final AdventureSeason season = new AdventureSeason();
 
     public PlayerSkills getSkills() {
         return skills;
@@ -311,6 +319,11 @@ public class AdventurePlayer implements Serializable, SaveFileContent {
 
     public StandardWindow getStandardWindow() {
         return standardWindow;
+    }
+
+    /** SN1 in-game calendar and season state (Ascendant). */
+    public AdventureSeason getSeason() {
+        return season;
     }
 
     /** After cards enter the collection: check set mastery (may unlock and rotate in a new set). */
@@ -1660,6 +1673,23 @@ public class AdventurePlayer implements Serializable, SaveFileContent {
                 data.containsKey("standardSetUnlocked") && data.readBool("standardSetUnlocked"),
                 data.containsKey("standardChoicePending") && data.readBool("standardChoicePending"),
                 data.containsKey("unlockedHistory") ? (String[]) data.readObject("unlockedHistory") : null);
+        // SN1: load season calendar, or derive a default from the current rotation for old saves.
+        // EC1: reset static life-cycle state then restore from this save and rebind the listener
+        // (season is final — bind must always re-register, not early-return on same instance).
+        AscendantCardEconomy.resetLifecycleState();
+        if (Config.ascendant()) {
+            season.load(data, standardWindow);
+            AscendantCardEconomy.load(data);
+            AscendantCardEconomy.bindSeasonCalendar(season);
+            // Season clock replaces one-unlock-per-world; clear the legacy lock so mastery can
+            // end seasons again on migrated saves.
+            if (season.isEnabled() && standardWindow.isSetUnlockedThisWorld()
+                    && !season.isChoicePending()) {
+                standardWindow.startNewWorld();
+            }
+        } else {
+            season.clear();
+        }
 
         if (data.containsKey("questFlagsKey") && data.containsKey("questFlagsValue")) {
             String[] keys = (String[]) data.readObject("questFlagsKey");
@@ -1676,6 +1706,9 @@ public class AdventurePlayer implements Serializable, SaveFileContent {
                 for (Object itsReallyAQuest : q)
                     quests.add((AdventureQuestData) itsReallyAQuest);
             }
+            // QL1: old saves without a tracking flag track the first active quest.
+            // Use this instance — Current.player() may not be this object during load.
+            AdventureQuestController.ensureTrackedQuest(this);
         }
         if (data.containsKey("events")) {
             events.clear();
@@ -2156,6 +2189,10 @@ public class AdventurePlayer implements Serializable, SaveFileContent {
         data.store("standardSetUnlocked", standardWindow.isSetUnlockedThisWorld());
         data.store("standardChoicePending", standardWindow.isChoicePending());
         data.storeObject("unlockedHistory", standardWindow.saveHistory());
+        if (Config.ascendant()) {
+            season.save(data);
+            AscendantCardEconomy.save(data);
+        }
 
         // Save quest flags.
         ArrayList<String> questFlagsKey = new ArrayList<>();
@@ -2629,8 +2666,18 @@ public class AdventurePlayer implements Serializable, SaveFileContent {
     public void takeGold(int price) {
         gold -= price;
         onGoldChangeList.emit();
-        //play sfx
-        SoundSystem.instance.play(SoundEffectType.CoinsDrop, false);
+        //play sfx — price 0 still plays CoinsDrop (shop restock / free grant feedback)
+        if (forge.adventure.sound.Au1Sounds.enabled()) {
+            if (price > 0) {
+                forge.adventure.sound.Au1Sounds.playShopBuy();
+            } else if (price < 0) {
+                forge.adventure.sound.Au1Sounds.playShopSell();
+            } else {
+                SoundSystem.instance.play(SoundEffectType.CoinsDrop, false);
+            }
+        } else {
+            SoundSystem.instance.play(SoundEffectType.CoinsDrop, false);
+        }
     }
 
     public void addShards(int number) {
@@ -2845,14 +2892,38 @@ public class AdventurePlayer implements Serializable, SaveFileContent {
             return 0;
         }
 
-        int basePrice = (int) (CardUtil.getCardPrice(card) * difficultyData.sellFactor);
+        // EC1: fixed sale share of the active shop's local price. Stock keeps difficulty sellFactor.
+        float sellShare = AscendantCardEconomy.enabled()
+                ? AscendantCardEconomy.saleShare()
+                : difficultyData.sellFactor;
+        PointOfInterestChanges market = AscendantCardEconomy.enabled() ? activeShopMarket : currentLocationChanges;
+        int basePrice = (int) (CardUtil.getCardPrice(card, market) * sellShare);
 
         if (card.isFoil()) {
             basePrice += basePrice * 20 / 100;
         }
 
-        float townPriceModifier = currentLocationChanges == null ? 1f : currentLocationChanges.getTownPriceModifier();
-        return (int) (basePrice * (2.0f - townPriceModifier) * skills.sellPriceFactor());
+        float townPriceModifier = market == null ? 1f : market.getTownPriceModifier();
+        float skill = skills.sellPriceFactor();
+        if (AscendantCardEconomy.enabled())
+            skill = Math.min(skill, AscendantCardEconomy.sellSkillCap());
+        return (int) (basePrice * (2.0f - townPriceModifier) * skill);
+    }
+
+    /** Current POI changes (inn / town). Not used for EC1 shop pricing. */
+    public PointOfInterestChanges getCurrentLocationChanges() {
+        return currentLocationChanges;
+    }
+
+    /** Active shop market for EC1 price + record (null outside a shop). */
+    public PointOfInterestChanges getActiveShopMarket() {
+        return activeShopMarket;
+    }
+
+    public void setActiveShopMarket(PointOfInterestChanges market) {
+        this.activeShopMarket = market;
+        if (market != null)
+            AscendantCardEconomy.bindSeasonCalendar(season);
     }
 
     /**
@@ -3133,13 +3204,24 @@ public class AdventurePlayer implements Serializable, SaveFileContent {
         int amountToSell = Math.min(amount, cards.count(card) - vaultedCount(card));
         if (amountToSell <= 0)
             return 0;
-        if(!cards.remove(card, amountToSell))
-            return 0; //Failed to sell?
+        // Progressive local prices (EC1): only the active shop's market moves; outside town = none.
+        PointOfInterestChanges market = AscendantCardEconomy.enabled() ? activeShopMarket : currentLocationChanges;
+        int earned = 0;
+        for (int i = 0; i < amountToSell; i++) {
+            earned += cardSellPrice(card);
+            AscendantCardEconomy.noteSold(market, card, 1);
+        }
+        if (!cards.remove(card, amountToSell)) {
+            // Roll back market notes if the inventory remove failed.
+            for (int i = 0; i < amountToSell; i++)
+                AscendantCardEconomy.noteBought(market, card, 1);
+            return 0;
+        }
         List<PaperCard> removed = new ArrayList<>(amountToSell);
         for (int i = 0; i < amountToSell; i++)
             removed.add(card);
         afterCardsRemoved(removed);
-        return cardSellPrice(card) * amountToSell;
+        return earned;
     }
 
     // ---- Ascendant dust salvage / craft -----------------------------------------------------------
@@ -3151,7 +3233,11 @@ public class AdventurePlayer implements Serializable, SaveFileContent {
         ConfigData config = Config.instance().getConfigData();
         int level = skills.getLevel(PlayerSkills.Skill.SALVAGING);
         float t = (Math.max(1, level) - 1) / 98f;
-        return Math.max(1, Math.round(config.salvageDust + (config.salvageDustMax - config.salvageDust) * t));
+        float base = config.salvageDust + (config.salvageDustMax - config.salvageDust) * t;
+        // EC1: same worth function (rank × rotation) as shop/craft.
+        if (AscendantCardEconomy.enabled())
+            base *= AscendantCardEconomy.salvageWorthFactor(card);
+        return Math.max(1, Math.round(base));
     }
 
     /** Owned copies that can be salvaged: not vaulted, not required by any deck, and have sell value. */
@@ -3234,6 +3320,24 @@ public class AdventurePlayer implements Serializable, SaveFileContent {
         return craftPrinting(card.getName());
     }
 
+    /**
+     * Prefer {@code preferred}'s edition when it is an unlocked (CS0-normal) craftable
+     * printing — used by MX1 Craft missing so source printings from the deck list win.
+     * Falls back to {@link #craftPrinting(String)}.
+     */
+    public PaperCard craftPrintingPreferring(PaperCard preferred) {
+        if (preferred == null)
+            return null;
+        List<String> history = standardWindow.expandedHistoryCodes();
+        if (history != null && history.contains(preferred.getEdition())) {
+            boolean okPrinting = !forge.adventure.util.SourcePrintings.enabled()
+                    || forge.adventure.util.SourcePrintings.isNormalPrinting(preferred);
+            if (okPrinting && dustIndex(preferred.getRarity()) >= 0)
+                return preferred;
+        }
+        return craftPrinting(preferred.getName());
+    }
+
     public PaperCard craftPrinting(String cardName) {
         if (cardName == null || cardName.isEmpty())
             return null;
@@ -3242,6 +3346,10 @@ public class AdventurePlayer implements Serializable, SaveFileContent {
         long bestTime = Long.MIN_VALUE;
         for (PaperCard pc : FModel.getMagicDb().getCommonCards().getAllCards(cardName)) {
             if (pc == null || !history.contains(pc.getEdition()))
+                continue;
+            // CS0: prefer normal printings from unlocked history.
+            if (forge.adventure.util.SourcePrintings.enabled()
+                    && !forge.adventure.util.SourcePrintings.isNormalPrinting(pc))
                 continue;
             CardEdition ed = FModel.getMagicDb().getEditions().get(pc.getEdition());
             long time = ed != null && ed.getDate() != null ? ed.getDate().getTime() : 0L;
@@ -3252,8 +3360,14 @@ public class AdventurePlayer implements Serializable, SaveFileContent {
         }
         if (best != null)
             return best;
-        if (isUnlockedStapleName(cardName))
-            return FModel.getMagicDb().getCommonCards().getUniqueByName(cardName);
+        if (isUnlockedStapleName(cardName)) {
+            PaperCard unique = FModel.getMagicDb().getCommonCards().getUniqueByName(cardName);
+            if (unique == null)
+                return null;
+            return forge.adventure.util.SourcePrintings.enabled()
+                    ? forge.adventure.util.SourcePrintings.resolve(unique, (String[]) null)
+                    : unique;
+        }
         return null;
     }
 
@@ -3286,7 +3400,7 @@ public class AdventurePlayer implements Serializable, SaveFileContent {
         String name = card.getName();
         if (BanLists.isBanned("standard", name) && BanLists.isBanned("historic", name) && BanLists.isBanned("commander", name))
             return name + " is banned in all formats.";
-        PaperCard printing = craftPrinting(card);
+        PaperCard printing = craftPrintingPreferring(card);
         if (printing == null || dustIndex(printing.getRarity()) < 0)
             return "This card is not in your unlocked craftable pool.";
         return null;
@@ -3296,13 +3410,19 @@ public class AdventurePlayer implements Serializable, SaveFileContent {
     public int craftCost(PaperCard card) {
         if (!Config.ascendant() || card == null)
             return 0;
-        PaperCard printing = craftPrinting(card);
+        PaperCard printing = craftPrintingPreferring(card);
         if (printing == null || dustIndex(printing.getRarity()) < 0)
             return 0;
         ConfigData config = Config.instance().getConfigData();
         float base = config.craftCost;
-        if (!isStandardLegal(printing))
+        // EC1: craft follows life-cycle value; historicCraftFactor keeps the old 2× Historic intent.
+        if (AscendantCardEconomy.enabled()) {
+            base *= AscendantCardEconomy.craftWorthFactor(printing);
+            if (!isStandardLegal(printing))
+                base *= config.historicCraftFactor;
+        } else if (!isStandardLegal(printing)) {
             base *= config.historicCraftFactor;
+        }
         int level = skills.getLevel(PlayerSkills.Skill.SPELLSMITHING);
         float discount = config.craftDiscountMax * (Math.max(1, level) - 1) / 98f;
         return Math.max(1, Math.round(base * (1f - discount)));
@@ -3331,7 +3451,7 @@ public class AdventurePlayer implements Serializable, SaveFileContent {
             notifyCrafting(problem);
             return false;
         }
-        PaperCard printing = craftPrinting(card);
+        PaperCard printing = craftPrintingPreferring(card);
         int cost = craftCost(printing);
         int index = dustIndex(printing.getRarity());
         CardReagentCost reagents = CardReagentCost.forCard(printing);
@@ -3589,11 +3709,45 @@ public class AdventurePlayer implements Serializable, SaveFileContent {
 
     // ---- Ascendant gathering methods (Package B2) ----
 
-    /** Advance in-game play time used by outpost production. Ascendant only. */
+    /**
+     * Advance in-game play time used by outpost production. Ascendant only.
+     * SN1 calendar exploring is separate — see {@link #tickSeasonExploring(float)}.
+     */
     public void tickAdventurePlaySeconds(float delta) {
         if (!Config.ascendant() || delta <= 0f)
             return;
         adventurePlaySeconds += delta;
+    }
+
+    /**
+     * SN1: advance the season calendar from real exploring time.
+     * Call only while the player is moving — idle / standing still must not count.
+     */
+    public void tickSeasonExploring(float delta) {
+        if (!Config.ascendant() || delta <= 0f || !season.isEnabled())
+            return;
+        season.tickExploring(delta, standardWindow, cards);
+    }
+
+    /** SN1: charge flat duel hours on the calendar (win or lose). */
+    public void chargeSeasonDuelHours() {
+        if (!Config.ascendant() || !season.isEnabled())
+            return;
+        season.chargeDuelHours(standardWindow, cards);
+    }
+
+    /** SN1: lock the free set-pick undo after a pack open or a won fight. */
+    public void lockSeasonPickUndo() {
+        if (!Config.ascendant() || !season.isEnabled())
+            return;
+        season.lockUndo();
+    }
+
+    /** SN1: rest at an inn until the next morning (gold cost, once per in-game day). */
+    public boolean restSeasonUntilMorning() {
+        if (!Config.ascendant() || !season.isEnabled())
+            return false;
+        return season.restUntilMorning(standardWindow, cards);
     }
 
     public double getAdventurePlaySeconds() {
@@ -4221,7 +4375,6 @@ public class AdventurePlayer implements Serializable, SaveFileContent {
     }
 
     public void addQuest(AdventureQuestData q, boolean isNewGame) {
-        //TODO: add a config flag for this
         boolean noTrackedQuests = true;
         for (AdventureQuestData existing : quests) {
             if (noTrackedQuests && existing.isTracked) {
@@ -4230,8 +4383,13 @@ public class AdventurePlayer implements Serializable, SaveFileContent {
             }
         }
         quests.add(q);
-        if (noTrackedQuests || q.autoTrack)
+        // QL1: new quests never steal tracking unless nothing is tracked (autoTrack included).
+        // Stock: keep legacy autoTrack steal when ql1 is off.
+        if (noTrackedQuests) {
             AdventureQuestController.trackQuest(q);
+        } else if (q.autoTrack && !forge.adventure.util.Config.ql1QuestTracking()) {
+            AdventureQuestController.trackQuest(q);
+        }
         q.activateNextStages();
         if (!isNewGame)
             AdventureQuestController.instance().showQuestDialogs(MapStage.getInstance());
@@ -4267,7 +4425,11 @@ public class AdventurePlayer implements Serializable, SaveFileContent {
     }
 
     public void removeQuest(AdventureQuestData quest) {
+        boolean wasTracked = quest != null && quest.isTracked;
         quests.remove(quest);
+        if (wasTracked) {
+            AdventureQuestController.trackNextAfterRemoval(this);
+        }
     }
 
     /**
@@ -4434,5 +4596,35 @@ public class AdventurePlayer implements Serializable, SaveFileContent {
 
     public void loadChanges(PointOfInterestChanges changes) {
         this.currentLocationChanges = changes;
+        AscendantCardEconomy.bindSeasonCalendar(season);
+    }
+
+    /**
+     * EC1: stamp a town's color lean from the biome under a POI (once per changes object).
+     * Safe no-op when EC1 is off, the world is missing, or lean is already set.
+     */
+    public static void ensureMarketColorLean(PointOfInterestChanges changes, forge.adventure.pointofintrest.PointOfInterest poi) {
+        if (!AscendantCardEconomy.enabled() || changes == null || poi == null)
+            return;
+        if (changes.getMarketColorLean() != null && !changes.getMarketColorLean().isEmpty())
+            return;
+        try {
+            forge.adventure.world.World world = WorldSave.getCurrentSave() != null
+                    ? WorldSave.getCurrentSave().getWorld() : null;
+            if (world == null || world.getData() == null)
+                return;
+            int tile = world.getTileSize() > 0 ? world.getTileSize() : 16;
+            int tx = (int) (poi.getPosition().x / tile);
+            int ty = (int) (poi.getPosition().y / tile);
+            int biomeIndex = forge.adventure.world.World.highestBiome(world.getBiome(tx, ty));
+            java.util.List<BiomeData> biomes = world.getData().GetBiomes();
+            if (biomes == null || biomeIndex < 0 || biomeIndex >= biomes.size())
+                return;
+            BiomeData biome = biomes.get(biomeIndex);
+            if (biome != null && biome.name != null)
+                changes.setMarketColorLean(biome.name);
+        } catch (Exception ignored) {
+            // Headless / incomplete world.
+        }
     }
 }

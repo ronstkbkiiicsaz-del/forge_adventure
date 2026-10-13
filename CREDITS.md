@@ -13,7 +13,7 @@ license. **Add an entry here whenever a new asset, library or data source is add
 
 ## Match UI behaviour (adapted, not copied)
 
-- **Neo Forge** (<https://github.com/AdrianLopez98/NeoForge>, GPLv3, JavaFX) — behaviour reference for Ascendant
+- **Neo Forge** (<https://github.com/AdrianLopez98/NeoForge>, GPLv3, JavaFX) — behaviour reference for Shandalar Ascendant
   package DS1 (modern libGDX duel screen). Studied and reimplemented in `forge-gui-mobile` (not a line copy):
   - Combat / target / drag arrow colours and edge-to-edge curved arrows (`CombatOverlay.java`)
   - Drag-to-cast, drag-to-attack/block, ~9px drag slop, cancel when dropping a hand card off the board
@@ -23,12 +23,32 @@ license. **Add an entry here whenever a new asset, library or data source is add
   - Clickable floating mana pips near the player field (`PlayerBar` mana pool)
   - All inputs still go through `IGameController.selectCard` / `selectPlayer` so co-op
     (`RemoteClientGuiGame` / CO3) stays on the existing network path
+- **MTG Arena** — layout and feel reference only for the DS1 Arena duel screen skeleton
+  (`ArenaDuelScreen`, fanned hand, centre stack column, auto-arranged battlefield, context button).
+  No Arena art, assets, fonts, or code are used.
 
 ## Sound effects
 
 - **Kenney — Impact Sounds** and **RPG Audio** (gathering sounds in `forge-gui/res/adventure/common/sound/`) —
   Kenney Vleugels, <https://kenney.nl>. CC0 1.0 (public domain); credited with thanks.
   License files: `LICENSE-kenney-impact-sounds.txt`, `LICENSE-kenney-rpg-audio.txt`.
+
+- **AU1 Ascendant sound overhaul** (`forge-gui/res/adventure/Shandalar Ascendant/sound/au1_*.ogg`) —
+  Kenney Vleugels, <https://kenney.nl>. CC0 1.0; credited with thanks. Stock `forge-gui/res/sound/`
+  is unchanged. Steve can replace any `au1_*.ogg` under the same name. Per-pack license stubs and
+  file→pack map: `LICENSE-kenney-*.txt` and `AU1-SOURCES.txt` in that folder.
+  - **Kenney Interface Sounds** — `au1_ui_confirm`, `au1_quest_accept`, `au1_quest_complete`, `au1_dialog_blip`
+  - **Kenney UI Audio** — `au1_ui_hover`
+  - **Kenney Impact Sounds** — `au1_footstep_*`, `au1_attack`, `au1_block`, `au1_combat_damage_*`,
+    `au1_creature_dies`, `au1_cast_creature_*`, `au1_cast_artifact`, `au1_cast_other`,
+    `au1_enemy_notice`, `au1_node_depleted`
+  - **Kenney RPG Audio** — `au1_door_open`, `au1_chest_open`, `au1_item_pickup`
+  - **Kenney Digital Audio** — `au1_cast_instant_*`, `au1_cast_sorcery_*`, `au1_cast_enchantment`,
+    `au1_cast_planeswalker`, `au1_land_*`, `au1_life_gain`, `au1_life_loss`, `au1_exile`, `au1_token`,
+    `au1_portal`, `au1_counter`, `au1_level_up`, `au1_skill_up`, `au1_rare_reveal`, `au1_reward_reveal`
+  - **Kenney Casino Audio** — `au1_draw`, `au1_mulligan`, `au1_shuffle`, `au1_resolve`, `au1_pack_rip`,
+    `au1_card_flip`, `au1_shop_buy`, `au1_shop_sell`
+  - **Kenney Music Jingles** — `au1_win`, `au1_lose`, `au1_achievement`
 
 ## Map tiles
 
@@ -51,7 +71,8 @@ when an asset is actually used.
   <https://kenney.nl>. CC0 1.0.
 - **Ninja Adventure - Asset Pack** — Pixel-boy and AAA, <https://pixel-boy.itch.io/ninja-adventure-asset-pack>.
   CC0 1.0; attribution not required but given with thanks. Animated characters, animals and monsters, tilesets,
-  effects, items, sounds and music. Kept in `A:\GameAssets\NinjaAdventure`.
+  effects, items, sounds and music. Kept in `A:\GameAssets\NinjaAdventure`; the 16px background tilesets are in
+  `forge-gui/res/adventure/common/maps/tileset/ninja/` (`ninja_*.png` + Tiled `.tsx`, licence file alongside).
 - **Liberated Pixel Cup (LPC) Base Assets** — <https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles>.
   Dual-licensed **CC BY-SA 3.0** and **GPL 3.0**. Authors (per the pack's `CREDITS.TXT`):
   - Lanea Zimmerman (Sharm) — base tileset (also OGA-BY 3.0)

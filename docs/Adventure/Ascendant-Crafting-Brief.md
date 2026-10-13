@@ -9,10 +9,10 @@ Build them in order. Phase 1 must be merged before Phase 2 or 3 starts.
 
 ## Ground rules (all phases)
 
-- **Everything is gated to the Shandalar Ascendant world.** Check `Config.ascendant()` (backed by `ascendantRules` in
-  `forge-gui/res/adventure/Shandalar Ascendant/config.json`). Stock worlds must behave exactly as before: no new buttons,
+- **Everything is gated to Shandalar Ascendant.** Check `Config.ascendant()` (backed by `ascendantRules` in
+  `forge-gui/res/adventure/Shandalar Ascendant/config.json` — internal folder id unchanged). Stock worlds must behave exactly as before: no new buttons,
   no new currencies shown, no new world objects.
-- **Tunable numbers go in `ConfigData.java`** with defaults, and are set in the Ascendant `config.json`.
+- **Tunable numbers go in `ConfigData.java`** with defaults, and are set in the mode `config.json`.
   Do not hard-code balance numbers in scene code.
 - **Save compatibility is mandatory.** Old saves must load. Every new saved field must be optional on load
   (missing → default). Saves use `SaveFileData` (`store`/`readInt`/`readObject`); see `AdventurePlayer.save()`/`load()`
@@ -137,7 +137,7 @@ Build them in order. Phase 1 must be merged before Phase 2 or 3 starts.
 - New crafting skill **Smithing** (gear) — Spellsmithing stays for cards.
 - **Gear lines per slot**, four tiers matching the material tiers (e.g. Copper → Iron → Mithril → Adamant blades
   for Right hand; Oak → Willow → Yew → Ironwood shields for Left; Body, Boots, Neck likewise from stone/herb/crystal).
-  New items go in the Ascendant world's own `world/items.json`, using only existing `EffectData` fields
+  New items go in the mode world's own `world/items.json`, using only existing `EffectData` fields
   (`lifeModifier`, `changeStartCards`, `startBattleWithCard`, `moveSpeed`, `goldModifier`, `cardRewardBonus`,
   `freeMulligans`, `opponent`). Effects scale by tier; top tier also needs a boss material.
 - Existing ~200 items stay as loot and shop stock unchanged.

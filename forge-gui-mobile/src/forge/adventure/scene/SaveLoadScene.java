@@ -279,12 +279,21 @@ public class SaveLoadScene extends UIScene {
         loaded = true;
         switch (mode) {
             case Save:
-                if (TileMapScene.instance().currentMap().isInMap()) {
-                    //Access to screen should be disabled, but stop the process just in case.
-                    //Saving needs to be disabled inside maps until we can capture and load exact map state
-                    //Otherwise location based events for quests can be skipped by saving and then loading outside the map
+                // Stock: block in-map saves with lblGameNotSaved. Ascendant SV1: save anywhere
+                // (interior persisted); only block while a dialog is open (different message).
+                if (forge.adventure.util.InteriorMapSave.shouldShowWorldMapOnlySaveMessage()) {
                     Dialog noSave = createGenericDialog("", Forge.getLocalizer().getMessage("lblGameNotSaved"), Forge.getLocalizer().getMessage("lblOK"), null, null, null);
                     showDialog(noSave);
+                    loaded = false;
+                    return;
+                }
+                if (!forge.adventure.util.InteriorMapSave.allowsManualSave()) {
+                    Dialog noSave = createGenericDialog("", Forge.getLocalizer().getMessageorUseDefault(
+                            "lblCannotSaveDuringDialog",
+                            "Cannot save while a dialog is open."),
+                            Forge.getLocalizer().getMessage("lblOK"), null, null, null);
+                    showDialog(noSave);
+                    loaded = false;
                     return;
                 }
                 if (currentSlot > 0) {
@@ -315,7 +324,7 @@ public class SaveLoadScene extends UIScene {
                         loaded = false;
                         if (WorldSave.load(currentSlot)) {
                             SoundSystem.instance.changeBackgroundTrack();
-                            Forge.switchScene(GameScene.instance());
+                            forge.adventure.util.InteriorMapSave.switchToSceneAfterLoad();
                         } else {
                             Forge.clearTransitionScreen();
                         }
@@ -329,6 +338,7 @@ public class SaveLoadScene extends UIScene {
                     Forge.setTransitionScreen(new TransitionScreen(() -> {
                         loaded = false;
                         if (WorldSave.load(currentSlot)) {
+                            forge.adventure.util.InteriorMapSave.clearPending();
                             WorldSave.getCurrentSave().clearChanges();
                             // NG+: always regenerate from the home template, not a set-plane path.
                             if (WorldSave.getCurrentSave().getWorld().generateNew(0, forge.adventure.util.Paths.WORLD, true)) {
@@ -388,22 +398,24 @@ public class SaveLoadScene extends UIScene {
 
 
     public void save() {
-        if (!TileMapScene.instance().currentMap().isInMap()) {
-            if (WorldSave.getCurrentSave().save(textInput.getText() + getSaveFileSuffix(), currentSlot)) {
-                updateFiles();
-                //ensure the dialog is hidden before switching
+        if (TileMapScene.instance().currentMap().isInMap()
+                && !forge.adventure.util.InteriorMapSave.allowsManualSave()) {
+            return;
+        }
+        if (WorldSave.getCurrentSave().save(textInput.getText() + getSaveFileSuffix(), currentSlot)) {
+            updateFiles();
+            //ensure the dialog is hidden before switching
 
-                Scene restoreScene = Forge.switchToLast();
-                if (restoreScene != null) {
-                    restoreScene = Forge.switchToLast();
-                }
-
-                if (restoreScene == null) {
-                    restoreScene = GameScene.instance();
-                }
-
-                Forge.switchScene(restoreScene);
+            Scene restoreScene = Forge.switchToLast();
+            if (restoreScene != null) {
+                restoreScene = Forge.switchToLast();
             }
+
+            if (restoreScene == null) {
+                restoreScene = GameScene.instance();
+            }
+
+            Forge.switchScene(restoreScene);
         }
     }
 

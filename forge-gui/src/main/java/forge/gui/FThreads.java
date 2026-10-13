@@ -1,5 +1,6 @@
 package forge.gui;
 
+import forge.game.Game;
 import forge.util.ThreadUtil;
 
 public class FThreads {
@@ -48,7 +49,9 @@ public class FThreads {
      * @see fgd.SwingUtilities#invokeLater(Runnable)
      */
     public static void invokeInEdtAndWait(final Runnable proc) {
-        GuiBase.getInterface().invokeInEdtAndWait(proc);
+        // Game thread may be inside a dialog. Drop the mutation lock first so an
+        // EDT concede is not stuck behind a thread that is itself waiting on the EDT.
+        Game.runWithMutationLocksReleased(() -> GuiBase.getInterface().invokeInEdtAndWait(proc));
     }
 
     private static int backgroundThreadCount;

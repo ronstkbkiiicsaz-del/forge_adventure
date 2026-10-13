@@ -1,8 +1,13 @@
 # Shandalar Ascendant — Roadmap: Gathering, Crafting, World and Gyms
 
+Official player-facing name: **Shandalar Ascendant**. The content-pack folder, save keys, and
+`Config.ascendant()` stay on that Ascendant id (no save migration). The Standard format displays as
+**Shandalar Standard** (old **Bellwarden** / **Bellwarden Standard** input aliases still resolve).
+Steve's separate game, **Bellwarden**, is documented under [`docs/Bellwarden/`](../Bellwarden/).
+
 This roadmap replaces Phases 2 and 3 of `Ascendant-Crafting-Brief.md`. Phase 1 (wildcard dust) is merged.
-The **ground rules** in that brief still apply to every package here: Ascendant-only (`Config.ascendant()`),
-tunables in `ConfigData` + the Ascendant `config.json`, old saves must load, one PR per work package, build before PR,
+The **ground rules** in that brief still apply to every package here: Ascendant only (`Config.ascendant()`),
+tunables in `ConfigData` + the mode `config.json`, old saves must load, one PR per work package, build before PR,
 no unused imports, JSON without BOM.
 
 Goal: the definitive Forge Adventure. The loop is **gather → refine → craft → equip → fight harder → rarer materials**,
@@ -19,7 +24,7 @@ with a second progression track of **gym badges and a League**.
 - **One continuous world, no New Game+ reset.** You progress by mastering sets and opening portals to new planes;
   your prime base stays reachable. The only resets are Standard rotation (cards become Historic, nothing is lost)
   and **prestige**, which is what New Game+ means from now on (2026-10-08).
-- **Formats: Bellwarden Standard, Historic, Pauper and Commander**, each with its 2HG version for co-op. Real-world
+- **Formats: Shandalar Standard, Historic, Pauper and Commander**, each with its 2HG version for co-op. Real-world
   Standard is not offered. The format is set **per plane** (package K) and decides what that plane's enemies, gyms
   and events play.
 - **Nothing you earn is ever locked away by format.** Crafted and earned cards stay in the collection; rotation only
@@ -65,6 +70,12 @@ Enemy drops add alternates by color: **feathers** (white), **hide** (green/white
 **Prismatic** reagents (T1-T4) are crafted from one reagent of each color; see A2.
 
 Gems (Mining, any tier, rare roll): Garnet, Sapphire, Emerald, Ruby, Onyx. Boss materials: one unique per boss.
+
+## Standing rule: every package says what it means in co-op (decided 2026-10-09)
+Co-op with a friend is part of the definitive game, not an add-on. Every package spec must include a **Co-op** bullet:
+what both players see and do, who is authoritative (the host), what is shared and what is per player, and how it is
+tested with two players. "Not applicable" is allowed only with a reason. Reviews reject packages that ship solo-only by
+accident.
 
 ## Work packages
 
@@ -139,7 +150,7 @@ Upgrades and camps are data (`world/gathering_methods.json`).
 ### C. World generation rework (no dependency; new games only)
 - Give Shandalar Ascendant its own copies of `world/biomes/*.json` and `world/points_of_interest.json` so stock worlds
   are untouched.
-- **Bigger map**: Ascendant `world/world.json` width/height from 700 to ~1000 (test generation time and memory;
+- **Bigger map**: mode `world/world.json` width/height from 700 to ~1000 (test generation time and memory;
   the minimap is `miniMapTileSize` px per tile).
 - **Fewer, spread-out towns**: today the biomes place ~424 towns on a 700×700 map, and the placement in
   `world/World.java` (~465-545) only keeps an 8×8-tile rectangle free around each POI, so towns end up adjacent.
@@ -219,9 +230,9 @@ perk layer with a tree per skill so more levels matter and builds differ:
   tree screen reached from the Skills screen. Existing saves: refund color perks into points automatically.
 
 ### K. Formats per plane (revised 2026-10-08; replaces "run formats and New Game+")
-- Formats: **Bellwarden Standard** (the in-game rotation window), **Historic**, **Pauper**, **Commander**. Co-op
+- Formats: **Shandalar Standard** (the in-game rotation window), **Historic**, **Pauper**, **Commander**. Co-op
   duels use each format's 2HG version.
-- **The home plane's format** is chosen on the New Game screen (default Bellwarden Standard) and again at each
+- **The home plane's format** is chosen on the New Game screen (default Shandalar Standard) and again at each
   prestige (M).
 - **Each new set plane picks its format when it is opened** (the portal dialog in MV2; default = the format of the
   plane you came from). Once chosen it is fixed for that plane. This keeps commitment early while letting the
@@ -240,7 +251,7 @@ perk layer with a tree per skill so more levels matter and builds differ:
 ### EC1. Game-based card economy (Ascendant; replaces real-world prices)
 Card prices come from the game, not from real-world market data, so no card is a jackpot (an early Badlands is
 worth what its rarity and power say, not hundreds of dollars).
-- **Base value by rarity** (tunable table in the Ascendant config): common, uncommon, rare, mythic, special. Basic
+- **Base value by rarity** (tunable table in the mode config): common, uncommon, rare, mythic, special. Basic
   lands are worth nothing.
 - **Power within its set** from Forge's own draft pick rankings (`forge-gui/res/draft/rankings`): a card ranked near
   the top of its set is worth more than a weak card of the same rarity, so a strong common can outprice a bad rare.
@@ -257,6 +268,33 @@ worth what its rarity and power say, not hundreds of dollars).
 - Tests: a ZEN common vs a ZEN rare by ranking; Badlands priced by rarity/power (no market data); selling five copies
   in one town lowers that town's price and not another's; drift back over time; sale share applied; stock world
   unchanged.
+
+
+### EC2. Collect, don't sell: gold from trade, a fortress stall, and collectors (Steve, 2026-10-11; after FT2)
+Principle: the game is about building a collection, so selling cards must not be the easy path to gold.
+- **No card selling in town shops (Ascendant).** Salvage to dust stays available everywhere, so spare cards still
+  feed crafting. Town shops keep selling cards and buying materials and goods.
+- **Gold comes from trade and play:** gathered materials and **refined trade goods** (planks, ingots, potions,
+  charms, crafted gear) sell to shops and to town requests; fights, quests, the League and town requests keep paying
+  gold; fortress production later. Tune gold income in play so early game isn't starved before a stall exists.
+- **Fortress card stall** (an FT2 structure): list cards at a price you choose; they sell slowly over in-game days
+  (SN1 calendar). The chance per day falls as the asking price rises above the card's EC1 value; overpriced cards may
+  never sell; delist any time. Stall slots grow with fortress tier. Works with EC1's life cycle: holding an old staple
+  for a few seasons and listing it later is the long game.
+- **Collectors (town NPCs) trade, never buy.** Now and then a collector in a town wants something specific: a card
+  (by name or "any rare from <set>") **or a high-value crafted item**. In exchange they offer something you can't
+  buy: a cosmetic card style (CS1), a title or trophy, or a card from a **locked set**. Requests rotate per season;
+  the board shows what each collector wants and offers before you commit.
+- **Locked sets.** Old sets that weren't designed for limited play (the earliest expansions and other non-booster
+  oddities; exact list decided with Steve, e.g. Alpha/Beta/Unlimited, Arabian Nights, Antiquities, Legends, The Dark,
+  Fallen Empires) never appear in shops, packs, Standard choices or regular loot, and **can't be picked as a starting
+  set or a season set** (new-game starter list, SN1 shortlist and "choose any" all exclude them). Their cards still
+  play by today's Oracle rules in Forge, so they work fine as individual cards in decks. Their cards come **only** from boss
+  random loot and collector trades, so they stay rare and special. Crafting them with dust is either off or very
+  expensive (decide in playtest).
+- Tests: town shops refuse card sales in Ascendant (stock unchanged); a stall listing at the card's value sells
+  within N days on average and a 3x listing rarely does; a collector trade removes exactly the requested card/item and
+  grants the offer; locked-set cards never come from packs, shops or regular loot but can drop from bosses.
 
 ### L. Tournaments and lifetime stats (depends on K)
 - **Tournament ring**: inns run small events (the existing inn event code: draft, jumpstart, sealed) plus
@@ -359,7 +397,7 @@ worth what its rarity and power say, not hundreds of dollars).
   choice at New Game and a per-chapter skip, so no character is forced through it again.
 
 ### AB. Opening paths: finish the tutorial guide's "Future release" options (depends on G, V)
-The guide's first dialog (quest 28 "Entering Shandalar" in `Shandalar Ascendant/world/quests.json`) offers four
+The guide's first dialog (quest 28 "Entering Shandalar" in `Shandalar Ascendant/world/quests.json` — internal pack folder name) offers four
 paths; two are disabled and marked "(Future release)". Turn each into a real starting path. Every path still
 opens the whole game; the path only picks the first quest chain and a small starting bonus.
 - **"Where am I? ..." (Tutorial and main quest)**: unchanged.
@@ -401,7 +439,12 @@ These packages turn the single big map into a home plane plus an endless chain o
 ### MV4. Delves (depends on MV1, B; absorbs N)
 - Temporary **pocket-plane portals** spawn at random in set planes. A delve is a chain of small instanced floors.
   Deeper floors: harder enemies, tier 4 nodes, gems, relics, guardians.
-- Delve types: **resource delve** (nodes and guardians) and **rift** (the roguelite run from N).
+- Delve types: **resource delve** (nodes and guardians), **rift** (the roguelite run from N) and **Horde** (below).
+- **Horde delve (co-op first):** an arena floor where the players face a pair of enemies at once; whenever one dies a
+  fresh one takes its place, until the players tap out (concede) or lose. Waves get harder and enemies come from the
+  plane's themes (EN1/EN2). Rewards scale with enemies beaten and the wave reached; banking rewards between waves is
+  allowed so tapping out is a choice. Solo is allowed (one enemy at a time). Best runs go on a co-op leaderboard in the
+  Hall of Fame (L).
 - Track deepest floor per account for the Hall of Fame and prestige XP.
 
 ### M update. Prestige XP
@@ -458,6 +501,11 @@ remote human can be added through `guiMap`. Nothing in Adventure knows about a s
 - Watch out for blocking `sendAndWait` prompts freezing the host while the guest decides; keep timeouts generous.
 
 ### CO5. World-bound partner characters (the Stardew "farmhand" model; decided 2026-10-09)
+**Amendment (2026-10-09, Steve): co-op worlds are their own saves.** Hosting only happens from a **co-op world**: a save
+created as co-op (New Game option) or converted once from a fresh world. Both players' characters for that world live
+in its save on the host's PC, including the **host's own co-op character**, which is separate from the host's solo
+characters. Progress is made together in that world. Solo saves of both players never enter co-op and never receive
+co-op progress. The partner rules below apply to the guest's character in that world.
 Replaces the CO1 guest save model (guest `.chr` files, stashing and restoring the guest's solo save, character-id
 migration). **Why:** a guest who brings their solo character carries their own rotation and set progress into a world
 whose rules belong to the host, so gyms and formats keep clashing, and every guest save path is a distributed-save
@@ -490,10 +538,28 @@ problem. A co-op character that lives in the host's world removes both.
   after a session; legacy `.chr` import; two different guests get two partners; a host with two worlds keeps separate
   partners.
 
-### CO4. Co-op systems (depends on CO2, MV3)
+### CO4. Co-op systems (depends on CO2, CO5, MV3)
 - Shared home base on the host's home plane: both can use stations, storage and outposts.
-- Trading cards, materials and items between players.
+- Trading cards, materials and items between players (TR1).
 - Co-op gyms and League (both must win), co-op delves, shared quest progress.
+
+### CO6. Co-op mechanics outside fights (depends on CO5; each item can be its own PR)
+Things that make playing together better than playing side by side.
+- **Assisted gathering:** two players channelling the same node gather faster and get a bonus roll. **Great nodes**
+  (an ancient ironwood, an ore motherlode, a leviathan carcass) spawn rarely, have lots of hits, and are really meant
+  for two (solo works but is slow).
+- **Combined crafting:** top-tier recipes with two steps at different stations done by different players (one forges
+  the base, the other enchants or inscribes it), so specializing pays off. Recipes say which skills each step needs.
+- **Shared quest log:** party quests give both players credit; some town and friendship events need both present.
+  Townsfolk remember the pair.
+- **Rescue run:** when one player loses a fight, the other can go fight that enemy to recover the lost gold or items
+  (a timed marker on the map).
+- **Tag-team gyms and League:** badge fights as a pair (both must win, or a 2HG match once K supports it).
+- **Map co-op:** shared pings ("come here"), shared bookmarks and waypoints, partner shown on the minimap.
+- **Fortress together:** both build, store and defend (FT3 raids side by side); a partner cabin or quarters in the
+  host's fortress (see the fortress design).
+- **Shared Archive progress:** both players' friendships feed the same world's Archive and Bell case.
+- Tests per mechanic with two players over loopback.
 
 ## Fortresses (see `Game-Vision.md`)
 
@@ -641,27 +707,249 @@ Today the inventory is one flat list of every item (equipped ones included) unde
   `CREDITS.md`) or Steve's own art.
 - Save: bag contents and capacities saved per bag; old saves auto-sort the current flat inventory into the new bags.
 
+## Saving
+
+### SV1. Save anywhere, including inside dungeons and towns, plus an autosave before every fight (next after DS4)
+Requested by Steve 2026-10-10. Today saving is blocked inside any map (`SaveLoadScene.save`/`loadSave`,
+`StartScene.Save`, `StartScene.enter` hides the button; message `lblGameNotSaved`). The code comment gives the
+reason: the save doesn't record where you are inside a map, so loading put you outside it and could skip
+location-based quest events.
+- What already persists: per-POI `PointOfInterestChanges` (killed enemies, opened chests, bought cards, map flags)
+  is in the save, so cleared rooms stay cleared.
+- What to add to the save: the POI/map the player is in (POI id + map path + the entrance used) and the player's
+  position inside it. On load, enter that map the normal way (same path as `MapStage.loadMap`/`TileMapScene`
+  entering), then place the player at the saved position instead of the entrance. Live enemies go back to their
+  spawn points, which is fine. Dead ones stay dead via the existing changes. A saved position that's now blocked or
+  missing (the map was edited) falls back to the map's entrance.
+- Quest safety, which is why it was blocked: loading inside a map must not count as "entering" for quest
+  location stages that are already done, and must still let pending "reach/clear this place" stages complete.
+  Re-fire only the map-entered event the quest controller expects, once, and test that saving then loading inside
+  the target dungeon doesn't skip or double-complete a quest stage.
+- Manual save is allowed everywhere outside a duel and outside dialogs and shops. Remove the `lblGameNotSaved`
+  block for Ascendant.
+- **Autosave before every fight:** right before a duel starts (overworld or map, enemy or boss, gym and event fights
+  too), write the autosave slot. If you lose, Load → Autosave puts you back just before the fight, where you are on
+  the map. One rotating slot, not one per fight. Never during co-op sessions (co-op is frozen; leave its save path
+  alone).
+- Ascendant only (`Config.ascendant()`); the stock modes keep their rules. Old saves (no map field) load on the
+  world map as now.
+- Tests: save inside a dungeon after killing one enemy, load, and you're inside at the same spot with that enemy
+  still gone; autosave written at duel start (and not during co-op); old save without the field loads on the world
+  map; blocked saved position falls back to the entrance; the quest stage test above.
+
+### MX1. Moxfield round trip: export your collection and decks, import decks built only from what you own (after SV1)
+Requested by Steve 2026-10-10. Goal: build decks in Moxfield against the real Ascendant collection and bring them back.
+
+**What exists today**
+- `CollectionExporter` already runs on every save: `%APPDATA%\Forge\adventure\exports\collection.csv` (Moxfield's
+  collection CSV layout), `collection.txt`, and `decks/NN - name.txt`.
+- The Adventure deck editor has **Import from clipboard** (`FDeckImportDialog`, `usePlayerInventory`).
+- `forge-gui` has `DeckUrlLoader` / `MoxfieldDeckUrlProvider`, which reads a public Moxfield deck URL. Only the
+  desktop importer uses it.
+
+**Fully automatic sync like Untapped is not possible.** Moxfield has no public API for writing a collection, and
+automating its site would break its terms. The best we can do: Forge keeps the export file always current (done on
+every save) and the player uploads it in Moxfield (Collection → Import → CSV, "replace") when they want. In the other
+direction, pasting a Moxfield deck link into Forge is one step.
+
+**Export (fix and finish)**
+- Use Scryfall set codes (`CardEdition.getScryfallCode()`) and real collector numbers in the CSV, not the lowercased
+  Forge code, so every row matches in Moxfield. Leave out cards with no Scryfall match and list them in
+  `exports/unmatched.txt`.
+- Deck editor: **Copy deck for Moxfield** (Moxfield text format `1 Name (SET) 123`, sideboard section) and an **Open
+  export folder** button. The Status or Inventory screen shows "Collection exported <time>" with a short how-to for the
+  Moxfield upload.
+
+**Import (only what you own)**
+- The mobile import dialog accepts either pasted text or a **public deck URL** (reuse `DeckUrlLoader`). Moxfield is the
+  primary target; the same field also accepts Archidekt, TappedOut, and MTGGoldfish public pages already wired in the
+  loader. The URL field is not prefilled from the clipboard — paste into the text area or type the URL.
+- Import is **always limited to the collection** in Ascendant: each card line takes copies the player owns that
+  aren't already used beyond deck limits, preferring the requested printing, then any owned printing. Basic lands stay
+  free as today.
+- Missing copies never sneak in. The dialog shows a **Missing** list (name, wanted, owned) before confirming, with the
+  options "Import what I own" or "Cancel". Unknown cards, disallowed sections, and other stock "cannot be imported"
+  warnings are shown the same way as the normal importer (alongside Missing when both apply). If EC1 or crafting is in,
+  each missing card shows its dust cost and a **Craft missing** shortcut.
+- Format check against the plane's format (K) happens as in the normal editor.
+
+**Tests**
+- The CSV uses Scryfall codes, and Moxfield's own sample export round-trips.
+- A pasted list with 4 copies of a card the player owns 2 of imports 2 and lists 2 missing.
+- A requested printing that isn't owned falls back to an owned printing.
+- A URL import is parsed through the shared loader. Use a fixture, no network in tests.
+- The stock world is unchanged.
+
+## Quests (Steve, 2026-10-10)
+
+### QL1. Choose which quest the arrow tracks (urgent; next after DS4)
+Today the navigation arrow always points at one quest's target, with no way to change it. In Steve's game it points
+at town for a "do a side quest" stage, so he can't find the side-quest locations.
+- The quest log gets a **Track** button per active quest; the arrow, map marker and HUD line follow the tracked quest.
+  One tracked quest at a time; tracking is saved.
+- Stages that say "do any side quest" point at the **nearest** valid target (nearest `QuestSource` / `Sidequest` POI
+  the player has discovered), or show "no known location" instead of pointing at town.
+- Controller: Track is reachable from the quest list. New quests don't steal tracking unless nothing is tracked.
+- Tests: track B while A is active → arrow targets B; save/load keeps it; finishing the tracked quest moves tracking
+  to the next active one; "any side quest" picks the nearest discovered target.
+
+### QL2. Quest log overhaul (after the duel screen work)
+A full redesign of the quest log: active, available and completed tabs; each quest shows its giver, reward, current
+stage and all stage objectives with progress; filter by town or type; map pins for known objectives; abandon with
+confirmation; clear "turn in at X" states. Controller-first layout.
+
+## Deck builder
+
+### DB1. A deck builder as good as Moxfield's (after MX1; extends its import)
+Steve: there should be no reason building a deck here is harder than on Moxfield.
+- **Import from any site that exports for MTG Arena** (Moxfield, Archidekt, MTGGoldfish, AetherHub, Untapped,
+  17lands...): the Arena text format (`4 Card Name (SET) 123`, `Deck` / `Sideboard` / `Commander` / `Companion`
+  headers), plus plain `4 Card Name` lists. Forge's `DeckRecognizer` already parses these; MX1 adds URLs. Import is
+  always limited to the collection with the missing list (MX1 rules).
+- **Search** with Scryfall-style syntax (`t:creature c:br cmc<=3 o:"draw a card" r:rare set:zen`) plus quick filter
+  chips (color, type, cost, rarity, set, owned/unowned, legal in this plane's format).
+- **Views**: group by type, cost or color; list, text and visual (card image) views; drag between deck, sideboard and
+  a **maybeboard**.
+- **Stats panel**: mana curve, color pie vs land sources, type breakdown, average cost; land count suggestion.
+- **Sample hand** (draw 7, mulligan, draw next) and **legality** shown live with the reason for each illegal card.
+- **Deck tags and folders**, duplicate deck, and **export** in Arena text (feeds Moxfield) per MX1.
+- **More Moxfield-grade tools** (Steve, 2026-10-12): **goldfish playtesting** (play out several turns solo); an **odds
+  calculator** (chance of N lands plus a given card by turn T; hitting the commander's colors on curve); a **mana base
+  helper** (sources needed per color for what the deck casts, with a warning when short); **custom card tags** (ramp,
+  removal, draw, win-con) with role counts; **deck versions and compare**; **deck value in our economy** (total dust
+  and materials to finish it, instead of a dollar price).
+- Controller and mouse both first-class. Works for every format the planes use (60-card, 40-card limited, Commander).
+- Tests: Arena-format text with headers imports to the right sections; the search syntax parses the listed keys;
+  stats match a known deck; legality flags a card out of rotation.
+- **The deck builder knows the world** (Steve, 2026-10-12; design in `Design-Agenda.md` § Deck builder): every missing
+  card shows how to get it (craft cost in dust and color materials, which known stall has it, or an expedition), a
+  rotation forecast per deck, a chase list that feeds the morning report, hints from the player's own collection, and
+  a collection browser mode. Build the parts whose systems exist (craft cost, rotation forecast, chase list, hints);
+  wire ledger, expeditions and the morning report as those systems land.
+- **Deck suggestions** (Steve, 2026-10-12; `Design-Agenda.md`): start a deck from a commander, creature type, color
+  pair, mechanic or single card; the builder drafts a list (owned first, then missing with how to get each), with an
+  "only what I own" to "dream deck" slider and a reason on every suggestion. Check Forge's existing deck generation first.
+
+## World generation (Steve + Wren, 2026-10-13)
+
+### WG1. Open, Core Keeper-style surface (prototype in progress)
+Today's overworld places trees/rocks/mountains/water as solid wave-function-collapse blobs with no reachability check,
+so the world becomes a maze. WG1 replaces that with a generator that is **open by default** and **always navigable**.
+A Python prototype renders whole worlds and close-ups for Steve to judge (`A:\GameAssets\worldgen\`, knobs listed in
+its README); once approved it becomes the spec Reed ports to Java, with the prototype's numbers as tuning values.
+- Layout: Havenbrook at the centre in a calm colourless meadow; the five colour biomes as wedges around it (WUBRG),
+  each with an inner and a harder outer ring, then the coast. Irregular, noise-warped borders with soft transitions.
+- Obstacles as clusters with gaps (~20% of land blocked; forest densest, meadow sparsest); ridges only in mountains
+  and outer rings, always with passes.
+- Rivers from highlands to sea/lakes with bridges where roads cross and fords every ~40 tiles; no river may cut the
+  world apart. Roads link all towns (spanning tree plus extra loops).
+- Reachability pass: everything is reachable from spawn; unreachable POIs/areas get a carved path, clearing or bridge.
+- **Every tree is gatherable** with the right Woodcutting level and axe (logs, regrows over in-game days); rocks the
+  same with Mining. Forests are a resource, not just walls.
+- Art: Ninja Adventure tiles (same as Havenbrook), grass tinted per biome. The same generator, with per-set
+  settings, builds every set plane.
+
+### WG2. Layers: underground and sky (design; after WG1)
+- **Underground is 1:1 with the surface**, aligned tile for tile: every surface spot has the ground beneath it.
+  Mostly solid; you open it up yourself.
+- **Getting down:** place a **ladder** item on the surface and interact with it to descend into a small open pocket.
+  Not freeform digging down from anywhere.
+- **Digging** (Mining skill) clears tiles and yields stone and ores; what you find depends on the biome above
+  (and deeper levels, if added, hold rarer ores and more danger).
+- **Hard stops exist but aren't everywhere:** you can't dig under deep ocean, under rivers (water floods in), or
+  through veins of very hard **bedrock** (maybe diggable much later with a top-tier pick). Otherwise you can tunnel
+  between places: underground shortcuts between your bases and towns.
+- **Build underground:** fortress structures (crafting stations, storage, later automation: a factory).
+- **Sky layer:** reached by building up (ladder or tower); aligned above the surface, empty air until you build
+  platforms from materials and put structures and **defenses** on them (ties into fortress defense and the Invasion).
+- Open questions for Steve: can enemies come underground / into the sky (raids on sky defenses, cave creatures)?
+  Do fights on every layer use the normal duel screen when an enemy reaches you?
+
+## Gathering
+
+### GN1. More variety in gather nodes (note from play, 2026-10-10)
+Steve gets lots of scrap and trees and nothing else. Cause: every world biome maps to exactly one material family
+(`MaterialListData.materialBiomeForWorldBiome` + `WorldStage.pickBiomeFamily`): wastes (the home plane around the
+start) only gives scrap, plus the 30% trees that grow everywhere. Forest and mountain are the only two-family biomes.
+- Give every biome a primary family (~50%), trees (~20%) and a mix of the others (~30%), weighted toward families
+  that fit the biome (plains: stone + plants, island: waters + crystal/pearls, swamp: dead + plants, wastes: scrap +
+  stone + ash, mountain: ore + ash + gems).
+- Make the shares tunable in `config.json`. Tests: over many rolls each biome yields its primary most, and every
+  listed secondary family appears.
+
 ## Duel screen
 
-### DS1. Modern duel screen in libGDX (after INV1)
-Improve the existing libGDX match screen (`forge-gui-mobile/src/forge/screens/match/`) instead of switching UI
-toolkits, so co-op duels (`RemoteClientGuiGame`), Android and macOS keep working. Reference: **Neo Forge**
-(<https://github.com/AdrianLopez98/NeoForge>, GPLv3, JavaFX) has solved these as behaviour; study how it does each
-(`forge-gui-neo/.../ui/CombatOverlay.java`, `TableScreen.installDragGestures`, `match/NeoMatchUI.onCardDropped`),
-reimplement in libGDX, and credit Neo Forge in `CREDITS.md` for anything adapted from its code.
-All input still goes through `getGameController().selectCard/selectPlayer`, so it works over the network unchanged.
-- **Combat and target arrows**: curved arrows from card edge to card edge, colour-coded (red attacks, blue blocks,
-  amber targets), drawn on a click-through overlay that redraws while cards move.
-- **Drag to cast / drag to attack and block**: a small drag threshold (~9px) so plain clicks still work. Drop from
-  hand = cast; in combat, drop an attacker on a player/planeswalker or a blocker on an attacker; dragging a permanent
-  outside combat does nothing. The arrow follows the drag.
-- **Press-to-peek hand**: hold on a hand card to enlarge it, slide to the next card, push up onto the table to play.
-- **Phase stops**: clickable phase rail to set where the game stops for you (ties into the auto-yield fixes).
-- **Clickable floating mana**: mana pool shown as clickable symbols near your field.
-- **Drag to reorder the hand.**
-- **Controller**: every action above also has a controller path (focus cursor, A to pick up/drop, B cancel).
-- Works in solo and co-op duels and in stock Forge matches on the mobile/libGDX client; gate anything that changes
-  stock behaviour behind a preference defaulting to the new UI only in Ascendant until it's proven.
+### DS1. Arena-style duel screen (rewritten 2026-10-10; queued after MX1)
+Steve's call: replace Forge's match screen with an interface in the style of MTG Arena for Ascendant duels. **Keep
+Forge's rules engine, card scripts and AI untouched**; this is a new presentation layer only.
+
+**Architecture**
+- A new libGDX screen next to the existing one (`forge-gui-mobile/src/forge/screens/match/`), built on the same
+  view/controller seam: it reads `GameView` / `CardView` / `PlayerView` / stack views and answers the existing
+  `Input*` prompts (`InputPassPriority`, `InputSelectCardsFromList`, `InputPayMana`, `InputAttack`, `InputBlock`, ...)
+  through `getGameController()` / `selectCard` / `selectPlayer` / `selectButtonOK`. No engine changes; it works the
+  same in solo duels and (later) co-op, since the seam is what the network client already uses.
+- Ascendant uses the new screen by default; a setting switches back to the classic screen. Stock modes keep classic.
+- **Fallback rule:** every prompt the new screen doesn't have a custom view for falls back to the existing Forge
+  dialog, so the screen is playable from PR 1 and never dead-ends. Custom views are added by frequency.
+- Reference for behaviour (not code unless credited): Neo Forge (<https://github.com/AdrianLopez98/NeoForge>, GPLv3)
+  for arrows and drag gestures; MTG Arena for layout and feel. Original art and UI assets only, no Arena assets.
+
+**Layout**
+- Opponent's area top, the player's bottom, a centre lane for the stack and combat. Avatars with life totals and
+  counters (poison, energy...), library / graveyard / exile piles that open on click.
+- **Battlefield auto-arranges by type**: lands in a back row (grouped, identical lands stacked with a count),
+  creatures in front, other permanents to the side; attachments tucked under their host; tokens stacked by name.
+  Tapped cards rotate; summoning-sick creatures dimmed slightly.
+- **Hand fanned** at the bottom, cards lift on hover, press-to-peek enlarges, playable cards glow (castable now with
+  available mana), drag to reorder.
+- **Stack** shown as a column of cards in the centre with the top item largest; each shows its source, targets
+  (arrows) and controller colour. Resolving animates the card leaving.
+- **Phase rail** along the side: the current step highlighted, click a step to set or clear a stop (ties into
+  auto-yield). A big context button (Pass / Next / Attack / Done / Resolve) with the right label for each prompt, plus
+  "pass until end of turn".
+
+**Interaction**
+- Drag a hand card onto the battlefield (or click it) to cast or play; targets are picked by clicking with an arrow
+  following the cursor. ~9 px drag threshold so clicks still work.
+- **Combat**: "All attack" plus click or drag attackers onto a player or planeswalker; blockers dragged onto attackers;
+  red attack arrows, blue block arrows, amber target arrows on a click-through overlay that follows moving cards.
+  Damage assignment order and split damage get a simple custom view.
+- **Mana**: auto-pay by default (Forge's auto-pay); a "pay manually" toggle shows the cost and lets the player tap
+  lands; the floating mana pool shows as clickable symbols.
+- Custom views for the common prompts first: choose a mode, choose from a list or revealed cards, order triggers,
+  scry / surveil (top or bottom piles), choose X, mulligan, yes/no optional costs.
+- Card zoom / oracle text (DS3) and active effects (DS5) plug into the same hover and right-click handling. Take back
+  (DS4) gets its button next to the context button.
+- **Controller**: every action has a controller path (focus cursor across hand, battlefield and stack; A pick/drop,
+  B cancel, shoulder buttons cycle zones, a button for the phase rail).
+
+**Feel**
+- Smooth movement between zones (draw, cast, resolve, die, exile) with short tweens; damage and life-change pop-ups;
+  a light shake on big hits. All animation speeds behind one setting, including "instant".
+- Sound hooks on the existing sound events.
+
+**Status 2026-10-11 (Steve playtest): DS1 is paused and off by default** (`ds1ArenaDuelScreen: false`). Part 1
+reused Forge's widgets and moved them around: overlapping text, the same piles, a hand that doesn't tuck or fan on
+hover, unreliable drag-to-cast, and **no game menu: no concede, no options, no Esc menu**. Restart from the hand
+prototype (`docs/Adventure/HandPrototype-Spec.md`) and a visual mockup Steve approves before any more screen code.
+Whatever replaces the screen must keep the game menu (concede, options, Esc) reachable.
+
+**Pop-out hand window** (`forge-gui-mobile-dev/.../HandWindow.java`): today it can show the base printing instead of the
+card's actual one (Steve's full-art foil Bloodthirsty Conqueror shows plain), because its name-based cache fallback
+(`findImageFile`) takes the first file for the name; no foil either. Either retire the window once DS1's hand is in, or
+make it use the same image lookup and foil shader as the main screen.
+
+**Delivery (one PR each, each usable on its own)**
+1. Screen skeleton: layout, auto-arranged battlefield, fanned hand, stack column, piles, context button, fallback
+   dialogs for every prompt. Setting to switch screens.
+2. Targeting and combat: arrows, drag to cast, attack and block flows, damage assignment.
+3. Mana and costs: auto-pay, manual pay toggle, mana pool, X costs, optional costs.
+4. Common prompts: modes, choose from list or revealed, scry / surveil, trigger ordering, mulligan.
+5. Animations, sound hooks and phase rail stops.
+6. Controller support across all of the above.
+- Tests per PR: a scripted duel through the real game loop exercising that PR's prompts on the new screen (headless
+  where possible), the classic screen unchanged with the setting off, and no engine files touched.
 
 ### DS2. Clear counter and fizzle banner (small; Ascendant duel screen and the classic one)
 - When a spell or ability **you** control is countered, show a banner in the middle of the duel screen with both
@@ -672,6 +960,40 @@ All input still goes through `getGameController().selectCard/selectPlayer`, so i
 - Driven by Forge's game events (countered/fizzled), not by parsing the log. Works for the LLM opponent and in co-op
   (each player sees banners for their own spells).
 - Tests: a countered spell and a fizzled spell each raise exactly one banner event for the right player.
+
+### DS4. Take back your last action (misclick fix; unlimited; no turn restart)
+- A **Take back** button (and key, e.g. Ctrl+Z) undoes the player's **last action**: playing a land, casting a spell
+  or activating an ability, restoring the game to the moment before it was clicked.
+- **Unlimited uses**, but only while nothing new has happened since that action: no card drawn, no shuffle, no reveal
+  or look at hidden cards, no coin flip or random choice, no opponent action or decision, no trigger resolved, and the
+  priority/phase hasn't moved on. Once any of those happens the action is locked in and the button greys out.
+- **No turn restart** (decided by Steve).
+- Built on Forge's existing snapshot support (`GameSnapshot`, `Game.stashGameState`/`restoreGameState`,
+  `MATCH_EXPERIMENTAL_RESTORE`): snapshot before each of the player's own actions. The button only shows when a
+  snapshot was taken successfully; if a restore fails, the game continues unchanged with a message, never a broken
+  board.
+- Works on both duel screens (classic and DS1 modern); LLM opponent unaffected (it never acted in between).
+- **Co-op:** each player can take back only their own last action, and only before their partner has acted after it;
+  the host performs the restore and both clients resync.
+- Tests: play a land then take it back (land in hand, land drop available again); cast a spell then take back (mana
+  and card restored); take back refused after a draw, a reveal and an opponent response; restore failure leaves the
+  game unchanged.
+
+### DS5. Active effects in the card tooltip, Arena-style (low priority; after EC1)
+- Requested by Steve 2026-10-10. Forge already draws keyword icons on battlefield cards (`UI_OVERLAY_ABILITY_ICONS`,
+  `CardRenderer.drawAbilityIcons`) and lists counters, damage and attachments in the details text
+  (`CardDetailUtil.composeCardText`). What's missing is **what changed the card and where it came from**.
+- Add an **Effects** block to the card zoom and the right-click oracle tooltip, one line per active effect:
+  source name, what it does, duration. Examples: "+2/+2 until end of turn (Giant Growth)", "Flying (Levitation)",
+  "Loses all abilities (Humility)". Buffs green, debuffs red, lost abilities grey with strikethrough.
+- Power/toughness on the card drawn green when raised and red when lowered.
+- Engine side: the per-timestamp tables the card already keeps (changed keywords, P/T boosts, text and type changes)
+  are not exposed to `CardView`. Add one trackable list of effect entries (appended `TrackableProperty`), filled from
+  those tables. Static effects name their source card; one-shot effects that only leave a timestamp may show the
+  effect without a source name at first. That's acceptable.
+- Single-player only; no wire change.
+- Tests: pump spell shows a green "+N/+N until end of turn" line with the spell's name and disappears at cleanup;
+  an anthem shows its source; a "loses all abilities" effect shows the struck-through keywords.
 
 ## AI opponent: bring your own
 
@@ -690,6 +1012,42 @@ stays optional and never ships a key. Forge's normal AI is always the fallback.
 - Use the LLM only for key decisions (attacks, blocks, main spells); Forge AI handles routine priority passes, so
   local models stay fast.
 
+### MC1. Multiplayer Commander AI for Steve and Tiny (outside Adventure; Steve, 2026-10-11)
+Goal: Steve and Tiny play Commander together against AI opponents (online lobby, Tailscale), on the same team, so
+games are fun co-op rather than a slugfest between them. The lobby already supports AI seats, the Commander variant
+and teams; the work is making the AI good at multiplayer Commander.
+- **Forge AI, multiplayer-aware:** threat assessment across all opponents (board power, commander damage taken,
+  life, cards in hand, combo pieces), attack the biggest threat rather than the last attacker, spread pressure
+  sensibly, keep blockers back against several opponents, hold removal for real threats, time board wipes when
+  behind on board, respect team allies (never target or attack teammates; share-aware wipes), cast and recast its
+  commander at sensible points, track commander damage.
+- **LLM opponent in multiplayer (optional per AI seat):** extend `LlmOpponent` to multiplayer state (all players'
+  boards, life, commander damage, team info) for key decisions (attacks, blocks, main spells, wipe/hold), Forge AI
+  for routine priority; a decision budget per turn so long games stay fast and cheap; a short "personality" per seat
+  for flavour (vengeful, politician, combo player).
+- **Decks:** AI seats can use real Commander precon lists (or the EN1 themes' Commander builds) instead of random
+  generation; a "power level" picker per seat (precon / upgraded / tuned) so games stay fair.
+- **Co-op variants to expose cleanly:** team Commander (2 humans vs 2 AI), Two-Headed Giant (shared life), and
+  Archenemy (both humans vs one boss AI with a scheme deck).
+- Tests: scripted 4-player boards where the AI picks the right threat, never attacks a teammate, holds removal for
+  the real threat, wipes when behind; LLM adapter builds a valid multiplayer prompt and falls back to Forge AI on
+  timeout.
+
+### AD1. In-game Advisor chat (Steve, 2026-10-11; after MC1)
+A chat panel that uses the existing LLM settings (`LlmSettings`, the player's own key/endpoint; off when the LLM is
+off). The model only acts through a small set of explicit tools, and every change is shown and confirmed first.
+- **Deck building:** "build a BR sliver deck from what I own", "what do I cut for Fury Sliver?". Tools: read the
+  collection, the active plane's format/legality, card Oracle text. Output goes to the deck editor through the MX1
+  import path (collection-limited, missing list, replace/merge/new confirm).
+- **Rules and card questions** answered from Forge's own card scripts/Oracle text.
+- **"Why did the AI do that?"**: reads `llm_decisions.log` / the duel log and explains a decision.
+- **Tune the AI** through a whitelist of settings only (LLM on/off per decision type, aggression profile, decision
+  budget, mulligan floor), each shown as a diff and confirmed. No file or code editing.
+- **Collection help:** what to salvage or list on the fortress stall, mastery progress, collector requests.
+- Costs a fraction of a cent per question on the current model; per-message token cap; history kept per save.
+- Works in Ascendant and in regular Forge (Tiny gets it too). Tests: tool calls are validated against the whitelist;
+  a proposed deck goes through the collection-limited importer; no tool can write outside its scope.
+
 ## The core loop: living towns, friendship, the Archive and Bells (see `Lore.md`, `Game-Vision.md`)
 
 From the 2026-10-08 design handoff (`Handoff-2026-10-08.md`). The loop: **befriend townsfolk (mostly by playing
@@ -703,7 +1061,7 @@ with him.
 ### LT1. Living towns (milestone 5; Steve builds the first town map by hand)
 - **Hand-made town pipeline**: towns authored in Tiled with the Kenney 16px tilesets (`maps/tileset/kenney_*.tsx`)
   and Forge's object templates (`maps/obj/*.tx`). A starter template lives at
-  `common/maps/map/ascendant/starter_town.tmx`. Hand-made towns are referenced from Ascendant's
+  `common/maps/map/ascendant/starter_town.tmx`. Hand-made towns are referenced from the mode's
   `points_of_interest.json` like any other town.
 - **Civic buildings**: homes, church or temple, town hall, tavern, school, graveyard. Every non-shop building is an
   interactable map object that feeds the Archive (AR1). Each set plane flavours them (temples on a Theros-style
@@ -762,12 +1120,77 @@ with him.
 
 ## Formats, achievements and card styles (2026-10-08)
 
+### SN1. Seasons: a 4-set Standard that moves with time, and the player still chooses (Steve, 2026-10-10)
+Problem from play: with RW1 sending most loot into the newest set, one ~250-card set saturates fast and a 3-set
+window is too thin to build from. Step 1 is already in: home-plane loot spreads over the whole window
+(`rw1NewestSetShare`, 50% newest). SN1 is the rest.
+
+**Standard = 4 sets** (`StandardWindow.WINDOW_SIZE` 3 → 4, tunable), plus the staples as today. Old saves keep their
+current sets; the window just has room for one more.
+
+**Campaign start (decided 2026-10-10).** New games keep today's two picks: a starter set (sealed packs) plus a core set
+or the Core Set Collection, so Standard opens with 2 sets. The **first two seasons are short** (7 in-game days,
+tunable) and each adds a set the player picks from the shortlist, so Standard reaches 4 sets within the first month;
+from then on normal seasons rotate one set in and the oldest out.
+
+**Deck size follows the seasons (Steve, 2026-10-12).** The 40-card minimum (`minDeckSize`) is only for the opening:
+while Standard still holds just the starting sets (before the first new set arrives), decks need 40 cards. From the
+moment the first season adds a set, the minimum becomes **60** (tunable `sn1MinDeckSizeAfterFirstSeason`). Warn the
+player at the season change ("Decks now need 60 cards") and in the deck editor; existing 40-card decks stay saved but
+are flagged as too small until they're filled out. Limited events (drafts, sealed) keep their own 40-card rule.
+
+**Seasons.** Forge Adventure has no world clock today (the day/night look is only a cosmetic background tint), so SN1
+adds an in-game calendar, shown on the HUD and Status screen (all numbers tunable, decided with Steve 2026-10-10):
+- **Overworld, towns and dungeons:** time flows; **15 minutes of real exploring = 1 in-game day**. Menus, pauses
+  and idle time don't count.
+- **A duel costs a flat 2 in-game hours**, win or lose, however long it really took (most play time is duels, so
+  real duel length must not drive the calendar).
+- **Resting at an inn** skips to the next morning.
+- Estimate: a typical real hour (about 40 min of duels, 4 fights, plus 20 min exploring) is about 1.7 in-game days.
+  So a **normal season = 14 in-game days (about 8 hours of play)** and an **opening season = 7 days (about 4
+  hours)**. More dueling stretches a season in real time; more exploring shortens it.
+A **season** lasts a tunable number of in-game days (14 by default; see above). Each season brings **one new set**
+into Standard; when the window is full the oldest set rotates to Historic. Nothing owned is ever lost.
+- **Mastery pulls the next season forward**: mastering the newest set (today's requirement) ends the season early, so
+  fast players aren't held back and slow players aren't left behind; the calendar guarantees progress either way.
+- The season name is the newest set ("The Zendikar season"); a short banner and town criers announce it. Shops
+  restock with the new set, events and the League switch to it, prerelease-style events run in the first days.
+
+**Choice: how the player picks the next set.** Today, mastering a set opens a pick from every booster set not in the
+window (`choosableSets`), and only one unlock happens per world. SN1 keeps the player in charge:
+- **Season vote / pick at the season's end.** When a season ends (by calendar or mastery), the player picks the next
+  set from a **shortlist of 3** offered by the world, plus **"Choose any set"** behind a cost (a rare Planar Key item
+  from bosses or achievements, or gold), so choice exists without decision paralysis every time.
+- The shortlist follows a sensible order: the block or era after the newest set (real release order) for one slot,
+  a set the player has shown interest in (cards owned, plane visited, decks built) for another, and one random set.
+- **No pick made?** If the player skips the choice (closes it, or the season ends mid-dungeon), the world picks the
+  release-order option after a grace period of a few in-game days, with a reminder. The pick is never forced mid-duel.
+- **Undo window**: the choice can be changed for free until the player opens a pack or wins a fight with the new set.
+- **Pin a set (optional, tunable):** the player can keep one favourite set from rotating out for one extra season,
+  once per few seasons, so a loved set isn't lost the moment it ages.
+- The current one-unlock-per-world rule (`setUnlockedThisWorld`) is replaced by the season clock; set planes and
+  portals still open for each set that enters Standard (`masteryUnlocksSetPlane` keeps working, triggered by entry).
+
+**Rewards and economy under seasons**
+- Home-plane loot: 50% newest, 50% spread over the other three (already live, tunable). Set planes give their set.
+- Duplicates beyond 4 copies of a card can auto-convert to dust (player toggle), so long seasons feed crafting.
+- Season rewards: finishing a season with its set mastered grants a cosmetic (card style or title) and a Planar Key.
+
+**Co-op note (standing rule):** the host's calendar and window rule the session; partner picks happen in their own
+world. Co-op is frozen, so nothing here may touch the co-op save path.
+
+**Tests:** window holds 4 and rotates the oldest to Historic on the 5th; calendar ends a season after N days and
+mastery ends it early; the shortlist has 3 distinct sets not already in the window, including the next by release
+order; skipping the choice auto-picks after the grace period; undo works until a pack is opened or a fight won; old
+saves load with their 3 sets and gain the 4th slot; stock world unchanged.
+
+
 ### EN1. Enemy decks by format and theme (depends on K for the plane format; data can start now)
 - Enemies carry **theme tags** by creature type (merfolk, goblin, zombie, ...). Each tag has **2-3 themes**: for
   merfolk, e.g. merfolk tribal, krakens/octopus, leviathans. A spawned enemy picks one theme at random and keeps
   it, so not every merfolk plays the same deck.
 - Each theme has a version for **every format**: Historic, Pauper and Commander are fixed deck lists (several per
-  theme where possible). **Bellwarden Standard** versions are built from a **theme recipe** (colors, creature
+  theme where possible). **Shandalar Standard** versions are built from a **theme recipe** (colors, creature
   types, key cards and mechanics to look for) filled from the sets in the current Standard window, because fixed
   Standard lists go stale on rotation.
 - 2HG: co-op fights pair two themed decks of the plane's format.
@@ -827,7 +1250,7 @@ nothing for the player's current set progress.
   the Nothing.
 - **Set completion**: owning every card in a set (each distinct card in the set's main card list) grants a trophy
   for the trophy hall and an exclusive style for one of that set's cards.
-- **Completing every set in Bellwarden** grants something unique: a title, a card style no other source gives and
+- **Completing every set in Shandalar** grants something unique: a title, a card style no other source gives and
   its own Hall of Fame entry.
 - Forge has an achievement system in its other game modes; reuse its pieces only if they fit cleanly.
 
@@ -874,6 +1297,25 @@ nothing for the player's current set progress.
 12. INV1, then DS1 (duel screen).
 13. EN1 data and AC1 can start now; K after MV2; CS1 after AC1; EN2 after EN1.
 14. Core loop: LT1 + FR1 (first living town) → AR1 → SE1 → BL1 with WAR1; CH1 alongside.
+
+## Sound
+
+### AU1. Sound effects overhaul (Steve, 2026-10-10; after DS1, alongside its animation PR)
+Today Forge plays one generic clip per event from `forge-gui/res/sound/` (`creature.mp3`, `instant.mp3`, `destroy.mp3`,
+`draw.mp3`...), and the overworld has very few sounds. Goal: the game sounds as good as it plays.
+- **Duel:** distinct, layered sounds for draw, play land (per color), cast (by card type and mana value: a 1-drop
+  sounds light, a 7-drop lands heavy), resolve, counter, attack declared, block, combat damage (scaled by amount),
+  creature dies, exile, token created, life gain and loss, mulligan, shuffle, win and lose stingers. Hooks into the
+  existing `SoundSystem` / game events, so it also works with DS1's animations.
+- **Overworld and maps:** footsteps by terrain, gathering sounds per family (chop, pick, chisel, splash, rummage),
+  node depleted, item pickup, door and portal, shop buy and sell, level-up and skill-up jingles, quest accepted and
+  completed, enemy noticed, chest open, dialog blip.
+- **UI:** menu hover and confirm, pack opening (rip, card flip, rare reveal sparkle), reward reveal, achievement toast.
+- **Sources:** CC0 or permissively licensed packs only (Kenney audio packs, OpenGameArt, freesound CC0), each listed
+  in `CREDITS.md`; Steve can swap any file by replacing it under the same name.
+- **Settings:** separate volume sliders for music, effects and UI; an option to mute overworld ambience.
+- Ascendant only for anything that changes stock sound behaviour; files the stock modes also use stay as they are.
+- Tests: every sound key the code plays maps to an existing file; licence entries exist for every new file.
 
 ## Art
 

@@ -19,22 +19,46 @@ package forge.screens.match;
 
 import forge.Forge;
 import forge.adventure.util.Config;
+import forge.gui.GuiBase;
 import forge.localinstance.properties.ForgePreferences.FPref;
 import forge.model.FModel;
 
 /**
- * DS1 gate for the modern libGDX duel screen (drag cast/attack, peek hand,
- * floating mana, Neo-style arrows). Stock Forge stays unchanged unless the
- * preference is {@link #MODE_ALWAYS}. {@link #MODE_AUTO} is per-match: on only
- * for Adventure duels while Ascendant is active.
+ * DS1 gate for the Arena-style duel screen ({@link ArenaDuelScreen}) and the
+ * modern gesture layer (drag cast/attack, peek hand, floating mana, Neo-style
+ * arrows). Stock Forge stays unchanged unless the preference is
+ * {@link #MODE_ALWAYS}. {@link #MODE_AUTO} is per-match: on only for Adventure
+ * duels while Ascendant is active.
+ *
+ * <p>When enabled, {@link MatchController#openView} constructs
+ * {@link ArenaDuelScreen} instead of classic {@link MatchScreen}. Tunables live
+ * in the Ascendant {@code ConfigData} DS1 block ({@code ds1*}).
  */
 public final class ModernDuelScreen {
     public static final String MODE_AUTO = "Auto";
     public static final String MODE_ALWAYS = "Always";
     public static final String MODE_NEVER = "Never";
 
-    /** ~9px as in Neo Forge {@code TableScreen.DRAG_SLOP}. */
+    /** ~9px as in Neo Forge {@code TableScreen.DRAG_SLOP}; overridden by {@code ds1DragSlopPx} when set. */
     public static final float DRAG_SLOP_PX = 9f;
+
+    /**
+     * Effective drag slop: Ascendant config when present, else {@link #DRAG_SLOP_PX}.
+     */
+    public static float dragSlopPx() {
+        try {
+            if (Config.ascendant() && Config.instance() != null
+                    && Config.instance().getConfigData() != null) {
+                final float v = Config.instance().getConfigData().ds1DragSlopPx;
+                if (v > 0f) {
+                    return v;
+                }
+            }
+        } catch (final RuntimeException ignored) {
+            // headless / early boot
+        }
+        return DRAG_SLOP_PX;
+    }
 
     private static Boolean cachedEnabled;
     private static String cachedMode;
@@ -62,6 +86,35 @@ public final class ModernDuelScreen {
         cachedAdventureAscendant = adventureAscendant;
         cachedEnabled = Boolean.valueOf(on);
         return on;
+    }
+
+    /**
+     * Whether to construct {@link ArenaDuelScreen} (layout skeleton). Requires
+     * {@link #enabled()} and Ascendant {@code ds1ArenaDuelScreen} (default true).
+     * When false but {@link #enabled()} is true, classic MatchScreen keeps the
+     * gesture layer only. Co-op / net play never opens Arena — frozen co-op path
+     * keeps classic MatchScreen + prior modern-drag behaviour.
+     */
+    public static boolean useArenaLayout() {
+        if (!enabled()) {
+            return false;
+        }
+        // Co-op is frozen: Arena must not replace the classic net duel view.
+        try {
+            if (GuiBase.isNetPlay(MatchController.instance)) {
+                return false;
+            }
+        } catch (final RuntimeException ignored) {
+            // MatchController may be unavailable early
+        }
+        try {
+            if (Config.instance() != null && Config.instance().getConfigData() != null) {
+                return Config.instance().getConfigData().ds1ArenaDuelScreen;
+            }
+        } catch (final RuntimeException ignored) {
+            // headless
+        }
+        return true;
     }
 
     /**

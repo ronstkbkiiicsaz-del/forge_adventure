@@ -27,16 +27,31 @@ import java.util.Random;
 import java.util.Set;
 
 /**
- * Rotating Standard for Adventure: up to three sets are legal at once. Mastering the newest set
- * (4x each common/uncommon, 2x each rare, 1x each mythic) unlocks one new set per world; when a
- * fourth set arrives the oldest rotates out. Shops, loot, Spell Smith and enemy deck generation
- * draw from the window plus a curated, rotating staples list for the current format.
+ * Rotating Standard for Adventure: up to {@link #WINDOW_SIZE} sets are legal at once (SN1: 4,
+ * tunable via {@code sn1WindowSize}). Mastering the newest set or the season calendar ends the
+ * season and lets the player pick the next set from a shortlist; when the window is full the
+ * oldest rotates out. Shops, loot, Spell Smith and enemy deck generation draw from the window
+ * plus a curated, rotating staples list for the current format.
  */
 public final class StandardWindow {
-    public static final int WINDOW_SIZE = 3;
+    /** SN1 default; Ascendant uses {@link #resolvedWindowSize()} from config. */
+    public static final int WINDOW_SIZE = 4;
     public static final int STAPLES_PER_ROTATION = 12;
     /** Pseudo-set: the Core Set Collection, i.e. all sets listed in coreCollectionSets. */
     public static final String CORE_COLLECTION = "CORE";
+
+    /** Effective window size: Ascendant {@code sn1WindowSize}, else {@link #WINDOW_SIZE}. */
+    public static int resolvedWindowSize() {
+        try {
+            if (Config.ascendant()) {
+                forge.adventure.data.ConfigData cfg = Config.instance().getConfigData();
+                if (cfg != null && cfg.sn1WindowSize >= 2)
+                    return cfg.sn1WindowSize;
+            }
+        } catch (Exception ignored) {
+        }
+        return WINDOW_SIZE;
+    }
 
     private static String[] coreCollectionSets() {
         String[] sets = Config.instance().getConfigData().coreCollectionSets;
@@ -78,9 +93,10 @@ public final class StandardWindow {
         return setUnlockedThisWorld;
     }
 
-    /** Called at New Game+: a new world allows one more set unlock. */
+    /** Called at New Game+: a new world allows one more set unlock. Clears a lingering legacy pick. */
     public void startNewWorld() {
         setUnlockedThisWorld = false;
+        choicePending = false;
     }
 
     public void clear() {
@@ -105,17 +121,62 @@ public final class StandardWindow {
 
     /** Adds a set; returns the set that rotated out, or null. */
     public String addSet(String code) {
+        return addSetForSeason(code, null);
+    }
+
+    /**
+     * Adds a set for a season pick. When {@code pinnedSet} would be the oldest rotated out,
+     * rotate the next-oldest instead (pin skip). Returns the set that rotated out, or null.
+     * Callers must clear the pin when {@link #didLastAddConsumePin()} is true.
+     */
+    public String addSetForSeason(String code, String pinnedSet) {
+        lastAddConsumedPin = false;
         if (code == null || sets.contains(code))
             return null;
         sets.add(code);
         recordUnlock(code);
         setUnlockedThisWorld = true;
-        return sets.size() > WINDOW_SIZE ? sets.remove(0) : null;
+        int limit = resolvedWindowSize();
+        if (sets.size() <= limit)
+            return null;
+        int rotateIndex = 0;
+        if (pinnedSet != null && pinnedSet.equals(sets.get(0)) && sets.size() > 1) {
+            rotateIndex = 1;
+            lastAddConsumedPin = true;
+        }
+        return sets.remove(rotateIndex);
+    }
+
+    private boolean lastAddConsumedPin;
+
+    /** True when the most recent {@link #addSetForSeason} skipped the pinned set (pin expires). */
+    public boolean didLastAddConsumePin() {
+        return lastAddConsumedPin;
+    }
+
+    /** Restore the window set list (SN1 undo). Does not rewrite unlock history. */
+    public void restoreSets(List<String> codes) {
+        sets.clear();
+        if (codes != null)
+            for (String c : codes)
+                if (c != null && !sets.contains(c))
+                    sets.add(c);
+        setUnlockedThisWorld = false;
+        choicePending = false;
+        cachedNames = null;
+        cachedKey = null;
     }
 
     private void recordUnlock(String code) {
         if (code != null && !unlockedHistory.contains(code))
             unlockedHistory.add(code);
+    }
+
+    /** SN1 undo: drop a set from unlock history when the pick is reverted. */
+    public boolean removeFromHistory(String code) {
+        if (code == null)
+            return false;
+        return unlockedHistory.remove(code);
     }
 
     /**
@@ -463,11 +524,29 @@ public final class StandardWindow {
     }
 
     /**
-     * Checks mastery of the newest set and, if complete and no set was unlocked in this world yet,
-     * unlocks the next set (rotating the oldest out when the window is full).
+     * Checks mastery of the newest set. Under SN1 (Ascendant seasons) mastering ends the current
+     * season early and opens a shortlist pick. Legacy non-season path keeps one unlock per world.
      */
     public void checkMastery(CardPool collection) {
-        if (!isActive() || setUnlockedThisWorld)
+        if (!isActive())
+            return;
+        if (sn1SeasonsActive()) {
+            try {
+                AdventureSeason season = AdventurePlayer.current().getSeason();
+                if (season != null && season.isEnabled()) {
+                    if (season.isChoicePending() || isChoicePending())
+                        return;
+                    int[] p = masteryProgress(collection);
+                    if (p[1] == 0 || p[0] < p[1])
+                        return;
+                    season.endByMastery(this, collection);
+                    return;
+                }
+            } catch (Exception ignored) {
+                // Fall through to legacy path when player/season unavailable.
+            }
+        }
+        if (setUnlockedThisWorld)
             return;
         if (choicePending)
             return;
@@ -477,18 +556,42 @@ public final class StandardWindow {
         choicePending = true;
         notifyPlayer("[GOLD]Set mastered: " + setName(newestSet()) + "![]\nOpen the Skills screen to choose your next set.");
         try {
-            if (forge.adventure.util.Config.ascendant())
+            if (Config.ascendant())
                 AdventurePlayer.current().grantMasterySurgePicks();
         } catch (Exception ignored) {
             // Player / Config may be unavailable in tests
         }
     }
 
+    private static boolean sn1SeasonsActive() {
+        try {
+            if (!Config.ascendant())
+                return false;
+            forge.adventure.data.ConfigData cfg = Config.instance().getConfigData();
+            return cfg == null || cfg.sn1Seasons;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     private boolean choicePending;
 
-    /** True when the newest set is mastered and the player still has to pick the next set. */
+    /** True when the player still has to pick the next set (legacy or SN1 season). */
     public boolean isChoicePending() {
+        if (sn1SeasonsActive()) {
+            try {
+                AdventureSeason season = AdventurePlayer.current().getSeason();
+                if (season != null && season.isEnabled() && season.isChoicePending())
+                    return true;
+            } catch (Exception ignored) {
+            }
+        }
         return choicePending && !setUnlockedThisWorld;
+    }
+
+    /** Legacy SkillsScene flag; SN1 keeps its own pending on {@link AdventureSeason}. */
+    public void setLegacyChoicePending(boolean pending) {
+        choicePending = pending;
     }
 
     /** Sets the player can choose as the next Standard set (every booster set not already in the window). */
@@ -500,9 +603,26 @@ public final class StandardWindow {
         return out;
     }
 
-    /** The player's pick after mastery. Returns the rotated-out set, or null. */
+    /** The player's pick after mastery / season end. Returns the rotated-out set, or null. */
     public String chooseNextSet(String code) {
-        if (!isChoicePending() || code == null)
+        return chooseNextSet(code, false);
+    }
+
+    /**
+     * @param chooseAny when true under SN1, spends gold or a Planar Key for any non-window set
+     */
+    public String chooseNextSet(String code, boolean chooseAny) {
+        if (code == null)
+            return null;
+        if (sn1SeasonsActive()) {
+            try {
+                AdventureSeason season = AdventurePlayer.current().getSeason();
+                if (season != null && season.isEnabled() && season.isChoicePending())
+                    return season.applyPick(this, code, chooseAny);
+            } catch (Exception ignored) {
+            }
+        }
+        if (!isChoicePending())
             return null;
         choicePending = false;
         String rotated = addSet(code);
@@ -512,8 +632,8 @@ public final class StandardWindow {
         notifyPlayer(msg);
         // MV2: mastering unlocks the next set's plane (Mastery Surge already granted in checkMastery).
         try {
-            if (forge.adventure.util.Config.ascendant()) {
-                forge.adventure.data.ConfigData cfg = forge.adventure.util.Config.instance().getConfigData();
+            if (Config.ascendant()) {
+                forge.adventure.data.ConfigData cfg = Config.instance().getConfigData();
                 if (cfg == null || cfg.masteryUnlocksSetPlane) {
                     forge.adventure.world.WorldSave save = forge.adventure.world.WorldSave.getCurrentSave();
                     if (save != null) {

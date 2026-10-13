@@ -5,6 +5,8 @@ import org.apache.commons.lang3.StringUtils;
 
 import com.badlogic.gdx.utils.Align;
 
+import com.badlogic.gdx.graphics.Color;
+
 import forge.Graphics;
 import forge.assets.FSkinColor;
 import forge.assets.FSkinColor.Colors;
@@ -13,6 +15,7 @@ import forge.assets.TextRenderer;
 import forge.card.CardZoom;
 import forge.game.card.CardView;
 import forge.menu.FMagnifyView;
+import forge.screens.match.TakeBackActions;
 import forge.toolbox.FButton;
 import forge.toolbox.FButton.Corner;
 import forge.toolbox.FContainer;
@@ -26,6 +29,7 @@ public class VPrompt extends FContainer {
     public static final float BTN_WIDTH = HEIGHT * 1.5f;
     public static final float PADDING = Utils.scale(2);
     public static final FSkinFont FONT = FSkinFont.get(14);
+    private static final Color ARENA_PROMPT_BED = new Color(0.08f, 0.09f, 0.12f, 1f);
     public static FSkinColor getBackColor() {
         if (Forge.isMobileAdventureMode)
             return FSkinColor.get(Colors.ADV_CLR_THEME2);
@@ -37,7 +41,7 @@ public class VPrompt extends FContainer {
         return FSkinColor.get(Colors.CLR_TEXT);
     }
 
-    private final FButton btnOk, btnCancel;
+    private final FButton btnOk, btnCancel, btnTakeBack;
     private final MessageLabel lblMessage;
     private String message;
     private CardView card;
@@ -70,12 +74,18 @@ public class VPrompt extends FContainer {
         lblMessage.setHeight(HEIGHT);
         btnOk = add(new FButton(okText, guard(okCommand)));
         btnCancel = add(new FButton(cancelText, guard(cancelCommand)));
+        // DS4: Take back — only visible when a snapshot was retained successfully.
+        btnTakeBack = add(new FButton(TakeBackActions.buttonLabel(),
+                guard(e -> TakeBackActions.takeBack())));
         btnOk.setSize(BTN_WIDTH, HEIGHT);
         btnCancel.setSize(BTN_WIDTH, HEIGHT);
+        btnTakeBack.setSize(BTN_WIDTH, HEIGHT);
         btnOk.setCorner(Corner.BottomLeft);
         btnCancel.setCorner(Corner.BottomRight);
         btnOk.setEnabled(false); //disable buttons until first input queued
         btnCancel.setEnabled(false);
+        btnTakeBack.setVisible(false);
+        btnTakeBack.setEnabled(false);
     }
 
     public FButton getBtnOk() {
@@ -84,6 +94,19 @@ public class VPrompt extends FContainer {
 
     public FButton getBtnCancel() {
         return btnCancel;
+    }
+
+    public FButton getBtnTakeBack() {
+        return btnTakeBack;
+    }
+
+    /** DS4: show Take back only when a dedicated snapshot succeeded and remains eligible. */
+    public void refreshTakeBackButton() {
+        final boolean show = TakeBackActions.featureEnabled() && TakeBackActions.canTakeBack();
+        btnTakeBack.setText(TakeBackActions.buttonLabel());
+        btnTakeBack.setVisible(show);
+        btnTakeBack.setEnabled(show);
+        revalidate();
     }
 
     public String getMessage() {
@@ -124,20 +147,65 @@ public class VPrompt extends FContainer {
 
     @Override
     protected void doLayout(float width, float height) {
-        lblMessage.setWidth(width - 2 * BTN_WIDTH);
+        // Size buttons to the container so a stretched Arena prompt bar doesn't leave
+        // a  Utils.AVG_FINGER-tall strip of clipped widgets along the edge.
+        final float btnH = Math.max(HEIGHT, height);
+        final float btnW = Math.max(BTN_WIDTH, btnH * 1.5f);
+        btnOk.setSize(btnW, btnH);
+        btnCancel.setSize(btnW, btnH);
+        btnTakeBack.setSize(btnW, btnH);
+        lblMessage.setHeight(btnH);
+
+        final boolean takeBack = btnTakeBack.isVisible();
+        final float okW = btnOk.isVisible() ? btnW : 0f;
+        final float cancelW = btnCancel.isVisible() ? btnW : 0f;
+        final float takeW = takeBack ? btnW : 0f;
+        lblMessage.setWidth(Math.max(0f, width - okW - cancelW - takeW));
         if (Forge.reversedPrompt) {
             btnOk.setCorner(Corner.BottomRight);
             btnCancel.setCorner(Corner.BottomLeft);
-            btnOk.setLeft(lblMessage.getRight());
+            float left = 0f;
+            if (btnCancel.isVisible()) {
+                btnCancel.setLeft(left);
+                left = btnCancel.getRight();
+            }
+            if (takeBack) {
+                btnTakeBack.setLeft(left);
+                left = btnTakeBack.getRight();
+            }
+            lblMessage.setLeft(left);
+            if (btnOk.isVisible()) {
+                btnOk.setLeft(lblMessage.getRight());
+            }
         } else {
             btnOk.setCorner(Corner.BottomLeft);
             btnCancel.setCorner(Corner.BottomRight);
-            btnCancel.setLeft(lblMessage.getRight());
+            float left = 0f;
+            if (btnOk.isVisible()) {
+                btnOk.setLeft(left);
+                left = btnOk.getRight();
+            }
+            if (takeBack) {
+                btnTakeBack.setLeft(left);
+                left = btnTakeBack.getRight();
+            }
+            lblMessage.setLeft(left);
+            if (btnCancel.isVisible()) {
+                btnCancel.setLeft(lblMessage.getRight());
+            }
         }
     }
 
     @Override
     protected void drawBackground(Graphics g) {
+        // Arena replaces OK/Cancel with context / pass-until-EOT labels. Keep an
+        // opaque prompt bed (no translucent fillRect — that breaks FBO alpha).
+        if (forge.screens.match.ArenaDuelUi.isActive()
+                && !btnOk.isVisible() && !btnCancel.isVisible()) {
+            g.resetAlphaComposite();
+            g.fillRect(ARENA_PROMPT_BED, 0, 0, getWidth(), getHeight());
+            return;
+        }
         g.fillRect(getBackColor(), 0, 0, getWidth(), getHeight());
     }
     
@@ -179,7 +247,13 @@ public class VPrompt extends FContainer {
                 float y = PADDING;
                 float w = getWidth() - 2 * PADDING;
                 float h = getHeight() - 2 * PADDING;
-                renderer.drawText(g, message, FONT, getForeColor(), x, y, w, h, y, h, true, Align.center, true);
+                // Arena prompt bed is near-black — force light ink so targeting copy reads.
+                if (forge.screens.match.ArenaDuelUi.isActive()) {
+                    g.drawText(message, FSkinFont.get(15), Color.WHITE,
+                            x, y, w, h, true, Align.center, true);
+                } else {
+                    renderer.drawText(g, message, FONT, getForeColor(), x, y, w, h, y, h, true, Align.center, true);
+                }
             }
         }
     }

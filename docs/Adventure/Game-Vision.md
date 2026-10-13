@@ -95,7 +95,7 @@ Firstborn. Losses are real; dialog stays skippable; the stakes live in the world
 
 - **Skills 1-99** with talent trees (built).
 - **Collection** grows through rewards, crafting (dust + color reagents) and set mastery (built).
-- **Formats per plane**: Bellwarden Standard, Historic, Pauper or Commander (with 2HG for co-op). You pick the
+- **Formats per plane**: Shandalar Standard, Historic, Pauper or Commander (with 2HG for co-op). You pick the
   home plane's format at the start and each new plane's format when you open it. Enemies, gyms and events on a
   plane play its format. Gyms and the League are built; tournaments and Grand Prix are planned.
 - **Achievements and card styles**: account-wide achievements, set completion rewards (and something unique for
@@ -109,7 +109,10 @@ Firstborn. Losses are real; dialog stays skippable; the stakes live in the world
 
 Both players are in the **same world at the same time**. The host's save owns the world **and the partner's
 character**: like a Stardew farmhand, the guest has a character made for that world, stored in the host's save and
-following that world's rules. Solo characters stay in solo games (see roadmap CO5). The host is authoritative over the world (enemies,
+following that world's rules. Solo characters stay in solo games (see roadmap CO5).
+**Co-op worlds are their own saves**: you host from a world made for co-op, where both of you have characters and make
+progress together; your solo games are separate. Co-op is part of the definitive game, so every system is designed
+for two players from the start (roadmap: standing rule, CO6 co-op mechanics, Horde delves). The host is authoritative over the world (enemies,
 nodes, POI changes, loot rolls). Players **team up or go their separate ways**: party up by invite, leave any time,
 and nobody is ever pulled into a fight or a location without saying yes. Co-op fights are two humans on one team
 against the enemy, using Forge's existing network duel code. Connection is direct over LAN or Tailscale, no servers. See roadmap packages CO1-CO4.
@@ -117,10 +120,11 @@ against the enemy, using Forge's existing network duel code. Connection is direc
 ## Milestones
 
 1. **Co-op foundation**: session and connection (CO1), shared overworld (CO2), co-op duels (CO3).
-2. **Own identity**: name, launcher, app, separate from stock Forge. **Working title: Bellwarden: Planes of
-   Nothing** (chosen 2026-10-08). Avoid "NeoForge" (Minecraft mod loader), "___ of Eternity" (Pillars of
-   Eternity), and "Death Watch"/"Deathwatch" in the title (Star Wars / Warhammer 40K); the canon name is fine
-   inside the game.
+2. **Own identity**: name, launcher, app, separate from stock Forge. **Official name: Shandalar Ascendant**
+   (this Forge adventure build). Steve's separate game, **Bellwarden**, is documented under
+   [`docs/Bellwarden/`](../Bellwarden/).
+   Avoid "NeoForge" (Minecraft mod loader), "___ of Eternity" (Pillars of Eternity), and
+   "Death Watch"/"Deathwatch" in the title (Star Wars / Warhammer 40K); the canon name is fine inside the game.
 3. **Controller-first** outside duels.
 4. **Multiverse core**: multi-plane save, home plane, planar portals, first generated set plane.
 5. **The first living town**: one hand-made town as the art test, built lived-in from day one (see "Living

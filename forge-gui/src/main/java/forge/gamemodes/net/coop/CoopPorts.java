@@ -18,11 +18,16 @@ public final class CoopPorts {
      * MV2 = 8: live world hash + host gate list + {@code mv2SetCode} on offer/switch.
      * EN2 (#44) = 9: host-authoritative {@code lootRolls} on {@code CoopDuelResultEvent}.
      * Package K = 10: {@code planeFormat} plain-data field on world offer / plane switch.
+     * RW1 (#49) = 11: guest loot credit (enemy data id, theme id, signature candidates)
+     * on {@code CoopDuelResultEvent}.
+     * DS4 (#55) = 12: {@code TrackableProperty.CanTakeBack} appended — checksum sampler
+     * sends ordinals; a DS4 host vs base guest both claiming 11 can
+     * {@code ArrayIndexOutOfBounds}. Take-back itself is still single-player / no co-op wire.
      *
      * <p>Rule: set to {@code (feature/set-start PROTOCOL_VERSION) + 1} at review time;
      * Steve checks the number at merge. Do not pre-assign numbers for in-flight PRs.
      */
-    public static final int PROTOCOL_VERSION = 10;
+    public static final int PROTOCOL_VERSION = 12;
 
     /** Length of the short session code shown by the host. */
     public static final int SESSION_CODE_LENGTH = 8;

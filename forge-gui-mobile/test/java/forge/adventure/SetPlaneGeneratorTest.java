@@ -137,18 +137,17 @@ public class SetPlaneGeneratorTest {
     @Test
     public void standardWindowAlignedVsDriftedCosts() {
         StandardWindow window = new StandardWindow();
-        window.init(List.of("ONE", "BRO", "DMU"));
+        window.init(List.of("ONE", "BRO", "DMU", "NEO"));
 
         Assert.assertEquals(PlaneAlignment.of("DMU", window), PlaneAlignment.ALIGNED);
         Assert.assertEquals(PlaneAlignment.of("BRO", window), PlaneAlignment.ALIGNED);
 
-        // Simulate rotation: add a fourth set, oldest (ONE) rotates out but stays in history.
+        // Simulate rotation: add a set past WINDOW_SIZE (SN1: 4), oldest (ONE) rotates out.
         window.clear();
         // Rebuild with unlocked history via addSet path.
         StandardWindow w2 = new StandardWindow();
-        w2.init(List.of("ONE", "BRO", "DMU"));
+        w2.init(List.of("ONE", "BRO", "DMU", "NEO"));
         // Force a rotate by using reflection-free public API: addSet when at capacity.
-        // addSet is public; window size 3 → fourth rotates first out.
         String rotated = invokeAddSet(w2, "MOM");
         Assert.assertEquals(rotated, "ONE");
         Assert.assertEquals(PlaneAlignment.of("MOM", w2), PlaneAlignment.ALIGNED);
@@ -389,6 +388,29 @@ public class SetPlaneGeneratorTest {
     }
 
     @Test
+    public void excludeHomeOnlyPoisStripsStarterTownFromSetPlanes() {
+        WorldData data = sampleTemplate(200);
+        BiomeData waste = biome(data, "colorless");
+        Assert.assertNotNull(waste);
+        waste.pointsOfInterest = new String[]{"Spawn", "StarterTown", "Waste Town Generic"};
+        ArrayList<PointOfInterestData> frozen = new ArrayList<>();
+        frozen.add(poiDef("Spawn", "town", 1));
+        frozen.add(poiDef("StarterTown", "town", 1));
+        frozen.add(poiDef("Waste Town Generic", "town", 3));
+        waste.replacePointsOfInterest(frozen);
+
+        ConfigData cfg = new ConfigData();
+        cfg.lt1StarterTownPoiName = "StarterTown";
+        SetPlaneGenerator.excludeHomeOnlyPois(data, cfg);
+
+        Assert.assertFalse(Arrays.asList(waste.pointsOfInterest).contains("StarterTown"));
+        Assert.assertTrue(Arrays.asList(waste.pointsOfInterest).contains("Spawn"));
+        for (PointOfInterestData p : waste.getPointsOfInterest()) {
+            Assert.assertFalse("StarterTown".equals(p.name), "StarterTown must not place on set planes");
+        }
+    }
+
+    @Test
     public void coreAndDebugPlanesSkipSetRestriction() {
         Assert.assertEquals(SetPlaneRules.restrictableSetCode("CORE"), "");
         Assert.assertEquals(SetPlaneRules.restrictableSetCode(StandardWindow.CORE_COLLECTION), "");
@@ -547,7 +569,8 @@ public class SetPlaneGeneratorTest {
         Assert.assertTrue(cCharge > 0 && cSwitch > cCharge && cRefund > cSwitch);
 
         StandardWindow window = new StandardWindow();
-        window.init(List.of("ONE", "BRO", "DMU"));
+        // SN1 window size is 4 — fill the window before the next add rotates the oldest out.
+        window.init(List.of("ONE", "BRO", "DMU", "NEO"));
         Assert.assertEquals(window.addSet("MOM"), "ONE");
         Assert.assertEquals(PlaneAlignment.of("ONE", window), PlaneAlignment.DRIFTED);
 

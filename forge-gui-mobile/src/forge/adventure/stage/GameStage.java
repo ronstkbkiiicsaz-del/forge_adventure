@@ -318,6 +318,43 @@ public abstract class GameStage extends Stage {
         return animationTimeout > 0;
     }
 
+    private float stuckSeconds;
+    private boolean stuckLogged;
+    private float lastStuckX = Float.NaN, lastStuckY = Float.NaN;
+
+    /**
+     * Diagnostic: when the player keeps trying to move (keys held or mouse/touch down) but the sprite
+     * hasn't moved for 5 seconds, log once which input gate is holding them, so a "can't move" report
+     * can be traced from forge.log.
+     */
+    private void logIfPlayerStuck(float delta) {
+        if (player == null)
+            return;
+        boolean trying = touchX >= 0 || KeyBinding.Left.isPressed() || KeyBinding.Right.isPressed()
+                || KeyBinding.Up.isPressed() || KeyBinding.Down.isPressed() || controllerInput.len() > 0.2f;
+        boolean moved = player.getX() != lastStuckX || player.getY() != lastStuckY;
+        lastStuckX = player.getX();
+        lastStuckY = player.getY();
+        if (!trying || moved) {
+            stuckSeconds = 0;
+            stuckLogged = false;
+            return;
+        }
+        stuckSeconds += delta;
+        if (stuckSeconds >= 5f && !stuckLogged) {
+            stuckLogged = true;
+            System.err.println("STUCK: player can't move for 5s on " + getClass().getSimpleName()
+                    + " paused=" + isPaused() + " animationTimeout=" + animationTimeout
+                    + " pendingEndAction=" + (onEndAction != null)
+                    + " dialogOnlyInput=" + isDialogOnlyInput()
+                    + " mapDialogOnlyInput=" + MapStage.getInstance().isDialogOnlyInput()
+                    + " advFreezePlayerControls=" + Forge.advFreezePlayerControls
+                    + " scene=" + (Forge.getCurrentScene() == null ? "null" : Forge.getCurrentScene().getClass().getSimpleName())
+                    + " pos=" + player.getX() + "," + player.getY()
+                    + " dir=" + player.getMovementDirection());
+        }
+    }
+
     public GameStage() {
         super(new ScalingViewport(Scaling.stretch, Scene.getIntendedWidth(), Scene.getIntendedHeight(), new OrthographicCamera()), Forge.getGraphics().getBatch());
         WorldSave.getCurrentSave().onLoad(() -> {
@@ -368,6 +405,7 @@ public abstract class GameStage extends Stage {
     @Override
     public final void act(float delta) {
         super.act(delta);
+        logIfPlayerStuck(delta);
 
         if (animationTimeout >= 0) {
             animationTimeout -= delta;
@@ -477,7 +515,13 @@ public abstract class GameStage extends Stage {
         }
         if (keycode == Input.Keys.F5)//todo config
         {
-            if (TileMapScene.instance().currentMap().isInMap()) {
+            // Ascendant SV1: quicksave inside maps; stock stays world-map only.
+            if (forge.adventure.util.InteriorMapSave.saveAnywhereEnabled()
+                    && !forge.adventure.util.InteriorMapSave.allowsManualSave()) {
+                GameHUD.getInstance().addNotification(Forge.getLocalizer().getMessageorUseDefault(
+                        "lblQuicksaveBlocked", "Can't save right now (finish the dialog or fight first)."));
+            } else if (TileMapScene.instance().currentMap().isInMap()
+                    && !forge.adventure.util.InteriorMapSave.allowsManualSave()) {
                 DialogData noQuicksave = new DialogData();
                 DialogData noQuicksaveOK = new DialogData();
                 noQuicksave.text = Forge.getLocalizer().getMessageorUseDefault("lblQuicksaveOnlyOnWorldMap", "Game not saved. Quicksave is only available on the world map.");
@@ -489,14 +533,33 @@ public abstract class GameStage extends Stage {
             } else {
                 getPlayerSprite().storePos();
                 WorldSave.requestPreview();
-                WorldSave.getCurrentSave().quickSave();
+                boolean saved = WorldSave.getCurrentSave().quickSave();
+                GameHUD.getInstance().addNotification(saved
+                        ? Forge.getLocalizer().getMessageorUseDefault("lblQuicksaveDone", "Game saved (quick save).")
+                        : Forge.getLocalizer().getMessageorUseDefault("lblQuicksaveFailed", "Quick save failed; the game was not saved."));
             }
         }
         if (keycode == Input.Keys.F8)//todo config
         {
-            if (!TileMapScene.instance().currentMap().isInMap()) {
-                WorldSave.getCurrentSave().quickLoad();
-                enter();
+            // Block quickload while a dialog is open (F5 already gates via allowsManualSave).
+            if (isDialogOnlyInput()
+                    || TileMapScene.instance().currentMap().isDialogOnlyInput()) {
+                return true;
+            }
+            // Ascendant SV1: quickload restores interior via sceneAfterLoad. Stock: world map only.
+            if (forge.adventure.util.InteriorMapSave.saveAnywhereEnabled()) {
+                if (WorldSave.getCurrentSave().quickLoad()) {
+                    forge.adventure.util.InteriorMapSave.switchToSceneAfterLoad();
+                    GameHUD.getInstance().addNotification(Forge.getLocalizer().getMessageorUseDefault(
+                            "lblQuickloadDone", "Quick save loaded."));
+                } else {
+                    GameHUD.getInstance().addNotification(Forge.getLocalizer().getMessageorUseDefault(
+                            "lblQuickloadFailed", "No quick save to load."));
+                }
+            } else if (!TileMapScene.instance().currentMap().isInMap()) {
+                if (WorldSave.getCurrentSave().quickLoad()) {
+                    enter();
+                }
             }
         }
         if (keycode == Input.Keys.F11) {

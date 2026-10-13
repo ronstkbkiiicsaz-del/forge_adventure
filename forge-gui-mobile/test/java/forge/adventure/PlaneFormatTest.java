@@ -42,30 +42,42 @@ import java.nio.file.Files;
 public class PlaneFormatTest {
 
     private AdventureModes savedAdventureMode;
+    private Boolean savedStrictOverworld;
 
     @BeforeMethod
     public void clearGuestFollow() {
         CoopSession.get().testClearGuestPlaneFollow();
         CoopSession.get().testClearHostingForHello();
         savedAdventureMode = null;
+        savedStrictOverworld = null;
+        // Suite-order: CS0 / other classes may leave Config or the reward pool dirty.
+        Assert.assertNotNull(Config.instance(), "Adventure bootstrap must provide Config");
+        Assert.assertNotNull(Config.instance().getConfigData(), "ConfigData required for K tunables");
+        RewardData.invalidateCardPool();
     }
 
     @AfterMethod
     public void tearDown() throws Exception {
         restoreAdventureMode();
+        restoreStrictOverworld();
         CoopSession.get().testClearGuestPlaneFollow();
         CoopSession.get().testClearHostingForHello();
         RewardData.invalidateCardPool();
     }
 
     @Test
-    public void normalizeMapsBellwardenAliasesToStandard() {
+    public void normalizeMapsStandardAliasesOldAndNew() {
         Assert.assertEquals(PlaneFormat.normalize("Bellwarden Standard"), GymUtil.FORMAT_STANDARD);
         Assert.assertEquals(PlaneFormat.normalize("Bellwarden"), GymUtil.FORMAT_STANDARD);
+        Assert.assertEquals(PlaneFormat.normalize("Shandalar Standard"), GymUtil.FORMAT_STANDARD);
+        Assert.assertEquals(PlaneFormat.normalize("Shandalar"), GymUtil.FORMAT_STANDARD);
         Assert.assertEquals(PlaneFormat.normalize("standard"), GymUtil.FORMAT_STANDARD);
         Assert.assertEquals(PlaneFormat.normalize("Pauper"), GymUtil.FORMAT_PAUPER);
         Assert.assertEquals(PlaneFormat.normalize("Historic"), GymUtil.FORMAT_HISTORIC);
         Assert.assertEquals(PlaneFormat.normalize("Commander"), GymUtil.FORMAT_COMMANDER);
+        Assert.assertEquals(PlaneFormat.displayName(GymUtil.FORMAT_STANDARD), "Shandalar Standard");
+        Assert.assertTrue(PlaneFormat.isKnown("Shandalar Standard"));
+        Assert.assertTrue(PlaneFormat.isKnown("Bellwarden Standard"));
     }
 
     @Test
@@ -293,8 +305,8 @@ public class PlaneFormatTest {
         for (String label : PlaneFormat.CHOICES) {
             String canonical = PlaneFormat.fromChoiceLabel(label);
             Assert.assertTrue(PlaneFormat.isKnown(canonical), label);
-            Assert.assertEquals(PlaneFormat.displayName(canonical), label.equals("Bellwarden Standard")
-                    ? "Bellwarden Standard" : canonical);
+            Assert.assertEquals(PlaneFormat.displayName(canonical), label.equals("Shandalar Standard")
+                    ? "Shandalar Standard" : canonical);
         }
     }
 
@@ -304,12 +316,12 @@ public class PlaneFormatTest {
         Assert.assertNotNull(cfg);
         Assert.assertFalse(cfg.kStrictOverworldLegalDecks);
         Assert.assertFalse(PlaneFormat.strictOverworldLegalDecks());
-        final boolean previous = cfg.kStrictOverworldLegalDecks;
+        savedStrictOverworld = cfg.kStrictOverworldLegalDecks;
         try {
             cfg.kStrictOverworldLegalDecks = true;
             Assert.assertTrue(PlaneFormat.strictOverworldLegalDecks());
         } finally {
-            cfg.kStrictOverworldLegalDecks = previous;
+            restoreStrictOverworld();
         }
     }
 
@@ -457,5 +469,16 @@ public class PlaneFormatTest {
             f.set(p, savedAdventureMode);
         }
         savedAdventureMode = null;
+    }
+
+    private void restoreStrictOverworld() {
+        if (savedStrictOverworld == null) {
+            return;
+        }
+        ConfigData cfg = Config.instance() != null ? Config.instance().getConfigData() : null;
+        if (cfg != null) {
+            cfg.kStrictOverworldLegalDecks = savedStrictOverworld;
+        }
+        savedStrictOverworld = null;
     }
 }

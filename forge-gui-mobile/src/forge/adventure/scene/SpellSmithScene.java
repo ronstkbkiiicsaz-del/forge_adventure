@@ -153,24 +153,28 @@ public class SpellSmithScene extends UIScene {
 
         // Ascendant-only: Craft / Refine from Spell Smith without changing stock UI JSON.
         // Created once; shown per visit in enter() since the scene outlives a world switch.
+        // Registered once on the controller selectable list (EC1 craft entry points).
         if (exitSmith != null) {
             openCraft = Controls.newTextButton("Craft", () -> Forge.switchScene(CraftingScene.instance()));
             float craftW = Math.max(55f, exitSmith.getWidth() * 0.9f);
             openCraft.setBounds(exitSmith.getX() - craftW - 8f, exitSmith.getY(), craftW, exitSmith.getHeight());
             openCraft.setVisible(false);
             ui.addActor(openCraft);
+            addToSelectable(openCraft);
 
             openRefine = Controls.newTextButton("Refine", () -> Forge.switchScene(RefineScene.instance()));
             float refineW = Math.max(55f, exitSmith.getWidth() * 0.9f);
             openRefine.setBounds(openCraft.getX() - refineW - 8f, exitSmith.getY(), refineW, exitSmith.getHeight());
             openRefine.setVisible(false);
             ui.addActor(openRefine);
+            addToSelectable(openRefine);
 
             openPrismatic = Controls.newTextButton("Prism", () -> Forge.switchScene(PrismaticScene.instance()));
             float prismW = Math.max(55f, exitSmith.getWidth() * 0.9f);
             openPrismatic.setBounds(openRefine.getX() - prismW - 8f, exitSmith.getY(), prismW, exitSmith.getHeight());
             openPrismatic.setVisible(false);
             ui.addActor(openPrismatic);
+            addToSelectable(openPrismatic);
         }
     }
 
@@ -473,7 +477,16 @@ public class SpellSmithScene extends UIScene {
         lockedPrice = currentPrice;
         PaperCard P = cardPool.get(MyRandom.getRandom().nextInt(cardPool.size())); //Don't use the standard RNG.
         currentReward = null;
-        if (Config.instance().getSettingData().useAllCardVariants) {
+        if (SourcePrintings.enabled()) {
+            // CS0: Spell Smith uses the selected set printing, or a rotation/normal printing.
+            PaperCard pulled;
+            if (!edition.isEmpty()) {
+                pulled = SourcePrintings.printingFromSet(P.getCardName(), edition);
+            } else {
+                pulled = SourcePrintings.printingFromRotation(P.getCardName());
+            }
+            currentReward = new Reward(pulled != null ? pulled : P);
+        } else if (Config.instance().getSettingData().useAllCardVariants) {
             if (!edition.isEmpty()) {
                 currentReward = new Reward(CardUtil.getCardByNameAndEdition(P.getCardName(), edition));
             } else {

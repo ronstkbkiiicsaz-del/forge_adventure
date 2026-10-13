@@ -25,6 +25,11 @@ public class FMenuBar extends Header {
     }
 
     public float getPreferredHeight() {
+        // DS1 Arena: FScreen portrait layout always sizes the header to preferredHeight
+        // before doLayout — return 0 so that path cannot recreate the tick-mark strip.
+        if (forge.screens.match.ArenaDuelUi.isActive()) {
+            return 0f;
+        }
         return Math.round(FMenuTab.FONT.getLineHeight() * 2f/*fixes touch for tall devices - old value 1.5f*/ + 2 * FMenuTab.PADDING);
     }
 

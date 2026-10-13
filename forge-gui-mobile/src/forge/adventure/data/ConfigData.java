@@ -87,6 +87,50 @@ public class ConfigData {
     /** Adventure house rule: mulligans that cost no card, for both the player and enemies (Ascendant sets 1). */
     public int adventureFreeMulligans = 0;
 
+    // ---- AI1: LLM opponent tunables (Ascendant). Forge AI remains the fallback. ----
+
+    /**
+     * AI1: minimum hand size the LLM opponent may mulligan down to. At or below this floor the
+     * LLM is skipped and Forge's {@code ComputerUtil.wantMulligan} decides instead.
+     * London can otherwise reach 0 cards and stall the mulligan loop.
+     * Overridden by {@code mulliganMinHandSize} in {@code llm_opponent.properties} when that key
+     * is present.
+     */
+    public int llmMulliganMinHandSize = 5;
+
+    /**
+     * AI1: wall-clock seconds for one LLM-backed decision before Forge AI takes over. Default 30.
+     * Overridden by {@code decisionBudgetSeconds} in {@code llm_opponent.properties} when present.
+     */
+    public int llmDecisionBudgetSeconds = 30;
+
+    /**
+     * Deprecated alias for {@link #llmDecisionBudgetSeconds}. Still read from older config.json
+     * files when the new key is absent ({@code -1} means unset).
+     */
+    public int llmPriorityWatchdogSeconds = -1;
+
+    /**
+     * Prefer {@link #llmDecisionBudgetSeconds}; fall back to the legacy
+     * {@link #llmPriorityWatchdogSeconds} alias when the new key was never set in JSON.
+     */
+    public int resolvedLlmDecisionBudgetSeconds() {
+        if (llmDecisionBudgetSeconds >= 0 && llmPriorityWatchdogSeconds < 0) {
+            return llmDecisionBudgetSeconds;
+        }
+        if (llmPriorityWatchdogSeconds >= 0 && llmDecisionBudgetSeconds == 30
+                && llmPriorityWatchdogSeconds != 30) {
+            return llmPriorityWatchdogSeconds;
+        }
+        if (llmDecisionBudgetSeconds >= 0) {
+            return llmDecisionBudgetSeconds;
+        }
+        if (llmPriorityWatchdogSeconds >= 0) {
+            return llmPriorityWatchdogSeconds;
+        }
+        return 30;
+    }
+
     /** Extra gold on top of the difficulty's starting money for a sealed start. */
     public int sealedStartBonusGold = 500;
 
@@ -139,6 +183,33 @@ public class ConfigData {
     public int gatherYieldMin = 1;
     /** Max units gathered per channel at high skill (levels 40 / 70 add +1 each). */
     public int gatherYieldMax = 3;
+
+    // ---- GN1: gather-node family variety (Ascendant only; stock keeps the legacy split). ----
+
+    /**
+     * GN1 master switch. Default false so stock worlds (whose config.json has no GN1 block)
+     * keep the legacy family split; Shandalar Ascendant turns it on. Also needs {@link #ascendantRules}.
+     */
+    public boolean gn1GatherVariety = false;
+    /** Share of node spawns that use the biome's primary family (default 0.5). */
+    public float gn1PrimaryShare = 0.5f;
+    /** Share of node spawns that are trees / logs, borrowed from the forest biome (default 0.2). */
+    public float gn1LogsShare = 0.2f;
+    /** Share of node spawns drawn from the weighted mix of other families (default 0.3). */
+    public float gn1SecondaryShare = 0.3f;
+    /** Weight for any secondary family not listed in {@link #gn1SecondaryWeights} for a biome (default 1). */
+    public float gn1OtherFamilyWeight = 1f;
+    /**
+     * materials.json biome → primary family (e.g. mountain → ore, forest → plants).
+     * Missing biome: the first non-log gatherable family defined on that biome.
+     */
+    public ObjectMap<String, String> gn1PrimaryFamily;
+    /**
+     * materials.json biome → (family → weight) for the secondary mix. Families that fit the
+     * biome get a higher weight; unlisted families use {@link #gn1OtherFamilyWeight}.
+     * Families are borrowed from their home biome in materials.json (logs from forest, etc.).
+     */
+    public ObjectMap<String, ObjectMap<String, Float>> gn1SecondaryWeights;
     /** Skill levels that bump yield by +1 (first / second bump). */
     public int gatherYieldLevel2 = 40;
     public int gatherYieldLevel3 = 70;
@@ -425,10 +496,10 @@ public class ConfigData {
     /**
      * When true (Ascendant default), ordinary overworld enemies pick a theme at spawn
      * and play format-appropriate theme decks (fixed Historic/Pauper/Commander lists,
-     * Bellwarden Standard recipes filled from the current window).
+     * Shandalar Standard recipes filled from the current window).
      */
     public boolean en1EnemyThemeDecks = true;
-    /** Target size for EN1 Bellwarden Standard recipe decks. */
+    /** Target size for EN1 Shandalar Standard recipe decks. */
     public int en1StandardDeckSize = 60;
     /**
      * When true, log EN1 format/theme fallbacks (missing .dck → nearest available).
@@ -464,7 +535,7 @@ public class ConfigData {
 
     /**
      * Default format for planes (and old saves) with none set. Canonical tokens:
-     * {@code Standard} (Bellwarden), {@code Historic}, {@code Pauper}, {@code Commander}.
+     * {@code Standard} (Shandalar Standard), {@code Historic}, {@code Pauper}, {@code Commander}.
      */
     public String kDefaultPlaneFormat = "Standard";
     /**
@@ -472,5 +543,316 @@ public class ConfigData {
      * format. Default false — only gyms, League and tournaments enforce legality.
      */
     public boolean kStrictOverworldLegalDecks = false;
+
+    // ---- Ascendant RW1: fight rewards feed the current set ----
+
+    /**
+     * When true (Ascendant default), a themed overworld win grants one signature
+     * card from the enemy theme core and draws the remaining card rewards from
+     * the current set (set plane, or newest rotation set on home).
+     */
+    public boolean rw1FightRewards = true;
+    /** Guaranteed signature cards from the theme core ∩ played deck (default 1). */
+    public int rw1SignatureCardCount = 1;
+    /**
+     * Share of the remaining (non-signature) card rewards that come from the
+     * current set (0–1). Default 1.0 = all remaining card rewards from the set;
+     * the rest (if any) still come from the enemy deck as today.
+     */
+    public float rw1CurrentSetCardShare = 1.0f;
+    /**
+     * Home plane only: share of the set cards that come from the newest Standard set (0–1). The rest is
+     * spread evenly over the other sets in the window. Set planes always give their own set.
+     */
+    public float rw1NewestSetShare = 0.5f;
+    /**
+     * When true (Ascendant default), every regular fight uses the RW1 card rewards, not only themed
+     * overworld spawns: dungeon, town and cave enemies and unthemed overworld enemies draw their card
+     * rewards from the current set too (no signature card without a theme). Bosses, gyms, the League
+     * and quest fights keep their own tables.
+     */
+    public boolean rw1AllRegularFights = true;
+
+    // ---- Ascendant card styles (Package CS0): source printings, no random variants. ----
+
+    /**
+     * When true (Ascendant default), cards from rewards, shops, packs and the Spell Smith
+     * use the printing from their source set (pack set, set plane, shop pool). Sources with
+     * no set context use a normal printing from the player's current rotation, falling back
+     * to the most recent normal (non-promo, non-showcase) printing. Also ignores the
+     * {@code useAllCardVariants} setting for those paths. Stock worlds leave this unused.
+     */
+    public boolean cs0SourcePrintings = true;
+
+    // ---- Ascendant saving (Package SV1): save anywhere + autosave before fights. ----
+
+    /**
+     * When true (Ascendant default), allow manual save inside POI maps (dungeons/towns)
+     * and restore the player into that map on load. Stock modes ignore this.
+     */
+    public boolean sv1SaveAnywhere = true;
+    /**
+     * When true (Ascendant default), write the rotating autosave slot right before every
+     * duel starts. Skipped during active co-op sessions. Stock modes ignore this.
+     */
+    public boolean sv1AutosaveBeforeFight = true;
+
+    // ---- Ascendant living towns (Package LT1): hand-made town pipeline (no shipments). ----
+
+    /**
+     * When true (Ascendant default), enable LT1 living-town helpers: townsfolk map objects,
+     * dialog-file refs, and missing-object warnings with a fallback entry spawn.
+     */
+    public boolean lt1LivingTowns = true;
+    /**
+     * When true, log clear warnings for missing entry/shop/townsfolk objects on Ascendant
+     * maps instead of crashing. Missing entry uses {@link #lt1FallbackEntryXFraction} /
+     * {@link #lt1FallbackEntryYFraction}.
+     */
+    public boolean lt1WarnMissingMapObjects = true;
+    /**
+     * Fallback player spawn X as a fraction of the map's pixel width when no entry object
+     * is present (Steve may still be placing objects in Tiled).
+     */
+    public float lt1FallbackEntryXFraction = 0.5f;
+    /**
+     * Fallback player spawn Y as a fraction of the map's pixel height when no entry object
+     * is present. Default near the south edge (typical town entry).
+     */
+    public float lt1FallbackEntryYFraction = 0.15f;
+    /**
+     * Stable POI {@code name} for the hand-made starter town in
+     * {@code points_of_interest.json} (display name may differ).
+     */
+    public String lt1StarterTownPoiName = "StarterTown";
+
+    // ---- Ascendant duel take-back (Package DS4): dedicated pre-action snapshot undo. ----
+
+    /**
+     * When true (Ascendant default), single-player adventure duels enable Take back of the
+     * player's last land play or spell cast via a dedicated {@code GameSnapshot} taken right
+     * before that action, while the information epoch is unchanged. Activated abilities
+     * (including planeswalkers) never get a snapshot. Unlimited uses; no turn restart.
+     * Does not enable {@code EXPERIMENTAL_RESTORE_SNAPSHOT}. Disabled in co-op duels.
+     * Old saves omit this key and keep the default.
+     */
+    public boolean duelTakeBackEnabled = true;
+
+    // ---- Ascendant quest tracking (Package QL1): choose which quest the arrow tracks. ----
+
+    /**
+     * When true (Ascendant default), enable QL1 quest tracking behaviour: Track from the quest
+     * list, one tracked quest at a time (saved), new quests do not steal tracking, finishing
+     * the tracked quest moves tracking to the next active one, and "do any side quest" stages
+     * navigate to the nearest discovered QuestSource/Sidequest (or "no known location").
+     * Stock worlds leave this unused.
+     */
+    public boolean ql1QuestTracking = true;
+    /**
+     * When true with {@link #ql1QuestTracking}, CompleteQuest / any-side-quest navigation only
+     * considers visited (discovered) POIs. Undiscovered towns are never arrow targets.
+     */
+    public boolean ql1DiscoveredSideQuestTargetsOnly = true;
+    /**
+     * HUD / map line when a tracked "any side quest" stage has no discovered QuestSource or
+     * Sidequest POI. Not a town name — the arrow stays hidden.
+     */
+    public String ql1NoKnownLocationMessage = "no known location";
+
+    // ---- Ascendant Arena duel screen (Package DS1 PR1): layout skeleton tunables. ----
+
+    /**
+     * When true (Ascendant default), Adventure duels use the Arena-style screen skeleton
+     * under preference Auto. The Settings preference Still gates Always/Never. Stock modes
+     * and {@code Never} keep the classic MatchScreen. Old saves omit this key and keep the default.
+     */
+    public boolean ds1ArenaDuelScreen = true;
+
+    /** Share of viewport width (landscape) / height factor (portrait) reserved for the phase rail. */
+    public float ds1PhaseRailFraction = 0.07f;
+
+    /** Share of the player area height used by the fanned hand. */
+    public float ds1HandFraction = 0.28f;
+
+    /** Share of the centre lane width used by the stack column. */
+    public float ds1StackFraction = 0.48f;
+
+    /** Drag slop in pixels before a hand/battlefield press becomes a drag (~Neo Forge 9px). */
+    public float ds1DragSlopPx = 9f;
+
+    // ---- Ascendant MX1: Moxfield round trip (export / collection-limited import). ----
+
+    /**
+     * When true (Ascendant default), {@code collection.csv} uses Scryfall set codes and real
+     * collector numbers; cards with no Scryfall match are omitted and listed in
+     * {@code exports/unmatched.txt}. Stock worlds keep the legacy Forge-code CSV.
+     */
+    public boolean mx1ScryfallExport = true;
+    /**
+     * When true (Ascendant default), Status / Skills show "Collection exported &lt;time&gt;"
+     * with a short Moxfield upload how-to (scene dialogs, not FOptionPane).
+     */
+    public boolean mx1ExportStatusUi = true;
+    /**
+     * When true (Ascendant default), the Adventure deck editor ⋮ menu offers
+     * "Copy deck for Moxfield" and "Open export folder".
+     */
+    public boolean mx1DeckEditorExportActions = true;
+    /**
+     * When true (Ascendant default), the mobile import dialog accepts a Moxfield deck URL
+     * and shows a Missing list (name, wanted, owned) with "Import what I own" / "Cancel"
+     * before confirming. Import stays limited to the player's collection.
+     */
+    public boolean mx1CollectionLimitedImport = true;
+
+    // ---- Ascendant sound effects (Package AU1): richer duel/overworld/UI clips. ----
+
+    /**
+     * When true (Ascendant default), enable AU1 sound overhaul: layered duel SFX, overworld
+     * footsteps/gathering cues, UI clicks, and separate UI volume / ambience mute. Stock worlds
+     * and stock {@code res/sound/} files stay unchanged. Old saves omit this key and keep the default.
+     */
+    public boolean au1SoundOverhaul = true;
+    /** CMC at or below this uses the "light" cast weight (default 1-drop / 2-drop). */
+    public int au1CastLightCmcMax = 2;
+    /** CMC at or above this uses the "heavy" cast weight (default 6+). */
+    public int au1CastHeavyCmcMin = 6;
+    /** Combat damage at or below this uses the light impact clip. */
+    public int au1DamageLightMax = 2;
+    /** Combat damage at or above this uses the heavy impact clip. */
+    public int au1DamageHeavyMin = 5;
+    /** Seconds between footstep clips while walking (Ascendant overworld / maps). */
+    public float au1FootstepInterval = 0.35f;
+    /**
+     * Default for "mute biome music" when the player has not set
+     * {@code SettingData.muteOverworldAmbience}. Player setting wins when present.
+     * (Field name kept for save compat; the option mutes overworld biome playlists.)
+     */
+    public boolean au1MuteOverworldAmbienceDefault = false;
+
+    // ---- Ascendant card economy (Package EC1): game prices, not real-world markets. ----
+
+    /**
+     * When true (Ascendant default), card gold prices, sell share, craft/salvage dust scales,
+     * and living town markets use {@link forge.adventure.util.AscendantCardEconomy} instead of
+     * {@code cardprices.txt} / rarity stubs. Stock worlds leave this unused.
+     */
+    public boolean ec1GamePrices = true;
+    /** Base gold value by rarity (before rank / rotation / market). Basics default to 0. */
+    public int ec1BaseCommon = 50;
+    public int ec1BaseUncommon = 150;
+    public int ec1BaseRare = 300;
+    public int ec1BaseMythic = 500;
+    public int ec1BaseSpecial = 400;
+    public int ec1BaseBasicLand = 0;
+    /** Bottom of the band (weakest ranked card in its set). */
+    public float ec1RankMultMin = 0.4f;
+    /**
+     * Top of the band (strongest ranked card). Wide enough that a top common can
+     * outprice a bottom rare: {@code baseCommon × max > baseRare × min}.
+     */
+    public float ec1RankMultMax = 3.5f;
+    /**
+     * Sell payout as a fixed share of the current local price (buy gold value). About 30%.
+     * Replaces difficulty {@code sellFactor} for Ascendant when EC1 is on.
+     */
+    public float ec1SaleShare = 0.30f;
+    /**
+     * Cap on the skill sell-price factor so a pumped market cannot be looped at high skill.
+     * Applied as {@code min(skills.sellPriceFactor(), ec1SellSkillCap)}.
+     */
+    public float ec1SellSkillCap = 1.35f;
+    /** Local market price band around the base (never leave this range). */
+    public float ec1MarketBandMin = 0.5f;
+    public float ec1MarketBandMax = 2.0f;
+    /** Supply pressure added per copy sold in a town. */
+    public float ec1MarketSellDelta = 0.15f;
+    /** Supply pressure removed per copy bought in a town. */
+    public float ec1MarketBuyDelta = 0.15f;
+    /** How strongly supply pressure bends price: price ≈ 1/(1+supply×scale). */
+    public float ec1MarketPressureScale = 1.0f;
+    /** Fraction of remaining market pressure removed per in-game day (drift toward base). */
+    public float ec1MarketDriftPerDay = 0.10f;
+    /** Towns of a color pay/charge this much more for matching-color cards. */
+    public float ec1ColorLeanMult = 1.15f;
+    /**
+     * Extra scale on salvage dust from the shared life-cycle worth multiplier
+     * ({@code lifeCycleGold / standardBaseline}). Craft uses the same worth against
+     * {@link #craftCost}; in-Standard (no spike) worth is 1.0 so dust matches pre-EC1.
+     */
+    public float ec1SalvageWorthFactor = 1.0f;
+    /**
+     * Per-season appreciation after a card rotates out of Standard (rares/mythics use a
+     * higher rate). Tunable life-cycle curve.
+     */
+    public float ec1PostRotationAppreciateCommon = 0.04f;
+    public float ec1PostRotationAppreciateUncommon = 0.06f;
+    public float ec1PostRotationAppreciateRare = 0.12f;
+    public float ec1PostRotationAppreciateMythic = 0.16f;
+    /**
+     * Soft asymptote toward the pedigree ceiling: after this many post-rotation seasons a
+     * pedigree card is near its {@code cardprices.txt} target (never an immediate jump).
+     */
+    public int ec1PedigreeSeasonsToCeiling = 24;
+    /**
+     * Share of the pedigree list price used as the long-term ceiling (1.0 = full list).
+     */
+    public float ec1PedigreeCeilingShare = 1.0f;
+    /** Commons/uncommons that spike each season (town rumour). */
+    public int ec1SeasonSpikeCount = 3;
+    /** Spike demand multiplier on relative worth for rumoured cards. */
+    public float ec1SeasonSpikeMult = 2.5f;
+
+    // ---- Ascendant seasons (Package SN1): 4-set Standard + in-game calendar. ----
+
+    /**
+     * When true (Ascendant default), enable the SN1 season calendar, shortlist picks, and
+     * 4-set Standard window. Stock worlds leave this unused.
+     */
+    public boolean sn1Seasons = true;
+    /**
+     * Max sets legal in Shandalar Standard at once (SN1 default 4). Tunable; minimum 2.
+     * Replaces the hard-coded {@code StandardWindow.WINDOW_SIZE} of 3.
+     */
+    public int sn1WindowSize = 4;
+    /**
+     * Real exploring minutes that advance one in-game day (menus/pauses/idle do not count).
+     * Default 15: 15 minutes exploring = 1 day.
+     */
+    public float sn1ExploreMinutesPerDay = 15f;
+    /** Flat in-game hours charged for every duel, win or lose (default 2). */
+    public float sn1DuelHours = 2f;
+    /**
+     * Gold cost for Inn Rest (skips to next morning). Default 25. Rest is limited to
+     * once per in-game calendar day regardless of cost.
+     */
+    public int sn1RestGoldCost = 25;
+    /** Length of a normal season in in-game days (default 14). */
+    public int sn1SeasonDays = 14;
+    /** Length of each opening season in in-game days (default 7). */
+    public int sn1OpeningSeasonDays = 7;
+    /**
+     * How many short opening seasons run after New Game before normal seasons.
+     * New games start with 2 sets; each opening season adds one until the window is full.
+     */
+    public int sn1OpeningSeasonCount = 2;
+    /** Sets offered on the season-end shortlist (default 3). */
+    public int sn1ShortlistSize = 3;
+    /**
+     * In-game days after a skipped / deferred season pick before the world auto-picks
+     * the release-order option (default 3). Never forced mid-duel.
+     */
+    public int sn1GracePeriodDays = 3;
+    /** Gold cost for "Choose any set" instead of a shortlist option. */
+    public int sn1ChooseAnyGoldCost = 500;
+    /**
+     * When true, the player may pin one favourite set so it skips one rotation,
+     * once every {@link #sn1PinCooldownSeasons} seasons.
+     */
+    public boolean sn1PinEnabled = true;
+    /** Seasons that must pass between pin uses (default 3). */
+    public int sn1PinCooldownSeasons = 3;
+    /** Planar Keys granted when finishing a season whose newest set was mastered. */
+    public int sn1SeasonMasteryPlanarKeys = 1;
 
 }

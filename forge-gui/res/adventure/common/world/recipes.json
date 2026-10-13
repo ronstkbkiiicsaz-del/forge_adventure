@@ -2,7 +2,7 @@
   {
     "id": "sample_bronze_sword",
     "station": "forge",
-    "result": "Bronze Sword",
+    "result": "Dagger",
     "resultType": "item",
     "materials": {
       "ore_iron": 3,

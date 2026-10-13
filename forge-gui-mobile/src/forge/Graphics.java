@@ -1923,6 +1923,26 @@ public class Graphics implements Disposable {
         drawImage(image, x, y, w, h, false);
     }
 
+    /**
+     * Paint {@code image} only where the framebuffer alpha is already 0.
+     * Opaque pixels (cards, prior plates) are preserved — used by Arena to heal
+     * FBO alpha holes without a card reseal pass.
+     */
+    public void drawImageIntoAlphaHoles(FImage image, float x, float y, float w, float h) {
+        if (image == null || w <= 0f || h <= 0f) {
+            return;
+        }
+        batch.setBlendFunctionSeparate(
+                GL20.GL_ONE_MINUS_DST_ALPHA, GL20.GL_DST_ALPHA,
+                GL20.GL_ONE_MINUS_DST_ALPHA, GL20.GL_ONE);
+        try {
+            image.draw(this, x, y, w, h);
+            batch.flush();
+        } finally {
+            batch.setBlendFunction(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
+        }
+    }
+
     public void drawImage(FImage image, float x, float y, float w, float h, boolean withDarkOverlay) {
         if (image == null)
             return;

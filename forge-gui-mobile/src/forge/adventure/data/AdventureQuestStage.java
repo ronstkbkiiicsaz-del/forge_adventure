@@ -7,6 +7,7 @@ import forge.adventure.stage.MapStage;
 import forge.adventure.util.AdventureQuestController;
 import forge.adventure.util.AdventureQuestEvent;
 import forge.adventure.util.AdventureQuestEventType;
+import forge.adventure.util.Config;
 import forge.adventure.util.Current;
 import forge.adventure.world.PlaneMeta;
 import forge.adventure.world.WorldSave;
@@ -135,8 +136,13 @@ public class AdventureQuestStage implements Serializable {
         }
         if (!anyPOI) {
             if (validPOIs.isEmpty()) {
-                //no POI matched, fall back to anyPOI valid for the objective that doesn't match all tags
-                validPOIs = Current.world().getAllPointOfInterest();
+                // QL1 root cause: falling back to every POI made getClosestValidPOI pick the
+                // nearest town (often Havenbrook, which is not a QuestSource). Leave empty so
+                // navigation can report "no known location" instead of pointing at town.
+                // Stock worlds keep the legacy all-POI fallback.
+                if (!Config.ql1QuestTracking()) {
+                    validPOIs = Current.world().getAllPointOfInterest();
+                }
                 return;
             }
             int targetIndex = (count1 * validPOIs.size() / 100);
@@ -154,6 +160,48 @@ public class AdventureQuestStage implements Serializable {
             }
         }
         //"else" any POI matching all the POITags is valid, evaluate as needed
+    }
+
+    /**
+     * True for meta-objectives like "Complete a side quest" / "Do Side Quests": any matching
+     * QuestSource or Sidequest POI counts.
+     */
+    public boolean isAnySideQuestObjective() {
+        return objective == CompleteQuest && anyPOI;
+    }
+
+    private boolean discoveredOnlySideQuestTargets() {
+        if (!Config.ql1QuestTracking() || !isAnySideQuestObjective()) {
+            return false;
+        }
+        forge.adventure.data.ConfigData cfg = Config.instance().getConfigData();
+        return cfg != null && cfg.ql1DiscoveredSideQuestTargetsOnly;
+    }
+
+    /** Cache for {@link #collectSideQuestNavigationPois()}; keyed by discovery stamp + plane. */
+    private transient List<PointOfInterest> sideQuestNavCache;
+    private transient long sideQuestNavCacheStamp = Long.MIN_VALUE;
+    private transient String sideQuestNavCachePlaneId;
+
+    /** Non-creating visited check — does not add empty change entries to the save. */
+    private static boolean isDiscovered(PointOfInterest poi) {
+        if (poi == null) {
+            return false;
+        }
+        try {
+            forge.adventure.pointofintrest.PointOfInterestChanges changes =
+                    WorldSave.getCurrentSave().findPointOfInterestChanges(poi.getID());
+            return changes != null && changes.isVisited();
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /** Test / tracking change: drop cached side-quest navigation candidates. */
+    public void invalidateSideQuestNavCache() {
+        sideQuestNavCache = null;
+        sideQuestNavCacheStamp = Long.MIN_VALUE;
+        sideQuestNavCachePlaneId = null;
     }
 
     public EnemySprite getTargetSprite() {
@@ -270,6 +318,11 @@ public class AdventureQuestStage implements Serializable {
             return new ArrayList<>();
         if (objective == Hunt)
             return new ArrayList<>();
+        // QL1 any-side-quest: rebuild from the world each call so newly discovered boards appear,
+        // and never cache an unfiltered all-POI list (that made the arrow point at town).
+        if (Config.ql1QuestTracking() && isAnySideQuestObjective() && targetPOI == null && !POITags.isEmpty()) {
+            return collectSideQuestNavigationPois();
+        }
         if (validPOIs == null)
             validPOIs = new ArrayList<>();
         if (validPOIs.size() != 1 && targetPOI != null) {
@@ -283,10 +336,65 @@ public class AdventureQuestStage implements Serializable {
                 validPOIs.removeIf(q -> !q.getActive()); //inactive POIs do not appear on map until conditions are met to activate them
             }
             for (String tag : POITags) {
-                validPOIs.removeIf(q -> Arrays.stream(q.getData().questTags).noneMatch(tag::equals));
+                validPOIs.removeIf(q -> q.getData() == null || q.getData().questTags == null
+                        || Arrays.stream(q.getData().questTags).noneMatch(tag::equals));
             }
         }
         return validPOIs;
+    }
+
+    /**
+     * Nearest-target candidates for "do any side quest": the UNION of QuestSource POIs,
+     * Sidequest POIs, and any stage-tag matches; optionally filtered to visited (discovered).
+     * Never falls back to untagged towns (the old all-POI fallback that stuck the arrow on
+     * Havenbrook). Preferring only stage tags (QuestSource) hid discovered Sidequest POIs.
+     */
+    private List<PointOfInterest> collectSideQuestNavigationPois() {
+        long stamp;
+        try {
+            stamp = WorldSave.getCurrentSave().getPoiDiscoveryStamp();
+        } catch (Exception e) {
+            stamp = -1L;
+        }
+        // Plane id must be part of the key: discovery stamp is save-global, but POIs are per plane.
+        String planeId = currentPlaneIdSafe();
+        if (sideQuestNavCache != null
+                && sideQuestNavCacheStamp == stamp
+                && planeId != null
+                && planeId.equals(sideQuestNavCachePlaneId)) {
+            return new ArrayList<>(sideQuestNavCache);
+        }
+
+        List<PointOfInterest> all = Current.world().getAllPointOfInterest();
+        Map<String, PointOfInterest> union = new LinkedHashMap<>();
+        for (PointOfInterest q : all) {
+            if (q == null || q.getData() == null || q.getData().questTags == null) {
+                continue;
+            }
+            if (!allowInactivePOI && !q.getActive()) {
+                continue;
+            }
+            List<String> tags = Arrays.asList(q.getData().questTags);
+            boolean matchStage = !POITags.isEmpty();
+            for (String tag : POITags) {
+                if (!tags.contains(tag)) {
+                    matchStage = false;
+                    break;
+                }
+            }
+            boolean sourceOrSide = tags.contains("QuestSource") || tags.contains("Sidequest");
+            if (matchStage || sourceOrSide) {
+                union.putIfAbsent(q.getID(), q);
+            }
+        }
+        List<PointOfInterest> candidates = new ArrayList<>(union.values());
+        if (discoveredOnlySideQuestTargets()) {
+            candidates.removeIf(q -> !isDiscovered(q));
+        }
+        sideQuestNavCache = new ArrayList<>(candidates);
+        sideQuestNavCacheStamp = stamp;
+        sideQuestNavCachePlaneId = planeId;
+        return new ArrayList<>(candidates);
     }
 
     public AdventureQuestController.QuestStatus handleEvent(AdventureQuestEvent event) {

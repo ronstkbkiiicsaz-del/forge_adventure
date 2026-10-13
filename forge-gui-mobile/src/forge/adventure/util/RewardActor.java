@@ -1048,7 +1048,16 @@ public class RewardActor extends Actor implements Disposable, ImageFetcher.Callb
             return;
         clicked = true;
         flipProcess = 0;
-        SoundSystem.instance.play(SoundEffectType.FlipCard, false);
+        if (forge.adventure.sound.Au1Sounds.enabled()) {
+            boolean packOrItem = reward != null
+                    && (reward.type == Reward.Type.CardPack || reward.type == Reward.Type.Item);
+            forge.card.CardRarity rarity = (reward != null && reward.type == Reward.Type.Card
+                    && reward.getCard() != null) ? reward.getCard().getRarity() : null;
+            // Exactly one sting per flip (not pack + flip + reveal).
+            forge.adventure.sound.Au1Sounds.playRewardFlipOnce(packOrItem, rarity);
+        } else {
+            SoundSystem.instance.play(SoundEffectType.FlipCard, false);
+        }
         if (canAutoSell && autoSell != null) {
             autoSell.setPosition(this.getX(), this.getY());
             getStage().addActor(autoSell);

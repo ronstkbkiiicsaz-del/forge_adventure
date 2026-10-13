@@ -76,6 +76,16 @@ public class Game {
     private final PlayerCollection ingamePlayers = new PlayerCollection();
     private final PlayerCollection lostPlayers = new PlayerCollection();
     private GameEntityViewMap<Player, PlayerView> playerCache = new GameEntityViewMap<Player, PlayerView>();
+    /**
+     * Serializes zone walks with concede. The match thread holds this except while
+     * it is blocked for input, so {@code onPlayerLost} cannot iterate live lists
+     * in parallel with the match. Not taken by {@link #forEachCardInGame}.
+     */
+    private final java.util.concurrent.locks.ReentrantLock mutationLock =
+            new java.util.concurrent.locks.ReentrantLock(true);
+    /** Games whose mutation lock this thread currently holds, outermost first. */
+    private static final ThreadLocal<Deque<Game>> MUTATION_LOCK_STACK =
+            ThreadLocal.withInitial(ArrayDeque::new);
 
     private List<Card> activePlanes = null;
 
@@ -103,8 +113,27 @@ public class Game {
     public boolean EXPERIMENTAL_RESTORE_SNAPSHOT = false;
     // While this is false here, its really set by the Match/Preferences
 
+    /**
+     * DS4 Ascendant take-back: when true, a dedicated pre-action snapshot may be taken
+     * for the human's own top-level land / spell / activation. Independent of
+     * {@link #EXPERIMENTAL_RESTORE_SNAPSHOT} (cancel-path plumbing).
+     */
+    public boolean TAKE_BACK_ENABLED = false;
+
     // If this merges with LKI In the future, it will need to change forms
     private GameSnapshot previousGameState = null;
+    /** Dedicated pre-action snapshot for DS4 take-back (never shares identity with cancel stash). */
+    private GameSnapshot takeBackSnapshot = null;
+    private Player takeBackOwner = null;
+    /** Information epoch: take-back is only legal while this equals {@link #takeBackEpoch}. */
+    private long informationEpoch = 0L;
+    private long takeBackEpoch = -1L;
+    /** Player who requested take-back while InputPassPriority was blocked (M3). */
+    private volatile Player pendingTakeBackPlayer = null;
+    /** The priority input the pending request stopped; a request only counts for that input. */
+    private volatile Object pendingTakeBackToken = null;
+    /** True while {@link #takeBack} is restoring — inputs must reject clicks (M3). */
+    private volatile boolean takeBackInProgress = false;
     private CardCollection lastStateBattlefield = new CardCollection();
     private CardCollection lastStateGraveyard = new CardCollection();
 
@@ -215,6 +244,195 @@ public class Game {
 
         previousGameState.restoreGameState(this);
         return true;
+    }
+
+    /**
+     * DS4: take one dedicated snapshot right before the human's own top-level action.
+     * Failures are swallowed — no snapshot means no Take back button.
+     *
+     * @return true if a snapshot was retained
+     */
+    public boolean captureTakeBackSnapshot(final Player actor) {
+        if (!TAKE_BACK_ENABLED || actor == null) {
+            return false;
+        }
+        // Replace any prior snapshot; a new top-level action owns take-back.
+        clearTakeBackSnapshot();
+        try {
+            final GameSnapshot snap = new GameSnapshot(this);
+            snap.makeCopy();
+            takeBackSnapshot = snap;
+            takeBackOwner = actor;
+            takeBackEpoch = informationEpoch;
+            updateTakeBackViews();
+            return true;
+        } catch (final RuntimeException | Error e) {
+            clearTakeBackSnapshot();
+            return false;
+        }
+    }
+
+    /**
+     * Bump the information epoch and clear take-back. Call on draws, shuffles, reveals,
+     * peeks, searches, randomness, opponent/AI decisions, triggers on the stack, passes,
+     * and phase changes. Fail-safe: unknown new information → locked.
+     */
+    public void bumpInformationEpoch() {
+        informationEpoch++;
+        if (takeBackSnapshot != null || takeBackOwner != null) {
+            clearTakeBackSnapshot();
+        }
+    }
+
+    /** Clear take-back eligibility without advancing the epoch. */
+    public void invalidateTakeBack() {
+        clearTakeBackSnapshot();
+    }
+
+    private void clearTakeBackSnapshot() {
+        if (takeBackSnapshot == null && takeBackOwner == null && takeBackEpoch < 0L) {
+            return;
+        }
+        takeBackSnapshot = null;
+        takeBackOwner = null;
+        takeBackEpoch = -1L;
+        updateTakeBackViews();
+    }
+
+    public Player getTakeBackOwner() {
+        return takeBackOwner;
+    }
+
+    public long getInformationEpoch() {
+        return informationEpoch;
+    }
+
+    public boolean canTakeBack(final Player player) {
+        return TAKE_BACK_ENABLED
+                && !takeBackInProgress
+                && takeBackSnapshot != null && takeBackOwner != null
+                && player != null && takeBackOwner.equals(player)
+                && takeBackEpoch == informationEpoch;
+    }
+
+    /**
+     * M3: queue a take-back for {@code player}. The game-loop thread runs it after
+     * {@link forge.gamemodes.match.input.InputPassPriority} is released — never on a
+     * pool thread via {@code GameAction.invoke}.
+     */
+    public void requestTakeBack(final Player player) {
+        requestTakeBack(player, null);
+    }
+
+    /** Queue a take-back that only counts for the priority input {@code token} it stopped. */
+    public void requestTakeBack(final Player player, final Object token) {
+        pendingTakeBackToken = token;
+        pendingTakeBackPlayer = player;
+    }
+
+    public Object getPendingTakeBackToken() {
+        return pendingTakeBackToken;
+    }
+
+    public boolean hasPendingTakeBack(final Player player) {
+        return player != null && player.equals(pendingTakeBackPlayer);
+    }
+
+    public boolean hasPendingTakeBack() {
+        return pendingTakeBackPlayer != null;
+    }
+
+    /** Clear a pending request without restoring. Returns the player if one was pending. */
+    public Player clearPendingTakeBack() {
+        final Player p = pendingTakeBackPlayer;
+        pendingTakeBackPlayer = null;
+        pendingTakeBackToken = null;
+        return p;
+    }
+
+    public boolean isTakeBackInProgress() {
+        return takeBackInProgress;
+    }
+
+    /**
+     * Restore the retained take-back snapshot for {@code player}.
+     * On failure the board is left unchanged when the backup restore succeeds.
+     * If the backup also fails, returns {@link TakeBackResult#CATASTROPHIC}.
+     * Must run on the game-loop thread (see {@link #requestTakeBack}).
+     */
+    /**
+     * Test seam: when non-null, {@link #takeBack} uses this snapshot as the post-failure
+     * backup instead of copying the live board (so both restore paths can be forced to fail).
+     */
+    GameSnapshot takeBackBackupOverride = null;
+
+    public TakeBackResult takeBack(final Player player) {
+        // M3: reject concurrent clicks; flag is visible to InputBase without holding the lock.
+        takeBackInProgress = true;
+        try {
+            synchronized (this) {
+                if (!TAKE_BACK_ENABLED
+                        || takeBackSnapshot == null || takeBackOwner == null
+                        || player == null || !takeBackOwner.equals(player)
+                        || takeBackEpoch != informationEpoch) {
+                    return TakeBackResult.NOT_AVAILABLE;
+                }
+                final GameSnapshot toRestore = takeBackSnapshot;
+                GameSnapshot backup = takeBackBackupOverride;
+                if (backup == null) {
+                    try {
+                        backup = new GameSnapshot(this);
+                        backup.makeCopy();
+                    } catch (final RuntimeException | Error e) {
+                        clearTakeBackSnapshot();
+                        return TakeBackResult.RESTORE_FAILED;
+                    }
+                }
+                try {
+                    toRestore.restoreGameState(this);
+                    clearTakeBackSnapshot();
+                    getStack().clearUndoStack();
+                    // Critical 2: a later cancel must not re-apply the taken-back action.
+                    resetPreviousGameStateAfterTakeBack();
+                    bumpInformationEpoch();
+                    return TakeBackResult.SUCCESS;
+                } catch (final RuntimeException | Error e) {
+                    boolean backupOk = false;
+                    try {
+                        if (backup != null) {
+                            backup.restoreGameState(this);
+                            backupOk = true;
+                        }
+                    } catch (final RuntimeException | Error ignored) {
+                        backupOk = false;
+                    }
+                    clearTakeBackSnapshot();
+                    return backupOk ? TakeBackResult.RESTORE_FAILED : TakeBackResult.CATASTROPHIC;
+                }
+            }
+        } finally {
+            takeBackInProgress = false;
+        }
+    }
+
+    /** Re-stash cancel-path state to the restored board, or clear it. */
+    private void resetPreviousGameStateAfterTakeBack() {
+        if (!EXPERIMENTAL_RESTORE_SNAPSHOT) {
+            previousGameState = null;
+            return;
+        }
+        try {
+            previousGameState = new GameSnapshot(this);
+            previousGameState.makeCopy();
+        } catch (final RuntimeException e) {
+            previousGameState = null;
+        }
+    }
+
+    private void updateTakeBackViews() {
+        for (final Player p : getPlayers()) {
+            p.updateTakeBackAvailable(canTakeBack(p));
+        }
     }
 
     public void copyLastState() {
@@ -788,6 +1006,7 @@ public class Game {
         }
         visitor.visitAll(getStackZone().getCards());
     }
+
     public CardCollectionView getCardsInGame() {
         final CardCollection all = new CardCollection();
         Visitor<Card> visitor = new Visitor<Card>() {
@@ -799,6 +1018,58 @@ public class Game {
         };
         forEachCardInGame(visitor);
         return all;
+    }
+
+    /**
+     * Hold exclusive access to this game's zone lists. The match thread takes this
+     * for the whole game and drops it while blocked for input. No-op if this thread
+     * already holds it.
+     */
+    public void acquireMutationLock() {
+        if (mutationLock.isHeldByCurrentThread()) {
+            return;
+        }
+        mutationLock.lock();
+        MUTATION_LOCK_STACK.get().addLast(this);
+    }
+
+    /** Release a hold taken by {@link #acquireMutationLock()}. */
+    public void releaseMutationLock() {
+        if (!mutationLock.isHeldByCurrentThread()) {
+            return;
+        }
+        MUTATION_LOCK_STACK.get().removeLastOccurrence(this);
+        mutationLock.unlock();
+    }
+
+    public boolean currentThreadHoldsMutationLock() {
+        return mutationLock.isHeldByCurrentThread();
+    }
+
+    /**
+     * Drop every mutation lock this thread holds, run {@code action}, then reacquire
+     * them. Blocking input and GUI waits use this so concede can take the lock
+     * while the match thread is paused.
+     */
+    public static void runWithMutationLocksReleased(final Runnable action) {
+        final Deque<Game> stack = MUTATION_LOCK_STACK.get();
+        if (stack.isEmpty()) {
+            action.run();
+            return;
+        }
+        final List<Game> held = new ArrayList<>(stack);
+        for (int i = held.size() - 1; i >= 0; i--) {
+            held.get(i).mutationLock.unlock();
+        }
+        stack.clear();
+        try {
+            action.run();
+        } finally {
+            for (final Game heldGame : held) {
+                heldGame.mutationLock.lock();
+                stack.addLast(heldGame);
+            }
+        }
     }
 
     public final GameAction getAction() {

@@ -96,7 +96,18 @@ public class MapDialog {
                 this.data = JSONStringLoader.parse(Array.class, DialogData.class, defaultJSON, defaultJSON);
                 return;
             }
-            this.data = JSONStringLoader.parse(Array.class, DialogData.class, S, defaultJSON);
+            // LT1: dialog property may be a plane-relative JSON file path instead of inline JSON.
+            String dialogJson = S;
+            if (LivingTownMapSupport.isDialogFileRef(S)) {
+                FileHandle dialogFile = Config.instance().getFile(S.trim());
+                if (dialogFile != null && dialogFile.exists()) {
+                    dialogJson = dialogFile.readString("UTF-8");
+                } else {
+                    System.err.println("LT1: dialog file missing: " + S);
+                    dialogJson = defaultJSON;
+                }
+            }
+            this.data = JSONStringLoader.parse(Array.class, DialogData.class, dialogJson, defaultJSON);
         } catch (Exception exception) {
             exception.printStackTrace();
         }
@@ -234,6 +245,9 @@ public class MapDialog {
         } else {
             fadeIn();
         }
+        if (forge.adventure.sound.Au1Sounds.enabled() && text != null && !text.isEmpty()) {
+            forge.adventure.sound.Au1Sounds.playDialogBlip();
+        }
         TypingLabel A = Controls.newTypingLabel(text);
         A.setWrap(true);
         Array<TextraButton> buttons = new Array<>();
@@ -327,6 +341,9 @@ public class MapDialog {
     }
 
     private void emitQuestAccepted(){
+        if (forge.adventure.sound.Au1Sounds.enabled()) {
+            forge.adventure.sound.Au1Sounds.playQuestAccept();
+        }
         if (questAcceptedList != null && questAcceptedList.size() > 0) {
             ChangeListener.ChangeEvent evt = new ChangeListener.ChangeEvent();
             for (ChangeListener listener : questAcceptedList) {

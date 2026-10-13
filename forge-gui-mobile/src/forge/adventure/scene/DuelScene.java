@@ -312,6 +312,15 @@ public class DuelScene extends ForgeScene {
             Forge.advFreezePlayerControls = false;
             Scene last = Forge.switchToLast();
             Current.player().getStatistic().setResult(enemyName, winner);
+            // SN1: every duel costs a flat 2 in-game hours; a win locks the free set-pick undo.
+            if (Config.ascendant()) {
+                try {
+                    Current.player().chargeSeasonDuelHours();
+                    if (winner)
+                        Current.player().lockSeasonPickUndo();
+                } catch (Throwable ignored) {
+                }
+            }
             // AC1: account-wide duel-win counter (not copied from the save; guests stay local).
             if (winner && Config.ascendant()) {
                 try {
@@ -627,6 +636,12 @@ public class DuelScene extends ForgeScene {
         guiMap.put(humanPlayer, MatchController.instance);
 
         hostedMatch = MatchController.hostMatch();
+        // DS4: Ascendant adventure duels enable snapshot take-back (tunable).
+        if (Config.ascendant()) {
+            final boolean takeBack = Config.instance().getConfigData() == null
+                    || Config.instance().getConfigData().duelTakeBackEnabled;
+            hostedMatch.setTakeBackEnabled(takeBack);
+        }
 
         GameRules rules;
 
@@ -649,6 +664,9 @@ public class DuelScene extends ForgeScene {
         if (Config.ascendant()) {
             System.setProperty("forge.llm.dir", ForgeConstants.USER_DIR);
             LlmOpponent.setActive(true);
+            ConfigData llmCfg = Config.instance().getConfigData();
+            LlmOpponent.applyAscendantTunables(llmCfg.llmMulliganMinHandSize,
+                    llmCfg.resolvedLlmDecisionBudgetSeconds());
         }
         hostedMatch.startMatch(rules, appliedVariants, players, guiMap, bossBattle ? MusicPlaylist.BOSS : MusicPlaylist.MATCH);
         MatchController.instance.setGameView(hostedMatch.getGameView());
@@ -895,6 +913,9 @@ public class DuelScene extends ForgeScene {
      */
     public void initDuels(PlayerSprite playerSprite, EnemySprite enemySprite, boolean isArena,
                           AdventureEventData eventData, boolean persistLife) {
+        // SV1: small dedicated hook so DS4 / MatchController merges stay easy.
+        // Arena rounds skip here — ArenaScene autosaves once before the entry fee.
+        maybeAutosaveBeforeDuel(isArena);
         this.player = playerSprite;
         this.enemy = enemySprite;
         this.isArena = isArena;
@@ -910,6 +931,18 @@ public class DuelScene extends ForgeScene {
         this.chaosBattle = this.enemy.getData().copyPlayerDeck && Current.player().isFantasyMode();
         this.AIExtras.clear();
         this.playerExtras.clear();
+    }
+
+    /**
+     * SV1: rotating autosave immediately before a duel is set up.
+     * Kept in its own method so take-back / match merges only touch a one-line call site.
+     * Arena rounds are skipped — see {@link ArenaScene#startArena()}.
+     */
+    private void maybeAutosaveBeforeDuel(boolean arenaRound) {
+        if (arenaRound) {
+            return;
+        }
+        forge.adventure.util.InteriorMapSave.maybeAutosaveBeforeDuel();
     }
 
     private String selectAI(String ai) { //Decide opponent AI.

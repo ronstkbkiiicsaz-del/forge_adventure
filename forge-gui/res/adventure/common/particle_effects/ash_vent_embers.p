@@ -10,8 +10,8 @@ max: 200
 - Emission - 
 lowMin: 0.0
 lowMax: 0.0
-highMin: 6
-highMax: 6
+highMin: 4
+highMax: 4
 relative: false
 scalingCount: 1
 scaling0: 1.0
@@ -20,8 +20,8 @@ timeline0: 0.0
 - Life - 
 lowMin: 0.0
 lowMax: 0.0
-highMin: 900.0
-highMax: 1500.0
+highMin: 450.0
+highMax: 700.0
 relative: false
 scalingCount: 1
 scaling0: 1.0
@@ -33,8 +33,8 @@ active: false
 independent: false
 - X Offset - 
 active: true
-lowMin: -15.0
-lowMax: 15.0
+lowMin: -5.0
+lowMax: 5.0
 highMin: 0.0
 highMax: 0.0
 relative: false
@@ -84,10 +84,10 @@ timeline2: 0.9931507
 active: false
 - Velocity - 
 active: true
-lowMin: 50.0
-lowMax: 50.0
-highMin: 69.0
-highMax: 159.0
+lowMin: 20.0
+lowMax: 20.0
+highMin: 25.0
+highMax: 45.0
 relative: false
 scalingCount: 2
 scaling0: 1.0

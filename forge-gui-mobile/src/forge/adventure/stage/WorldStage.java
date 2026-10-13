@@ -5,6 +5,7 @@ import com.badlogic.gdx.math.GridPoint2;
 import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.scenes.scene2d.Actor;
+import com.badlogic.gdx.utils.ObjectMap;
 import com.badlogic.gdx.utils.Timer;
 import com.badlogic.gdx.utils.viewport.Viewport;
 import forge.Forge;
@@ -46,6 +47,8 @@ import java.util.*;
  */
 public class WorldStage extends GameStage implements SaveFileContent {
     private static WorldStage instance = null;
+    /** GN1: trees grow everywhere; log materials live on the forest biome in materials.json. */
+    private static final String LOGS_FAMILY = "logs";
     protected EnemySprite currentMob;
     /**
      * EN2: how many times to roll {@link EnemySprite#getRewards()} on a win.
@@ -53,6 +56,13 @@ public class WorldStage extends GameStage implements SaveFileContent {
      * {@code 0} is valid. Cleared on win (consume) and on loss.
      */
     private final PendingLootRolls pendingLootRolls = new PendingLootRolls();
+    /**
+     * RW1 + EN2: enemy the local peer is credited with for loot (host → primary,
+     * guest → partner). Null means roll {@link #currentMob} as today.
+     */
+    private forge.adventure.data.EnemyData pendingLootCredit;
+    /** Played deck for {@link #pendingLootCredit} (partner seat), or null. */
+    private forge.deck.Deck pendingLootCreditDeck;
 
     /**
      * EN2 loot-roll bookkeeping used by {@link #setWinner}. Package-visible shape so
@@ -105,6 +115,8 @@ public class WorldStage extends GameStage implements SaveFileContent {
     private float channelElapsed;
     private float channelDuration;
     private float gatherFailNotifyCooldown;
+    /** AU1: seconds until the next footstep clip while walking. */
+    private float footstepCooldown;
 
     NavArrowActor navArrow;
     final Rectangle tempBoundingRect = new Rectangle();
@@ -164,13 +176,30 @@ public class WorldStage extends GameStage implements SaveFileContent {
             }
         }
 
-        // Package B2: outpost production uses active overworld play time.
-        Current.player().tickAdventurePlaySeconds(delta);
-
         boolean moving = player.isMoving();
         boolean channeling = channelNode != null;
+        // Package B2: outpost production uses overworld play time.
+        Current.player().tickAdventurePlaySeconds(delta);
+        // SN1: calendar advances only while exploring (moving) — idle does not count.
+        if (moving)
+            Current.player().tickSeasonExploring(delta);
         // Enemies keep chasing while the player channels so a touch can cancel gathering.
         boolean updateEnemies = moving || channeling;
+
+        if (moving && forge.adventure.sound.Au1Sounds.enabled()) {
+            footstepCooldown -= delta;
+            if (footstepCooldown <= 0f) {
+                float interval = 0.35f;
+                if (Config.instance().getConfigData() != null) {
+                    interval = Math.max(0.1f, Config.instance().getConfigData().au1FootstepInterval);
+                }
+                footstepCooldown = interval;
+                String terrain = GameScene.instance().getAdventurePlayerLocation(false, false);
+                forge.adventure.sound.Au1Sounds.playFootstep(terrain);
+            }
+        } else {
+            footstepCooldown = 0f;
+        }
 
         final CoopOverworldRuntime coop = CoopOverworldRuntime.get();
         final boolean guestMirror = coop.guestIsPureMirror();
@@ -258,7 +287,11 @@ public class WorldStage extends GameStage implements SaveFileContent {
                     player.setAnimation(CharacterSprite.AnimationTypes.Attack);
                     player.playEffect(Paths.EFFECT_SPARKS, 0.5f);
                     mob.setAnimation(CharacterSprite.AnimationTypes.Attack);
-                    SoundSystem.instance.play(SoundEffectType.Block, false);
+                    if (forge.adventure.sound.Au1Sounds.enabled()) {
+                        forge.adventure.sound.Au1Sounds.playEnemyNotice();
+                    } else {
+                        SoundSystem.instance.play(SoundEffectType.Block, false);
+                    }
                     HapticEngine.vibrate(FPref.UI_VIBRATE_ON_ENEMY_ENCOUNTER, mob.getData().boss ? 400 : 200);
                     Forge.advFreezePlayerControls = true;
                     player.clearCollisionHeight();
@@ -491,7 +524,10 @@ public class WorldStage extends GameStage implements SaveFileContent {
                     Forge.switchScene(duelScene);
                 }, ScreenUtil.getInstance().takeScreenshot(), true, false, false, false, "", Current.player().avatar(), mob.getAtlasPath(), Current.player().getName(), mob.getName()));
                 currentMob = mob;
-                WorldSave.getCurrentSave().autoSave();
+                // Ascendant SV1 autosaves from DuelScene.initDuels; stock keeps the overworld autosave.
+                if (!forge.adventure.util.InteriorMapSave.autosaveBeforeFightEnabled()) {
+                    WorldSave.getCurrentSave().autoSave();
+                }
             });
         });
     }
@@ -588,9 +624,44 @@ public class WorldStage extends GameStage implements SaveFileContent {
         return pendingLootRolls.consume();
     }
 
+    /**
+     * RW1 + EN2: set which enemy the local peer is credited with for the next
+     * loot rolls (host → primary, guest → partner). Pass null to use {@link #currentMob}.
+     */
+    public void setPendingLootCredit(final forge.adventure.data.EnemyData credit,
+            final forge.deck.Deck playedDeck) {
+        pendingLootCredit = credit;
+        pendingLootCreditDeck = playedDeck;
+    }
+
+    public forge.adventure.data.EnemyData getPendingLootCredit() {
+        return pendingLootCredit;
+    }
+
     /** CO3: pin the encounter enemy before a deferred co-op result path runs. */
     public void setCurrentMob(final EnemySprite mob) {
         currentMob = mob;
+    }
+
+    /**
+     * One loot roll for the local peer. When EN2/RW1 has a pending credit (host →
+     * primary deck, guest → wire partner/primary), roll against that enemy's reward
+     * table, colours, theme core and played deck — even when themes match the
+     * overworld mob. Otherwise use {@link EnemySprite#getRewards()} on the mob.
+     */
+    public static com.badlogic.gdx.utils.Array<Reward> rollLootForCredit(final EnemySprite mob,
+            final forge.adventure.data.EnemyData credit, final forge.deck.Deck creditDeck) {
+        if (credit != null && FightRewards.applies(credit)) {
+            final java.util.List<forge.item.PaperCard> deckCards =
+                    FightRewards.deckCardsForRewards(creditDeck);
+            // Wire / host credit decks are known — empty means no signature (no full-core).
+            final boolean allowFullCore = creditDeck == null;
+            final com.badlogic.gdx.utils.Array<Reward> one =
+                    FightRewards.generate(credit, null, deckCards, true, allowFullCore);
+            forge.adventure.data.EnemyMaterialDropData.appendDrops(credit, one);
+            return one;
+        }
+        return mob != null ? mob.getRewards() : new com.badlogic.gdx.utils.Array<>();
     }
 
     private void removeEnemy(EnemySprite currentMob) {
@@ -626,9 +697,14 @@ public class WorldStage extends GameStage implements SaveFileContent {
                     float deathDuration = currentMob.getActionAnimationDuration(CharacterSprite.AnimationTypes.Death, 0.3f);
                     startPause(deathDuration, () -> {
                         final int rolls = consumePendingLootRolls();
+                        final forge.adventure.data.EnemyData credit = pendingLootCredit;
+                        final forge.deck.Deck creditDeck = pendingLootCreditDeck;
+                        pendingLootCredit = null;
+                        pendingLootCreditDeck = null;
                         final com.badlogic.gdx.utils.Array<Reward> loot = new com.badlogic.gdx.utils.Array<>();
                         for (int r = 0; r < rolls; r++) {
-                            final com.badlogic.gdx.utils.Array<Reward> one = currentMob.getRewards();
+                            final com.badlogic.gdx.utils.Array<Reward> one =
+                                    rollLootForCredit(currentMob, credit, creditDeck);
                             if (one != null) {
                                 loot.addAll(one);
                             }
@@ -645,6 +721,8 @@ public class WorldStage extends GameStage implements SaveFileContent {
         } else {
             // EN2: clear any pending loot rolls on a loss too.
             pendingLootRolls.clearOnLoss();
+            pendingLootCredit = null;
+            pendingLootCreditDeck = null;
             currentMob.clearCollisionHeight();
             player.setAnimation(CharacterSprite.AnimationTypes.Hit);
             currentMob.setAnimation(CharacterSprite.AnimationTypes.Attack);
@@ -811,13 +889,18 @@ public class WorldStage extends GameStage implements SaveFileContent {
     }
 
     /**
-     * Chooses a gather line for biomes that host more than one (forest: logs|plants,
-     * mountain: ore veins|ash vents), then a tier weighted toward the player's skill level.
+     * Chooses a gather family for the biome (GN1 shares in Ascendant, the legacy split otherwise),
+     * borrows that family's materials from its home biome, then picks a tier weighted toward the
+     * player's skill level.
      */
     private MaterialData pickNodeMaterial(String materialBiome) {
-        String familyFilter = pickBiomeFamily(materialBiome);
-        // Log materials are defined on the forest biome; other biomes borrow them.
-        String familyBiome = "logs".equals(familyFilter) ? "forest" : materialBiome;
+        Map<String, String> homes = MaterialListData.gatherFamilyHomeBiomes();
+        String familyFilter = pickBiomeFamily(materialBiome, homes);
+        // Families are defined on one biome in materials.json (logs on forest, ash on mountain, ...);
+        // other biomes borrow them from there.
+        String familyBiome = familyFilter != null && homes.containsKey(familyFilter)
+                ? homes.get(familyFilter)
+                : (LOGS_FAMILY.equals(familyFilter) ? "forest" : materialBiome);
         com.badlogic.gdx.utils.Array<MaterialData> candidates = familyFilter != null
                 ? MaterialListData.getGatherablesForBiomeFamily(familyBiome, familyFilter)
                 : MaterialListData.getGatherablesForBiome(materialBiome);
@@ -854,8 +937,34 @@ public class WorldStage extends GameStage implements SaveFileContent {
         return candidates.get(candidates.size - 1);
     }
 
-    /** Family split for dual-line biomes; null = use every gatherable in the biome. */
-    private String pickBiomeFamily(String materialBiome) {
+    private String pickBiomeFamily(String materialBiome, Map<String, String> familyHomes) {
+        ConfigData cfg = gatherConfig();
+        return chooseGatherFamily(materialBiome, cfg, Config.ascendant(), familyHomes, rand);
+    }
+
+    /**
+     * Gather family for one node spawn; null = use every gatherable in the biome.
+     *
+     * <p>GN1 (Ascendant with {@code gn1GatherVariety}): the biome's primary family
+     * {@code gn1PrimaryShare} of the time, logs {@code gn1LogsShare}, and otherwise a weighted mix of
+     * every other gatherable family ({@code gn1SecondaryWeights}, unlisted = {@code gn1OtherFamilyWeight}).
+     * Otherwise the legacy split: forest logs|plants, 30% logs elsewhere, mountain ore|ash.
+     *
+     * @param familyHomes gatherable family → home biome ({@link MaterialListData#gatherFamilyHomeBiomes()})
+     */
+    public static String chooseGatherFamily(String materialBiome, ConfigData cfg, boolean ascendant,
+            Map<String, String> familyHomes, Random rand) {
+        if (ascendant && cfg != null && cfg.ascendantRules && cfg.gn1GatherVariety
+                && materialBiome != null && familyHomes != null && !familyHomes.isEmpty()) {
+            String picked = chooseGn1Family(materialBiome.toLowerCase(), cfg, familyHomes, rand);
+            if (picked != null)
+                return picked;
+        }
+        return legacyBiomeFamily(materialBiome, rand);
+    }
+
+    /** Pre-GN1 family split (stock worlds and Ascendant with GN1 off). */
+    private static String legacyBiomeFamily(String materialBiome, Random rand) {
         if ("forest".equalsIgnoreCase(materialBiome))
             return rand.nextBoolean() ? "logs" : "plants";
         // Trees grow everywhere (each biome has its own look, world/node_variants.json).
@@ -863,6 +972,88 @@ public class WorldStage extends GameStage implements SaveFileContent {
             return "logs";
         if ("mountain".equalsIgnoreCase(materialBiome))
             return rand.nextBoolean() ? "ore" : "ash";
+        return null;
+    }
+
+    private static String chooseGn1Family(String biome, ConfigData cfg, Map<String, String> familyHomes,
+            Random rand) {
+        String primary = gn1PrimaryFamily(biome, cfg, familyHomes);
+        if (primary == null)
+            return null;
+        boolean hasLogs = familyHomes.containsKey(LOGS_FAMILY) && !LOGS_FAMILY.equals(primary);
+        float primaryShare = Math.max(0f, cfg.gn1PrimaryShare);
+        float logsShare = hasLogs ? Math.max(0f, cfg.gn1LogsShare) : 0f;
+        float secondaryShare = Math.max(0f, cfg.gn1SecondaryShare);
+        float total = primaryShare + logsShare + secondaryShare;
+        if (total <= 0f)
+            return primary;
+        float roll = rand.nextFloat() * total;
+        if (roll < primaryShare)
+            return primary;
+        if (roll < primaryShare + logsShare)
+            return LOGS_FAMILY;
+
+        ObjectMap<String, Float> listed = cfg.gn1SecondaryWeights != null
+                ? findIgnoreCase(cfg.gn1SecondaryWeights, biome) : null;
+        float other = Math.max(0f, cfg.gn1OtherFamilyWeight);
+        List<String> pool = new ArrayList<>();
+        List<Float> weights = new ArrayList<>();
+        float sum = 0f;
+        for (String family : familyHomes.keySet()) {
+            if (family.equals(primary) || LOGS_FAMILY.equals(family))
+                continue;
+            float w = other;
+            if (listed != null) {
+                Object v = findIgnoreCase(listed, family);
+                if (v instanceof Number)
+                    w = Math.max(0f, ((Number) v).floatValue());
+            }
+            if (w <= 0f)
+                continue;
+            pool.add(family);
+            weights.add(w);
+            sum += w;
+        }
+        if (sum <= 0f)
+            return primary;
+        float pick = rand.nextFloat() * sum;
+        float acc = 0f;
+        for (int i = 0; i < pool.size(); i++) {
+            acc += weights.get(i);
+            if (pick < acc)
+                return pool.get(i);
+        }
+        return pool.get(pool.size() - 1);
+    }
+
+    /** Configured primary when it exists in the data, else the first non-log family defined on the biome. */
+    static String gn1PrimaryFamily(String biome, ConfigData cfg, Map<String, String> familyHomes) {
+        if (cfg.gn1PrimaryFamily != null) {
+            String configured = findIgnoreCase(cfg.gn1PrimaryFamily, biome);
+            if (configured != null && familyHomes.containsKey(configured.toLowerCase()))
+                return configured.toLowerCase();
+        }
+        String fallback = null;
+        for (Map.Entry<String, String> e : familyHomes.entrySet()) {
+            if (!biome.equalsIgnoreCase(e.getValue()))
+                continue;
+            if (!LOGS_FAMILY.equals(e.getKey()))
+                return e.getKey();
+            fallback = e.getKey();
+        }
+        return fallback;
+    }
+
+    private static <V> V findIgnoreCase(ObjectMap<String, V> map, String key) {
+        if (map == null || key == null)
+            return null;
+        V direct = map.get(key);
+        if (direct != null)
+            return direct;
+        for (ObjectMap.Entry<String, V> e : new ObjectMap.Entries<>(map)) {
+            if (e.key != null && e.key.equalsIgnoreCase(key))
+                return e.value;
+        }
         return null;
     }
 
@@ -1007,6 +1198,9 @@ public class WorldStage extends GameStage implements SaveFileContent {
 
     private static void playGatherFinishSound(MaterialData mat) {
         SoundSystem.instance.play(gatherSoundSet(mat)[2], false);
+        if (forge.adventure.sound.Au1Sounds.enabled()) {
+            forge.adventure.sound.Au1Sounds.playNodeDepleted();
+        }
     }
 
     /** Floating "+2 Oak" text that rises from a gathered node and fades out. */
@@ -1272,6 +1466,9 @@ public class WorldStage extends GameStage implements SaveFileContent {
                     .append(" → ").append(dust).append(" dust");
         } else {
             ap.addMaterial(grantMat.id, amount);
+            if (forge.adventure.sound.Au1Sounds.enabled() && primary) {
+                forge.adventure.sound.Au1Sounds.playItemPickup();
+            }
             msg.append("Gathered ").append(amount).append("× ").append(grantMat.getDisplayName());
             // Floating text: the main material plus any extra nodes of the same material.
             if (primary) {
@@ -1713,15 +1910,14 @@ public class WorldStage extends GameStage implements SaveFileContent {
 
     private void drawNavigationArrow() {
         Vector2 navDirection = null;
-        for (AdventureQuestData adq : Current.player().getQuests()) {
-            if (adq.isTracked) {
-                PointOfInterest nearestValidPOI = adq.getClosestValidPOI(player.getCenter());
-                if (nearestValidPOI != null) {
-                    navDirectionVec.set(nearestValidPOI.getCenter()).sub(player.getCenter());
-                    navDirection = navDirectionVec;
-                    break;
-                }
-
+        AdventureQuestData adq = AdventureQuestController.getTrackedQuest();
+        if (adq != null) {
+            forge.adventure.util.QuestNavigationTarget nav =
+                    adq.resolveNavigationTarget(player.getCenter());
+            if (nav != null && nav.hasPoi()) {
+                navDirectionVec.set(nav.poi.getCenter()).sub(player.getCenter());
+                navDirection = navDirectionVec;
+            } else if (nav == null || !nav.noKnownLocation) {
                 if (adq.getTargetEnemySprite() == null
                         && adq.getActiveStages().size() > 0
                         && adq.qualifiesForDetachedQuest(adq.getActiveStages().get(0))) {
@@ -1743,8 +1939,8 @@ public class WorldStage extends GameStage implements SaveFileContent {
                         }
                     }
                 }
-                break;
             }
+            // noKnownLocation: leave navDirection null so the arrow stays hidden
         }
         if (navDirection != null) {
             navArrow.navTargetAngle = navDirection.angleDeg();

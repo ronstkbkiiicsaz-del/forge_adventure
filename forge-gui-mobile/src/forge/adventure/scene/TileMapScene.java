@@ -4,6 +4,7 @@ import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.maps.tiled.TiledMap;
 import forge.Forge;
+import forge.adventure.player.AdventurePlayer;
 import forge.adventure.pointofintrest.PointOfInterest;
 import forge.adventure.pointofintrest.PointOfInterestChanges;
 import forge.adventure.stage.MapStage;
@@ -110,6 +111,9 @@ public class TileMapScene extends HudScene {
     @Override
     public void enter() {
         super.enter();
+        if (forge.adventure.sound.Au1Sounds.enabled()) {
+            forge.adventure.sound.Au1Sounds.playDoorOpen();
+        }
         if (isAutoHealLocation()) {
             // auto heal
             if (Current.player().fullHeal())
@@ -159,10 +163,42 @@ public class TileMapScene extends HudScene {
         oldMap = point.getData().map;
         map = new TemplateTmxMapLoader().load(Config.instance().getCommonFilePath(point.getData().map));
         ((MapStage) stage).setPointOfInterest(getPointOfInterestChanges());
+        AdventurePlayer.ensureMarketColorLean(getPointOfInterestChanges(), point);
         stage.getPlayerSprite().setPosition(0, 0);
         WorldSave.getCurrentSave().getWorld().setSeed(point.getSeedOffset());
         getTiledMapRenderer().loadMap(map, "", oldMap, 0);
         stage.getPlayerSprite().stop();
+    }
+
+    /**
+     * SV1: enter a POI/map the normal {@link MapStage#loadMap} way using the saved
+     * entrance for the fallback spawn, then the caller places the saved position.
+     */
+    public void loadForRestore(PointOfInterest point, String mapPath, int entranceId) {
+        AdventureQuestController.instance().mostRecentPOI = point;
+        rootPoint = point;
+        String rootMap = point.getData().map;
+        String target = (mapPath != null && !mapPath.isEmpty()) ? mapPath : rootMap;
+        oldMap = rootMap;
+        stage.getPlayerSprite().setPosition(0, 0);
+        WorldSave.getCurrentSave().getWorld().setSeed(point.getSeedOffset());
+        if (target.equals(rootMap)) {
+            map = new TemplateTmxMapLoader().load(Config.instance().getCommonFilePath(rootMap));
+            ((MapStage) stage).setPointOfInterest(getPointOfInterestChanges());
+            getTiledMapRenderer().loadMap(map, "", rootMap, entranceId);
+            oldMap = rootMap;
+        } else {
+            map = new TemplateTmxMapLoader().load(Config.instance().getFilePath(target));
+            ((MapStage) stage).setPointOfInterest(getPointOfInterestChanges(target));
+            getTiledMapRenderer().loadMap(map, rootMap, target, entranceId);
+            oldMap = target;
+        }
+        stage.getPlayerSprite().stop();
+    }
+
+    /** Current TMX path for the loaded interior (root or nested). */
+    public String getCurrentMapPath() {
+        return oldMap != null ? oldMap : "";
     }
 
     public PointOfInterest rootPoint;

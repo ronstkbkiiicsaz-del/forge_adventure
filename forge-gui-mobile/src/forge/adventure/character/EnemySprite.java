@@ -22,8 +22,10 @@ import forge.adventure.data.RewardData;
 import forge.adventure.player.AdventurePlayer;
 import forge.adventure.util.Config;
 import forge.adventure.util.Current;
+import forge.adventure.util.FightRewards;
 import forge.adventure.util.MapDialog;
 import forge.adventure.util.Reward;
+import forge.adventure.util.SourcePrintings;
 import forge.adventure.util.pathfinding.MovementBehavior;
 import forge.adventure.util.pathfinding.NavigationVertex;
 import forge.adventure.util.pathfinding.ProgressableGraphPath;
@@ -525,19 +527,19 @@ public class EnemySprite extends CharacterSprite implements Steerable<Vector2> {
                 }
                 // random uncommons from deck
                 if (!uncommonCards.isEmpty()) {
-                    rewardCollectionPool.add(new Reward(Aggregates.random(uncommonCards)));
-                    rewardCollectionPool.add(new Reward(Aggregates.random(uncommonCards)));
+                    addCs0CardReward(rewardCollectionPool, Aggregates.random(uncommonCards));
+                    addCs0CardReward(rewardCollectionPool, Aggregates.random(uncommonCards));
                 }
                 // random commons from deck
                 if (!commonCards.isEmpty()) {
-                    rewardCollectionPool.add(new Reward(Aggregates.random(commonCards)));
-                    rewardCollectionPool.add(new Reward(Aggregates.random(commonCards)));
-                    rewardCollectionPool.add(new Reward(Aggregates.random(commonCards)));
+                    addCs0CardReward(rewardCollectionPool, Aggregates.random(commonCards));
+                    addCs0CardReward(rewardCollectionPool, Aggregates.random(commonCards));
+                    addCs0CardReward(rewardCollectionPool, Aggregates.random(commonCards));
                 }
                 // random rare from deck
                 if (!rareCards.isEmpty()) {
-                    rewardCollectionPool.add(new Reward(Aggregates.random(rareCards)));
-                    rewardCollectionPool.add(new Reward(Aggregates.random(rareCards)));
+                    addCs0CardReward(rewardCollectionPool, Aggregates.random(rareCards));
+                    addCs0CardReward(rewardCollectionPool, Aggregates.random(rareCards));
                 }
 
                 int val = ((MyRandom.getRandom().nextInt(2) + 1) * 100) + (MyRandom.getRandom().nextInt(101));
@@ -548,18 +550,34 @@ public class EnemySprite extends CharacterSprite implements Steerable<Vector2> {
             }
         }
 
-        if (data.rewards != null) { // Collect standard rewards.
-            Deck enemyDeck = Current.latestDeck();
-            CardPool deckNoRestrictedEditions = enemyDeck.getMain().getFilteredPool(PaperCardPredicates.onlyPrintedInEditions(Config.instance().getConfigData().restrictedEditions).negate());
-            CardPool deckNoBasicLands = deckNoRestrictedEditions.getFilteredPool(PaperCardPredicates.fromRules(CardRulesPredicates.NOT_BASIC_LAND));
+        Deck enemyDeck = Current.latestDeck();
+        List<PaperCard> deckFlatForRewards = null;
+        if (enemyDeck != null && enemyDeck.getMain() != null) {
+            CardPool deckNoRestrictedEditions = enemyDeck.getMain().getFilteredPool(
+                    PaperCardPredicates.onlyPrintedInEditions(
+                            Config.instance().getConfigData().restrictedEditions).negate());
+            CardPool deckNoBasicLands = deckNoRestrictedEditions.getFilteredPool(
+                    PaperCardPredicates.fromRules(CardRulesPredicates.NOT_BASIC_LAND));
+            deckFlatForRewards = deckNoBasicLands.toFlatList();
+        }
 
+        // RW1: Ascendant regular fights — signature from theme core (themed only) + remaining cards from
+        // the current set. Gym / League / boss / quest fights stay on the stock path.
+        if (FightRewards.appliesToFight(data, questStageID != null)) {
+            rewardCollectionPool.addAll(FightRewards.generate(data, this.rewards, deckFlatForRewards, true));
+            forge.adventure.data.EnemyMaterialDropData.appendDrops(data, rewardCollectionPool);
+            return rewardCollectionPool;
+        }
+
+        if (data.rewards != null) { // Collect standard rewards.
             for (RewardData rdata : data.rewards) {
-                rewardCollectionPool.addAll(rdata.generate(false, enemyDeck == null ? null : deckNoBasicLands.toFlatList(), true));
+                rewardCollectionPool.addAll(rdata.generate(false, deckFlatForRewards, true));
             }
         }
         if (this.rewards != null) { // Collect additional rewards.
             for (RewardData rdata : this.rewards) {
-                rewardCollectionPool.addAll(rdata.generate(false, (Current.latestDeck() != null ? Current.latestDeck().getMain().toFlatList() : null), true));
+                rewardCollectionPool.addAll(rdata.generate(false,
+                        (Current.latestDeck() != null ? Current.latestDeck().getMain().toFlatList() : null), true));
             }
         }
         // Ascendant: color-keyed material drops (bosses always drop their unique material). Table in JSON.
@@ -707,6 +725,31 @@ public class EnemySprite extends CharacterSprite implements Steerable<Vector2> {
 
     public boolean isFrozen() {
         return _freeze;
+    }
+
+    /**
+     * Fantasy-mode loot: CS0 rematch, then add only when non-null so a disallowed
+     * allow-list rematch cannot inject {@code Reward(null)}.
+     * Public for tests.
+     */
+    public static void addCs0CardReward(Array<Reward> pool, PaperCard card) {
+        if (pool == null) {
+            return;
+        }
+        PaperCard loot = cs0LootPrinting(card);
+        if (loot != null) {
+            pool.add(new Reward(loot));
+        }
+    }
+
+    /** CS0: fantasy-mode loot uses a normal / rotation printing when Ascendant. */
+    private static PaperCard cs0LootPrinting(PaperCard card) {
+        if (card == null) {
+            return null;
+        }
+        return SourcePrintings.enabled()
+                ? SourcePrintings.resolve(card, (String[]) null)
+                : card;
     }
 }
 

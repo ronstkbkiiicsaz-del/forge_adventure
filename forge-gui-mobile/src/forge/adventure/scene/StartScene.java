@@ -16,6 +16,7 @@ import forge.adventure.coop.CoopSession;
 import forge.adventure.stage.GameHUD;
 import forge.adventure.stage.GameStage;
 import forge.adventure.stage.MapStage;
+import forge.adventure.util.AdventureTitles;
 import forge.adventure.util.Config;
 import forge.adventure.util.Controls;
 import forge.adventure.world.WorldSave;
@@ -46,7 +47,9 @@ public class StartScene extends UIScene {
     Dialog exitDialog, backupDialog, zipDialog, unzipDialog, joinDialog, hostingDialog;
     TextraButton saveButton, resumeButton, continueButton, hostButton, joinButton;
     TextField joinAddressField, joinCodeField;
-    TypingLabel version = Controls.newTypingLabel("{GRADIENT}[%80]v." + Forge.getDeviceAdapter().getVersionString() + "{ENDGRADIENT}");
+    TypingLabel version = Controls.newTypingLabel("{GRADIENT}[%80]"
+            + (Config.ascendant() ? AdventureTitles.GAME_TITLE + " " : "")
+            + "v." + Forge.getDeviceAdapter().getVersionString() + "{ENDGRADIENT}");
 
 
     public StartScene() {
@@ -96,13 +99,22 @@ public class StartScene extends UIScene {
     }
 
     public boolean Save() {
-        if (TileMapScene.instance().currentMap().isInMap()) {
-            Dialog noSave = createGenericDialog("", Forge.getLocalizer().getMessage("lblGameNotSaved"), Forge.getLocalizer().getMessage("lblOK"),null, null, null);
-            showDialog(noSave);
-        } else {
-            SaveLoadScene.instance().setMode(SaveLoadScene.Modes.Save);
-            Forge.switchScene(SaveLoadScene.instance());
+        // Ascendant SV1: remove lblGameNotSaved — save anywhere outside dialogs/shops/duels.
+        if (!forge.adventure.util.InteriorMapSave.allowsManualSave()) {
+            if (!forge.adventure.util.InteriorMapSave.saveAnywhereEnabled()) {
+                Dialog noSave = createGenericDialog("", Forge.getLocalizer().getMessage("lblGameNotSaved"), Forge.getLocalizer().getMessage("lblOK"),null, null, null);
+                showDialog(noSave);
+            } else {
+                Dialog noSave = createGenericDialog("", Forge.getLocalizer().getMessageorUseDefault(
+                        "lblCannotSaveDuringDialog",
+                        "Cannot save while a dialog is open."),
+                        Forge.getLocalizer().getMessage("lblOK"), null, null, null);
+                showDialog(noSave);
+            }
+            return true;
         }
+        SaveLoadScene.instance().setMode(SaveLoadScene.Modes.Save);
+        Forge.switchScene(SaveLoadScene.instance());
         return true;
     }
 
@@ -135,7 +147,7 @@ public class StartScene extends UIScene {
                     loaded = false;
                     if (WorldSave.load(WorldSave.filenameToSlot(lastActiveSave))) {
                         SoundSystem.instance.changeBackgroundTrack();
-                        Forge.switchScene(GameScene.instance());
+                        forge.adventure.util.InteriorMapSave.switchToSceneAfterLoad();
                     } else {
                         Forge.clearTransitionScreen();
                     }
@@ -190,7 +202,7 @@ public class StartScene extends UIScene {
 
     private void showHostingDialog() {
         final StringBuilder msg = new StringBuilder();
-        msg.append("HOSTING Ascendant co-op\n\n");
+        msg.append("HOSTING ").append(AdventureTitles.GAME_TITLE).append(" co-op\n\n");
         msg.append("Session code: ").append(CoopSession.get().getSessionCode()).append("\n");
         msg.append("(guest must enter this ").append(CoopPorts.SESSION_CODE_LENGTH)
                 .append("-character code)\n\n");
@@ -577,12 +589,14 @@ public class StartScene extends UIScene {
     @Override
     public void enter() {
         boolean hasSaveButton = WorldSave.getCurrentSave().getWorld().getData() != null;
-        if (hasSaveButton) {
+        final boolean sv1 = forge.adventure.util.InteriorMapSave.saveAnywhereEnabled();
+        if (hasSaveButton && !sv1) {
             TileMapScene scene = TileMapScene.instance();
             hasSaveButton = !scene.currentMap().isInMap() || scene.isAutoHealLocation();
         }
         saveButton.setVisible(hasSaveButton);
-        saveButton.setDisabled(TileMapScene.instance().currentMap().isInMap());
+        // Ascendant SV1: enable Save inside maps; stock keeps it disabled in-map.
+        saveButton.setDisabled(!sv1 && TileMapScene.instance().currentMap().isInMap());
         updateResumeContinue();
 
         final boolean showCoop = Config.ascendant();
