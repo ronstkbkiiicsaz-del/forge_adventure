@@ -207,35 +207,59 @@ public final class AscendantGame extends ApplicationAdapter {
         try {
             OrthogonalTiledMapRenderer renderer = townMaps.rendererFor(site);
             TiledMap map = townMaps.mapFor(site);
-            renderer.getBatch().setProjectionMatrix(camera.combined);
-            // Default flipY=true: cellY 0 = TMX bottom = world south = site.y.
-            // Stamp height site.h excludes top backdrop rows (those sit at cellY >= site.h).
-            renderer.getBatch().begin();
+            // Default flipY=true: map local (0,0) is TMX south-west = stamp site.y / site.x.
+            // Shift the camera so the stock renderer places the map on the site footprint.
+            float ox = site.x * tile;
+            float oy = site.y * tile;
+            float savedX = camera.position.x;
+            float savedY = camera.position.y;
+            camera.position.set(savedX - ox, savedY - oy, 0f);
+            camera.update();
+            renderer.setView(camera);
+
+            // Havenbrook: skipRowsTop backdrop lives at the high cell rows after flipY — hide those.
+            java.util.ArrayList<TiledMapTileLayer> tileLayers = new java.util.ArrayList<>();
+            java.util.ArrayList<TiledMapTileLayer.Cell[][]> cleared = null;
             for (com.badlogic.gdx.maps.MapLayer layer : map.getLayers()) {
-                if (!(layer instanceof TiledMapTileLayer tileLayer) || !layer.isVisible()) {
-                    continue;
+                if (layer instanceof TiledMapTileLayer tileLayer) {
+                    tileLayers.add(tileLayer);
                 }
-                int maxY = Math.min(site.h, tileLayer.getHeight());
-                for (int cellY = 0; cellY < maxY; cellY++) {
-                    int worldY = site.y + cellY;
-                    for (int x = 0; x < tileLayer.getWidth() && x < site.w; x++) {
-                        TiledMapTileLayer.Cell cell = tileLayer.getCell(x, cellY);
-                        if (cell == null || cell.getTile() == null) {
-                            continue;
+            }
+            if (site.skipRowsTop > 0) {
+                cleared = new java.util.ArrayList<>();
+                for (TiledMapTileLayer tileLayer : tileLayers) {
+                    int mapH = tileLayer.getHeight();
+                    TiledMapTileLayer.Cell[][] saved = new TiledMapTileLayer.Cell[site.skipRowsTop][];
+                    for (int i = 0; i < site.skipRowsTop; i++) {
+                        int cellY = mapH - 1 - i;
+                        saved[i] = new TiledMapTileLayer.Cell[tileLayer.getWidth()];
+                        for (int x = 0; x < tileLayer.getWidth(); x++) {
+                            saved[i][x] = tileLayer.getCell(x, cellY);
+                            tileLayer.setCell(x, cellY, null);
                         }
-                        var region = cell.getTile().getTextureRegion();
-                        float rw = region.getRegionWidth();
-                        float rh = region.getRegionHeight();
-                        float dx = (site.x + x) * tile;
-                        float dy = worldY * tile;
-                        if (rh > tile) {
-                            dy -= (rh - tile);
+                    }
+                    cleared.add(saved);
+                }
+            }
+
+            renderer.render();
+
+            if (cleared != null) {
+                for (int li = 0; li < tileLayers.size(); li++) {
+                    TiledMapTileLayer tileLayer = tileLayers.get(li);
+                    TiledMapTileLayer.Cell[][] saved = cleared.get(li);
+                    int mapH = tileLayer.getHeight();
+                    for (int i = 0; i < saved.length; i++) {
+                        int cellY = mapH - 1 - i;
+                        for (int x = 0; x < tileLayer.getWidth(); x++) {
+                            tileLayer.setCell(x, cellY, saved[i][x]);
                         }
-                        renderer.getBatch().draw(region, dx, dy, rw, rh);
                     }
                 }
             }
-            renderer.getBatch().end();
+
+            camera.position.set(savedX, savedY, 0f);
+            camera.update();
         } catch (Exception e) {
             System.err.println("TownMaps: Failed to draw " + site.name + ": " + e);
             e.printStackTrace(System.err);
