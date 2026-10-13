@@ -41,6 +41,24 @@ We stop renovating Forge Adventure. We build **our own game** on top of Forge's 
 - The world generator we're designing now (WG1 surface, WG2 layers) **is** the PlaneGenerator. Its Python
   prototype (`A:\GameAssets\worldgen\`) is the reference: same algorithms, same knob names, same numbers.
 
+### Hand-tailored set planes (Steve, 2026-10-13)
+- Each set plane is **designed with Steve**, not just generated: a tuned PlaneProfile plus **hand-authored set
+  pieces** (its towns, signature landmarks, story locations, music, palette) that really fit the set. The generator
+  fills the wilderness between them and guarantees reachability; the hand-made pieces are placed into it. More work
+  per plane, worth it: planes are the story.
+- The home plane follows the same rule: generated wilderness, hand-made key places (Havenbrook first).
+
+### Towns and interiors (Stardew model)
+- Towns are **seamless** (part of the plane, walked into on the road), but **building interiors are instanced**: a
+  door loads a small interior map (inn, shop, smithy, homes), like Stardew Valley. Otherwise towns are only scenery.
+- Interiors are hand-made per building type and reused with variations; key buildings get unique interiors.
+
+### Islands
+- **Docks only where people are:** every docked island has a settlement (village or town) that justifies the dock,
+  with a reason to go there (shops, quests, unique materials, a landmark). More towns on the islands.
+- **Wild islands** (uninhabited) have no dock; you reach them later by your own boat, glider, flier or swimming mount,
+  and they hold rarer finds for doing so.
+
 ### Layers
 - Each plane has a **surface** layer, an **underground** layer aligned 1:1 with the surface (more depths later), and
   a **sky** layer aligned above it (see roadmap WG2). Layers share coordinates; a tile is `(plane, layer, x, y)`.
