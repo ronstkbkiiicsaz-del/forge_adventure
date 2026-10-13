@@ -515,12 +515,13 @@ public class SeasonsSn1Test {
     }
 
     @Test
-    public void innRestRecordsDayRestedSoNextNightIsAllowed() {
+    public void innRestIsOncePerDayAndCannotBeChainedAfterWaking() {
         ConfigData freeRest = new Json().fromJson(ConfigData.class,
                 new FileHandle(resolveForgeGuiDir()
                         .resolve("res/adventure/Shandalar Ascendant/config.json").toFile()));
         freeRest.sn1RestGoldCost = 0; // exercise once-per-day without a live gold wallet
         Config.installConfigDataForTest(freeRest);
+        float secondsPerDay = Math.max(0.01f, freeRest.sn1ExploreMinutesPerDay) * 60f;
 
         StandardWindow window = new StandardWindow();
         window.init(List.of("M11", "ZEN"));
@@ -530,12 +531,25 @@ public class SeasonsSn1Test {
         int dayBefore = season.calendarDayNumber();
         Assert.assertTrue(season.canRestToday());
         Assert.assertTrue(season.restUntilMorning(window, new CardPool()));
-        Assert.assertTrue(season.calendarDayNumber() > dayBefore, "Rest advances to next morning");
-        // lastRestDay must be the night rested (dayBefore), not the morning after —
-        // otherwise the whole next calendar day blocks Rest.
-        Assert.assertTrue(season.canRestToday(),
-                "next morning must allow Rest again (rest the next night)");
+        Assert.assertEquals(season.calendarDayNumber(), dayBefore + 1, "Rest advances to next morning");
+
+        // Woke on day N+1: no second rest straight away (that chained paid rests before).
+        Assert.assertFalse(season.canRestToday(), "cannot rest again on the morning you woke up");
+        Assert.assertFalse(season.restUntilMorning(window, new CardPool()), "chained rest must be refused");
+        Assert.assertEquals(season.calendarDayNumber(), dayBefore + 1, "refused rest does not advance time");
+
+        // Half a day of exploring is still the same day.
+        season.tickExploring(secondsPerDay * 0.5f, window, new CardPool());
+        Assert.assertEquals(season.calendarDayNumber(), dayBefore + 1);
+        Assert.assertFalse(season.canRestToday(), "still the day you woke up");
+
+        // After living through that full day (now day N+2), one rest is allowed again.
+        season.tickExploring(secondsPerDay * 0.5f + 1f, window, new CardPool());
+        Assert.assertEquals(season.calendarDayNumber(), dayBefore + 2);
+        Assert.assertTrue(season.canRestToday(), "a full day after waking, Rest opens again");
         Assert.assertTrue(season.restUntilMorning(window, new CardPool()));
+        Assert.assertEquals(season.calendarDayNumber(), dayBefore + 3);
+        Assert.assertFalse(season.canRestToday(), "and the rule repeats");
     }
 
     @Test

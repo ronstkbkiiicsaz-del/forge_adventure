@@ -46,7 +46,17 @@ public final class AscendantCardEconomy {
     private static int spikesForSeason = -1;
     private static AdventureSeason boundSeason;
     private static final AdventureSeason.SeasonChangeListener SEASON_LISTENER =
-            AscendantCardEconomy::onSeasonChanged;
+            new AdventureSeason.SeasonChangeListener() {
+                @Override
+                public void onSeasonChanged(AdventureSeason season) {
+                    AscendantCardEconomy.onSeasonChanged(season);
+                }
+
+                @Override
+                public void onSeasonPickUndone(AdventureSeason season, int undoneSeasonIndex) {
+                    AscendantCardEconomy.onSeasonPickUndone(undoneSeasonIndex);
+                }
+            };
 
     private AscendantCardEconomy() {
     }
@@ -214,6 +224,17 @@ public final class AscendantCardEconomy {
         noteRotationsFromWindowDiff(seasonIndex);
         rollSeasonSpikes(seasonIndex);
         showSpikeRumourNotification();
+    }
+
+    /**
+     * SN1 undid a pick: the undone set left the window and the set it pushed out is back.
+     * Drop rotation stamps from the undone season (they never really happened) and retake the
+     * window snapshot, so the undone set is not "rotated" at the next season change.
+     */
+    private static void onSeasonPickUndone(int undoneSeasonIndex) {
+        rotatedAtSeason.values().removeIf(at -> at != null && at == undoneSeasonIndex);
+        lastWindowSets.clear();
+        snapshotWindowSets();
     }
 
     private static void snapshotWindowSets() {

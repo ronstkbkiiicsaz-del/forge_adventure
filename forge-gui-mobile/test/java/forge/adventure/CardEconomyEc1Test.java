@@ -667,6 +667,43 @@ public class CardEconomyEc1Test {
     }
 
     @Test
+    public void undonePickIsNeverMarkedRotatedAtTheNextSeasonChange() {
+        AdventurePlayer player = Current.player();
+        player.getStandardWindow().init(List.of("M10", "M11", "ZEN", "ROE"));
+        player.getSeason().initNewGame(player.getStandardWindow());
+        AscendantCardEconomy.bindSeasonCalendar(player.getSeason());
+
+        player.getSeason().endByMastery(player.getStandardWindow(), new forge.deck.CardPool());
+        List<String> shortlist = new java.util.ArrayList<>(player.getSeason().getShortlist());
+        Assert.assertTrue(shortlist.size() >= 2, "need two shortlist sets, got " + shortlist);
+        String undone = shortlist.get(0);
+        String rotated = player.getSeason().applyPick(player.getStandardWindow(), undone, false);
+        Assert.assertNotNull(rotated, "a full window must rotate a set out");
+        int pickSeason = player.getSeason().getSeasonIndex();
+        Assert.assertEquals(AscendantCardEconomy.rotatedAtSeasonSnapshotForTest().get(rotated.toUpperCase()),
+                Integer.valueOf(pickSeason));
+
+        // Undo: the picked set leaves, the rotated set comes back, and its stamp goes with the undo.
+        Assert.assertEquals(player.getSeason().undoPick(player.getStandardWindow()), undone);
+        Assert.assertFalse(player.getStandardWindow().getSets().contains(undone));
+        Assert.assertTrue(player.getStandardWindow().getSets().contains(rotated));
+        Assert.assertNull(AscendantCardEconomy.rotatedAtSeasonSnapshotForTest().get(rotated.toUpperCase()),
+                "undo drops the rotation stamp of the season it reverted");
+
+        // Pick a different set at the same season change: the undone set was only in the window
+        // during the undone pick, so it must not be recorded as rotated now.
+        String other = shortlist.get(1);
+        String rotatedAgain = player.getSeason().applyPick(player.getStandardWindow(), other, false);
+        Map<String, Integer> after = AscendantCardEconomy.rotatedAtSeasonSnapshotForTest();
+        Assert.assertNull(after.get(undone.toUpperCase()),
+                "undone pick " + undone + " must not be marked rotated; stamps: " + after);
+        Assert.assertNotNull(rotatedAgain);
+        Assert.assertEquals(after.get(rotatedAgain.toUpperCase()),
+                Integer.valueOf(player.getSeason().getSeasonIndex()),
+                "the set that really rotated out is stamped at the new season");
+    }
+
+    @Test
     public void badlandsAppreciatesAfterRealSeasonChangesWithoutTestHook() {
         AdventurePlayer player = Current.player();
         player.getStandardWindow().init(List.of("M10", "M11", "ZEN"));

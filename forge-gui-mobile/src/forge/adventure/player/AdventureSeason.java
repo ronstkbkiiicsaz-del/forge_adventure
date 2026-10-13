@@ -42,6 +42,14 @@ public final class AdventureSeason {
     @FunctionalInterface
     public interface SeasonChangeListener {
         void onSeasonChanged(AdventureSeason season);
+
+        /**
+         * Fired after {@link #undoPick} reverted a pick. {@code undoneSeasonIndex} is the season
+         * index the undone pick had started (its rotation stamps are no longer real); the window
+         * already holds the restored sets.
+         */
+        default void onSeasonPickUndone(AdventureSeason season, int undoneSeasonIndex) {
+        }
     }
 
     private double gameDays;
@@ -205,6 +213,15 @@ public final class AdventureSeason {
 
     public void removeSeasonChangeListener(SeasonChangeListener listener) {
         seasonChangeListeners.remove(listener);
+    }
+
+    private void fireSeasonPickUndone(int undoneSeasonIndex) {
+        for (SeasonChangeListener l : seasonChangeListeners) {
+            try {
+                l.onSeasonPickUndone(this, undoneSeasonIndex);
+            } catch (Exception ignored) {
+            }
+        }
     }
 
     private void fireSeasonChanged() {
@@ -373,11 +390,15 @@ public final class AdventureSeason {
         return c == null ? 25 : Math.max(0, c.sn1RestGoldCost);
     }
 
-    /** True when Rest is available today (not already used this calendar day). */
+    /**
+     * True when Rest is available today. Resting on the night of day N wakes you on day N+1;
+     * that day must be lived through, so the next Rest opens on day N+2 (one paid rest per
+     * in-game day, never chained straight after waking).
+     */
     public boolean canRestToday() {
         if (!isEnabled() || !initialized)
             return false;
-        return lastRestDay != calendarDayNumber();
+        return lastRestDay < 0 || calendarDayNumber() >= lastRestDay + 2;
     }
 
     /**
@@ -389,7 +410,9 @@ public final class AdventureSeason {
         if (!isEnabled() || !initialized)
             return false;
         if (!canRestToday()) {
-            lastPickError = "Already rested today.";
+            lastPickError = calendarDayNumber() == lastRestDay + 1
+                    ? "You just rested. Rest again tomorrow."
+                    : "Already rested today.";
             notifyPlayer(lastPickError);
             return false;
         }
@@ -836,6 +859,8 @@ public final class AdventureSeason {
         if (!undoAvailable || window == null || undoSets.isEmpty())
             return null;
         String removed = undoPicked;
+        // The pick started season seasonsCompleted; undo returns to undoSeasonsCompleted.
+        final int undoneSeasonIndex = seasonsCompleted;
 
         // Revert window sets.
         window.restoreSets(undoSets);
@@ -906,6 +931,7 @@ public final class AdventureSeason {
         undoPinnedSet = null;
         undoSeasonsSincePin = 99;
         notifyPlayer("Set choice undone" + (removed == null ? "." : ": " + StandardWindow.setName(removed) + "."));
+        fireSeasonPickUndone(undoneSeasonIndex);
         return removed;
     }
 
