@@ -40,9 +40,28 @@ Known limits:
 
 To move it into the game, follow the steps in its `README.txt`.
 
+### Island port town (blue) — APPROVED by Steve 2026-10-13 ("lovely"), with the fix pass
+
+`tools/towns/port/`: `port_town.tmx` (70x50), previews, generator (`generator/go.sh`), README.
+
+- A harbour town climbing three curved terraces from a cobbled quay, joined by stepped alleys.
+- Three piers; the T-head ferry pier is the travel station (`kind=dock`). Rowboats and a fishing smack.
+- Inn with a boardwalk terrace, store, harbourmaster, fishmonger and fish-market boardwalk, warehouse.
+- Boatyard with a hull on slipway rails; lighthouse on a rocky point; chapel of the sea at the top.
+- 22 cottages in staggered clusters; a well square with the notice board.
+- 30 doors, 1 station, 1 quest board, 16 NPC spots, 3 exits (inland road and two coast paths).
+
+Known limits:
+- Long stepped alleys repeat one tile.
+- The quay's front edge is straight.
+- Houses face south.
+- Boats and animals are static.
+- The lighthouse, chapel, boats and hull are newly drawn.
+
+Small "couple of houses and a dock" islands reuse its pieces.
+
 ## Next templates (proposed order)
 
-1. Port town (blue): docks, boats, fish market, lighthouse; the dock is the travel station.
-2. Swamp town (black): stilt houses, boardwalks, skiff landing, graveyard.
-3. Mining town (red): terraced on a slope, mine entrance, caravan station, forge.
-4. Forest treehouse town (green): built in and around big trees, elf-guide station.
+1. Swamp town (black): stilt houses, boardwalks, skiff landing, graveyard.
+2. Mining town (red): terraced on a slope, mine entrance, caravan station, forge.
+3. Forest treehouse town (green): built in and around big trees, elf-guide station.
