@@ -25,7 +25,10 @@ import forge.game.phase.PhaseType;
 import forge.game.player.Player;
 import forge.game.player.PlayerView;
 import forge.game.player.RegisteredPlayer;
+import forge.game.spellability.SpellAbility;
 import forge.game.zone.ZoneType;
+import forge.gamemodes.match.input.InputAttack;
+import forge.gamemodes.match.input.InputBlock;
 import forge.gamemodes.match.HostedMatch;
 import forge.gui.GuiBase;
 import forge.gui.interfaces.IGuiGame;
@@ -36,8 +39,14 @@ import forge.localinstance.properties.ForgePreferences.FPref;
 import forge.model.FModel;
 import forge.player.GamePlayerUtil;
 import forge.player.LobbyPlayerHuman;
+import forge.screens.match.views.VCardDisplayArea;
 import forge.screens.match.views.VPlayerPanel;
 import forge.screens.match.views.VZoneDisplay;
+import forge.toolbox.FChoiceList;
+import forge.toolbox.FDisplayObject;
+import forge.toolbox.FOptionPane;
+import forge.toolbox.FOverlay;
+import forge.toolbox.ListChooser;
 import forge.util.collect.FCollectionView;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -63,7 +72,14 @@ import java.util.concurrent.atomic.AtomicReference;
  */
 public class ArenaDuelScriptedDuelTest {
 
-    @Test(groups = "gl", timeOut = 300_000)
+    /**
+     * Every step asserts real game state, never a flag set by the test itself:
+     * lands tapped and opponent life after Lightning Bolt resolves (target picked by avatar tap),
+     * Blaze's X on the stack and the matching damage, Cryptic Command's chosen modes on the stack
+     * and their effects, an attacker declared by tapping its battlefield card panel, and a blocker
+     * declared by tapping card panels when the AI attacks on its own turn.
+     */
+    @Test(groups = "gl", timeOut = 420_000)
     public void scriptedDuelCoversMulliganTargetAttackAndCosts() throws Exception {
         AdventureGlTestSupport.ensureReady();
         resetPriorMatch();
@@ -80,13 +96,6 @@ public class ArenaDuelScriptedDuelTest {
         Assert.assertTrue(MatchController.getView() instanceof ArenaDuelScreen);
 
         final AtomicBoolean sawMulliganOrKeep = new AtomicBoolean();
-        final AtomicBoolean sawCancelChrome = new AtomicBoolean();
-        final AtomicBoolean targetedViaAvatar = new AtomicBoolean();
-        final AtomicBoolean declaredAttacker = new AtomicBoolean();
-        final AtomicBoolean declaredBlocker = new AtomicBoolean();
-        final AtomicBoolean paidMana = new AtomicBoolean();
-        final AtomicBoolean castXSpell = new AtomicBoolean();
-        final AtomicBoolean choseMode = new AtomicBoolean();
         final AtomicBoolean probedPadBUnarmed = new AtomicBoolean();
 
         AdventureGlTestSupport.runOnGl(() -> {
@@ -119,149 +128,100 @@ public class ArenaDuelScriptedDuelTest {
                             "pad B must not call Cancel when the prompt Cancel is unarmed (mulligan window)");
                     probedPadBUnarmed.set(true);
                 }
-                if (MatchController.instance.getGameController() != null) {
-                    try {
-                        MatchController.instance.getGameController().selectButtonOk();
-                    } catch (final RuntimeException ignored) {
-                        // ignore
-                    }
-                }
+                pressOk();
             });
             Thread.sleep(50);
         }
         Assert.assertTrue(sawMulliganOrKeep.get(), "expected Keep/Mulligan prompt");
 
-        // Advance to a ready board / main phase, then seed hand + clear sickness.
-        final long boardDeadline = System.currentTimeMillis() + 45_000L;
-        while (System.currentTimeMillis() < boardDeadline && !boardReady(match)) {
-            GuiBase.getInterface().invokeInEdtNow(() -> {
-                if (MatchController.instance.getGameController() != null) {
-                    try {
-                        MatchController.instance.getGameController().selectButtonOk();
-                    } catch (final RuntimeException ignored) {
-                        // ignore
-                    }
-                }
-            });
-            Thread.sleep(50);
-        }
-        Assert.assertTrue(boardReady(match), "seeded battlefield must appear");
+        final Game game = match.getGame();
+        Assert.assertNotNull(game);
+        final Player human = localHumanPlayer(game);
+        final Player ai = opponentOf(game, human);
+        Assert.assertNotNull(human);
+        Assert.assertNotNull(ai);
 
+        // Seed the hand (setup only), then wait for the human's own main phase with priority.
         GuiBase.getInterface().invokeInEdtNow(() -> prepareScriptedBoard(match));
         Thread.sleep(150);
+        advanceUntil(match, () -> humanMainWithPriority(match, human), 60_000L,
+                "human main phase with priority");
 
-        // --- Cast Lightning Bolt; target via avatar tap; Cancel chrome must appear ---
-        final long castDeadline = System.currentTimeMillis() + 60_000L;
-        boolean castStarted = false;
-        while (System.currentTimeMillis() < castDeadline
-                && !(targetedViaAvatar.get() && sawCancelChrome.get())) {
-            final PlayerView human = localHuman(match);
-            final PhaseType phase = match.getGameView() == null ? null : match.getGameView().getPhase();
-            final boolean humanMain = human != null && match.getGameView() != null
-                    && human.equals(match.getGameView().getPlayerTurn())
-                    && (phase == PhaseType.MAIN1 || phase == PhaseType.MAIN2);
+        // --- Lightning Bolt: target by avatar tap; Cancel chrome armed; pay; resolve ---
+        final int aiLifeBeforeBolt = ai.getLife();
+        final int tappedMountainsBeforeBolt = countTapped(human, "Mountain");
+        final AtomicBoolean sawCancelChrome = new AtomicBoolean();
+        final StackSpy boltSpy = castAndResolve(match, human, "Lightning Bolt", new String[0], sawCancelChrome);
+        Assert.assertTrue(sawCancelChrome.get(), "Cancel chrome must appear from the real targeting prompt");
+        Assert.assertTrue(boltSpy.targetedViaAvatar, "player target chosen by avatar.tap, not gc.selectPlayer");
+        Assert.assertEquals(ai.getLife(), aiLifeBeforeBolt - 3, "Lightning Bolt resolved for 3 at the opponent");
+        Assert.assertEquals(countTapped(human, "Mountain"), tappedMountainsBeforeBolt + 1,
+                "exactly one Mountain tapped to pay {R}");
+        Assert.assertTrue(inZone(human, "Lightning Bolt", ZoneType.Graveyard), "Bolt resolved to the graveyard");
 
-            GuiBase.getInterface().invokeInEdtNow(() -> {
-                final ArenaDuelScreen arena = (ArenaDuelScreen) MatchController.getView();
-                if (arena == null) {
-                    return;
-                }
-                // Real Cancel chrome from the live prompt — never force Cancel visible.
-                if (ArenaDuelUi.isCancelPromptArmed(arena.getActivePrompt())
-                        || MatchController.instance.isSelecting()) {
-                    arena.revalidate(); // apply Cancel visibility from the armed prompt
-                    if (arena.arenaCancelControl() != null && arena.arenaCancelControl().isVisible()) {
-                        sawCancelChrome.set(true);
-                    } else if (ArenaDuelUi.isCancelPromptArmed(arena.getActivePrompt())) {
-                        // Chrome may lag one layout; armed Cancel still counts as real prompt.
-                        sawCancelChrome.set(true);
-                    }
-                }
-                if (!targetedViaAvatar.get() && (sawCancelChrome.get()
-                        || MatchController.instance.isSelecting())) {
-                    final VPlayerPanel top = arena.getTopPlayerPanel();
-                    if (top != null && top.getAvatar() != null && top.getAvatar().isVisible()) {
-                        top.getAvatar().tap(2f, 2f, 1);
-                        targetedViaAvatar.set(true);
-                        paidMana.set(true); // Mountains on board auto-pay Lightning Bolt
-                    }
-                }
-            });
+        // --- Blaze, X = 2 chosen in the X dialog through its list UI ---
+        final int aiLifeBeforeBlaze = ai.getLife();
+        final int tappedLandsBeforeBlaze = countTappedLands(human);
+        final StackSpy blazeSpy = castAndResolve(match, human, "Blaze", new String[]{"2"}, null);
+        Assert.assertEquals(blazeSpy.xPaid, Integer.valueOf(2), "Blaze on the stack carried X = 2");
+        Assert.assertEquals(ai.getLife(), aiLifeBeforeBlaze - 2, "Blaze resolved for X = 2 at the opponent");
+        Assert.assertEquals(countTappedLands(human) - tappedLandsBeforeBlaze, 3,
+                "X = 2 plus {R}: three lands tapped for Blaze");
 
-            if (!castStarted && humanMain && !MatchController.instance.isSelecting()) {
-                castStarted = tryBeginCastBolt(match);
-            }
-            Thread.sleep(80);
-            if (!castStarted && !MatchController.instance.isSelecting()) {
-                GuiBase.getInterface().invokeInEdtNow(() -> {
-                    if (MatchController.instance.getGameController() != null) {
-                        try {
-                            MatchController.instance.getGameController().selectButtonOk();
-                        } catch (final RuntimeException ignored) {
-                            // ignore
-                        }
-                    }
-                });
-            }
+        // --- Cryptic Command: modes "tap all opponents' creatures" + "draw a card" ---
+        final int handBeforeCryptic = human.getCardsIn(ZoneType.Hand).size();
+        final int tappedLandsBeforeCryptic = countTappedLands(human);
+        final StackSpy crypticSpy = castAndResolve(match, human, "Cryptic Command",
+                new String[]{"Tap all creatures", "Draw a card"}, null);
+        Assert.assertEquals(crypticSpy.modes.size(), 2, "two modes on the stack: " + crypticSpy.modes);
+        Assert.assertTrue(crypticSpy.modes.stream().anyMatch(m -> m.toLowerCase().contains("tap all")),
+                "tap-all mode chosen: " + crypticSpy.modes);
+        Assert.assertTrue(crypticSpy.modes.stream().anyMatch(m -> m.toLowerCase().contains("draw")),
+                "draw mode chosen: " + crypticSpy.modes);
+        // Cryptic leaves the hand (-1) and its draw mode draws one (+1).
+        Assert.assertEquals(human.getCardsIn(ZoneType.Hand).size(), handBeforeCryptic,
+                "Cryptic left the hand and its draw mode drew one card");
+        Assert.assertEquals(countTappedLands(human) - tappedLandsBeforeCryptic, 4,
+                "four lands tapped for {1}{U}{U}{U}");
+        for (final Card c : ai.getCreaturesInPlay()) {
+            Assert.assertTrue(c.isTapped(), "Cryptic tapped opponent creature " + c);
         }
-        Assert.assertTrue(sawCancelChrome.get(),
-                "Cancel chrome must appear from a real targeting prompt");
-        Assert.assertTrue(targetedViaAvatar.get(),
-                "player targeting must go through avatar.tap, not gc.selectPlayer");
-        Assert.assertTrue(paidMana.get(), "Lightning Bolt mana payment expected");
 
-        // --- Combat: declare attacker; pad B no-op when Cancel unarmed; then block ---
-        final long combatDeadline = System.currentTimeMillis() + 90_000L;
-        boolean forcedBlockWindow = false;
-        while (System.currentTimeMillis() < combatDeadline
-                && !(declaredAttacker.get() && declaredBlocker.get())) {
-            final PlayerView human = localHuman(match);
-            final PhaseType phase = match.getGameView() == null ? null : match.getGameView().getPhase();
-            GuiBase.getInterface().invokeInEdtNow(() -> {
-                if (MatchController.instance.getGameController() == null || human == null
-                        || match.getGameView() == null) {
-                    return;
-                }
-                final ArenaDuelScreen arena = (ArenaDuelScreen) MatchController.getView();
-                if (arena != null && phase == PhaseType.COMBAT_DECLARE_ATTACKERS
-                        && !ArenaDuelUi.isCancelPromptArmed(arena.getActivePrompt())) {
-                    Assert.assertFalse(ModernDuelController.get().handlePadKey(
-                                    Input.Keys.BUTTON_B, arena, null, null),
-                            "pad B must no-op when Cancel is disabled in attack declaration");
-                }
-                if (!declaredAttacker.get() && phase == PhaseType.COMBAT_DECLARE_ATTACKERS
-                        && human.equals(match.getGameView().getPlayerTurn())) {
-                    if (tryDeclareAttackerUi(match, human)) {
-                        declaredAttacker.set(true);
-                    }
-                }
-                if (!declaredBlocker.get() && (phase == PhaseType.COMBAT_DECLARE_BLOCKERS
-                        || (match.getGameView().getCombat() != null
-                        && match.getGameView().getCombat().getAttackers().iterator().hasNext()))) {
-                    if (tryDeclareBlockerUi(match, human)) {
-                        declaredBlocker.set(true);
-                    }
-                }
-                try {
-                    MatchController.instance.getGameController().selectButtonOk();
-                } catch (final RuntimeException ignored) {
-                    // ignore
-                }
-            });
-            if (declaredAttacker.get() && !declaredBlocker.get() && !forcedBlockWindow) {
-                GuiBase.getInterface().invokeInEdtNow(() -> forceBlockWindow(match));
-                forcedBlockWindow = true;
-                Thread.sleep(120);
-            }
-            Thread.sleep(80);
-        }
-        Assert.assertTrue(declaredAttacker.get(), "expected a declared attacker");
-        Assert.assertTrue(declaredBlocker.get(), "expected a declared blocker");
+        // --- Attack: tap the Grizzly Bears battlefield panel in the attack prompt ---
+        advanceUntil(match, () -> currentInput(match) instanceof InputAttack, 60_000L, "attack prompt");
+        final ArenaDuelScreen arenaAtk = (ArenaDuelScreen) MatchController.getView();
+        Assert.assertTrue(arenaAtk != null && !ArenaDuelUi.isCancelPromptArmed(arenaAtk.getActivePrompt())
+                        && !runOnGlBool(() -> ModernDuelController.get().handlePadKey(
+                                Input.Keys.BUTTON_B, arenaAtk, null, null)),
+                "pad B must no-op when Cancel is disabled in attack declaration");
+        final Card attacker = firstCreature(human, "Grizzly Bears", c -> !c.isTapped() && !c.hasSickness());
+        Assert.assertNotNull(attacker, "an untapped Grizzly Bears that can attack");
+        tapPanel(attacker);
+        waitFor(() -> game.getCombat() != null && game.getCombat().isAttacking(attacker), 5_000L);
+        Assert.assertTrue(game.getCombat() != null && game.getCombat().isAttacking(attacker),
+                "tapping the Bears panel declared it as an attacker");
+        GuiBase.getInterface().invokeInEdtNow(ArenaDuelScriptedDuelTest::pressOk);
+        waitFor(() -> game.getPhaseHandler().getPhase() != PhaseType.COMBAT_DECLARE_ATTACKERS, 10_000L);
+        Assert.assertTrue(attacker.isTapped(), "the declared attacker tapped to attack");
+        Assert.assertTrue(game.getCombat() != null && game.getCombat().isAttacking(attacker),
+                "the Bears is still attacking after the declaration was confirmed");
 
-        // --- X spell (Blaze) and modal (Cryptic Command) ---
-        castXAndModes(match, castXSpell, choseMode);
-        Assert.assertTrue(castXSpell.get(), "expected Blaze (X) to be cast");
-        Assert.assertTrue(choseMode.get(), "expected a modal choice (Cryptic Command)");
+        // --- Block: on the AI's own turn. Setup only: low life makes the AI swing (no phase forcing). ---
+        human.setLife(4, null);
+        advanceUntil(match, () -> currentInput(match) instanceof InputBlock, 120_000L,
+                "block prompt on the AI's turn");
+        final Combat aiCombat = game.getCombat();
+        Assert.assertNotNull(aiCombat);
+        Assert.assertEquals(aiCombat.getAttackingPlayer(), ai, "the AI is the attacking player");
+        final Card blocker = firstCreature(human, null, c -> !c.isTapped());
+        Assert.assertNotNull(blocker, "an untapped creature to block with");
+        final Card aiAttacker = aiCombat.getAttackers().get(0);
+        tapPanel(blocker);
+        Thread.sleep(150);
+        tapPanel(aiAttacker);
+        waitFor(() -> aiCombat.isBlocking(blocker), 5_000L);
+        Assert.assertTrue(aiCombat.isBlocking(blocker), "tapping blocker then attacker panels declared the block");
+        Assert.assertTrue(aiCombat.getBlockers(aiAttacker).contains(blocker), "blocking the chosen attacker");
 
         concedeAndReset();
     }
@@ -403,146 +363,287 @@ public class ArenaDuelScriptedDuelTest {
         return game.getPlayers().isEmpty() ? null : game.getPlayers().get(0);
     }
 
-    private static void castXAndModes(final HostedMatch match,
-            final AtomicBoolean castXSpell, final AtomicBoolean choseMode) throws InterruptedException {
-        final long deadline = System.currentTimeMillis() + 60_000L;
-        boolean blazeTried = false;
-        boolean crypticTried = false;
-        while (System.currentTimeMillis() < deadline
-                && !(castXSpell.get() && choseMode.get())) {
-            final PlayerView human = localHuman(match);
-            final PhaseType phase = match.getGameView() == null ? null : match.getGameView().getPhase();
-            if (human != null && match.getGameView() != null
-                    && human.equals(match.getGameView().getPlayerTurn())
-                    && (phase == PhaseType.MAIN1 || phase == PhaseType.MAIN2)) {
-                if (!blazeTried) {
-                    blazeTried = tryCastNamed(match, "Blaze", castXSpell);
-                }
-                if (!crypticTried && castXSpell.get()) {
-                    crypticTried = tryCastNamed(match, "Cryptic Command", choseMode);
-                }
+    /** What the test saw on the stack while its spell was there (real game state). */
+    private static final class StackSpy {
+        Integer xPaid;
+        final List<String> modes = new ArrayList<>();
+        boolean targetedViaAvatar;
+    }
+
+    /**
+     * Cast {@code name} from hand and drive its prompts until it resolves: list dialogs (X, modes)
+     * are answered through the dialog's own list keys and OK, a player target through the
+     * opponent avatar tap, payment and priority through OK. Records X and modes from the stack.
+     */
+    private static StackSpy castAndResolve(final HostedMatch match, final Player human, final String name,
+            final String[] dialogPicks, final AtomicBoolean sawCancelChrome) throws InterruptedException {
+        final Game game = match.getGame();
+        final StackSpy spy = new StackSpy();
+        final Card spell = firstInZone(human, name, ZoneType.Hand);
+        Assert.assertNotNull(spell, name + " must be in hand");
+        int dialogIndex = 0;
+        boolean castStarted = false;
+        final long deadline = System.currentTimeMillis() + 90_000L;
+        while (System.currentTimeMillis() < deadline) {
+            observeStack(game, name, spy);
+            if (castStarted && game.getStack().isEmpty() && inZone(human, name, ZoneType.Graveyard)) {
+                return spy;
             }
-            GuiBase.getInterface().invokeInEdtNow(() -> {
-                if (MatchController.instance.getGameController() != null) {
-                    try {
-                        MatchController.instance.getGameController().selectButtonOk();
-                    } catch (final RuntimeException ignored) {
-                        // mode / X prompts
+            if (topListDialog() != null) {
+                final String pick = dialogIndex < dialogPicks.length ? dialogPicks[dialogIndex] : null;
+                dialogIndex++;
+                AdventureGlTestSupport.runOnGl(() -> answerListDialog(pick));
+                Thread.sleep(120);
+                continue;
+            }
+            if (!castStarted) {
+                if (humanMainWithPriority(match, human)) {
+                    final CardView view = spell.getView();
+                    GuiBase.getInterface().invokeInEdtNow(() ->
+                            MatchController.instance.getGameController().selectCard(view, null, null));
+                    castStarted = true;
+                    Thread.sleep(150);
+                    continue;
+                }
+                GuiBase.getInterface().invokeInEdtNow(ArenaDuelScriptedDuelTest::pressOk);
+                Thread.sleep(80);
+                continue;
+            }
+            final boolean targeting = MatchController.instance.isSelecting()
+                    || ArenaDuelUi.isCancelPromptArmed(((ArenaDuelScreen) MatchController.getView()).getActivePrompt());
+            if (targeting && !spy.targetedViaAvatar && game.getStack().isEmpty()
+                    && !(currentInput(match) instanceof forge.gamemodes.match.input.InputPayMana)) {
+                if (sawCancelChrome != null) {
+                    final ArenaDuelScreen arena = (ArenaDuelScreen) MatchController.getView();
+                    AdventureGlTestSupport.runOnGl(() -> {
+                        arena.revalidate(); // apply Cancel visibility from the armed prompt
+                        return null;
+                    });
+                    if (ArenaDuelUi.isCancelPromptArmed(arena.getActivePrompt())
+                            && arena.arenaCancelControl() != null && arena.arenaCancelControl().isVisible()) {
+                        sawCancelChrome.set(true);
                     }
                 }
-            });
-            Thread.sleep(80);
+                GuiBase.getInterface().invokeInEdtNow(() -> {
+                    final ArenaDuelScreen arena = (ArenaDuelScreen) MatchController.getView();
+                    final VPlayerPanel top = arena.getTopPlayerPanel();
+                    Assert.assertNotNull(top);
+                    Assert.assertTrue(top.getAvatar() != null && top.getAvatar().isVisible(), "opponent avatar visible");
+                    top.getAvatar().tap(2f, 2f, 1);
+                });
+                spy.targetedViaAvatar = true;
+                Thread.sleep(150);
+                continue;
+            }
+            // Payment (OK = auto-pay) or passing priority so the spell resolves.
+            GuiBase.getInterface().invokeInEdtNow(ArenaDuelScriptedDuelTest::pressOk);
+            Thread.sleep(100);
+        }
+        Assert.fail(name + " did not resolve; input=" + currentInput(match) + " overlay=" + FOverlay.getTopOverlay()
+                + " stack=" + game.getStack().size());
+        return spy;
+    }
+
+    private static void observeStack(final Game game, final String name, final StackSpy spy) {
+        try {
+            if (game.getStack().isEmpty()) {
+                return;
+            }
+            final SpellAbility top = game.getStack().peekAbility();
+            if (top == null || top.getHostCard() == null || !name.equals(top.getHostCard().getName())) {
+                return;
+            }
+            if (top.getXManaCostPaid() != null) {
+                spy.xPaid = top.getXManaCostPaid();
+            }
+            final List<String> modes = new ArrayList<>();
+            for (SpellAbility sub = top.getSubAbility(); sub != null; sub = sub.getSubAbility()) {
+                modes.add(sub.toUnsuppressedString());
+            }
+            if (!modes.isEmpty()) {
+                spy.modes.clear();
+                spy.modes.addAll(modes);
+            }
+        } catch (final RuntimeException ignored) {
+            // the game thread can move the stack between reads; next tick retries
         }
     }
 
-    private static boolean tryCastNamed(final HostedMatch match, final String name,
-            final AtomicBoolean flag) {
-        final PlayerView human = localHuman(match);
-        if (human == null || human.getHand() == null) {
-            return false;
+    /** Top overlay if it is a list-choice dialog (X announce, mode choice). */
+    private static FOptionPane topListDialog() {
+        final FOverlay top = FOverlay.getTopOverlay();
+        if (!(top instanceof FOptionPane pane) || !pane.isVisible()) {
+            return null;
         }
-        CardView spell = null;
-        for (final CardView c : human.getHand()) {
-            if (c != null && name.equals(c.getName())) {
-                spell = c;
-                break;
+        for (final FDisplayObject child : pane.getChildren()) {
+            if (child instanceof ListChooser) {
+                return pane;
             }
         }
-        if (spell == null) {
-            return false;
+        return null;
+    }
+
+    /**
+     * Answer the open list dialog through its own UI: move the selection with the dialog's
+     * down key to the row whose text matches {@code pick} (exact for numbers, else contains),
+     * then press OK. {@code null} keeps the default row.
+     */
+    private static void answerListDialog(final String pick) {
+        final FOptionPane pane = topListDialog();
+        if (pane == null) {
+            return;
         }
-        final CardView toCast = spell;
-        GuiBase.getInterface().invokeInEdtNow(() -> {
-            MatchController.instance.getGameController().selectCard(toCast, null, null);
+        for (final FDisplayObject child : pane.getChildren()) {
+            if (!(child instanceof ListChooser<?> chooser)) {
+                continue;
+            }
+            if (pick != null) {
+                FChoiceList<?> list = null;
+                for (final FDisplayObject inner : chooser.getChildren()) {
+                    if (inner instanceof FChoiceList<?> l) {
+                        list = l;
+                    }
+                }
+                Assert.assertNotNull(list, "dialog list");
+                int target = -1;
+                final List<String> rows = new ArrayList<>();
+                for (int i = 0; i < list.getCount(); i++) {
+                    final String row = String.valueOf(list.getItemAt(i));
+                    rows.add(row);
+                    if (target < 0 && (row.equals(pick) || (!pick.matches("\\d+")
+                            && row.toLowerCase().contains(pick.toLowerCase())))) {
+                        target = i;
+                    }
+                }
+                Assert.assertTrue(target >= 0, "no dialog row for '" + pick + "' in " + rows);
+                for (int i = list.getSelectedIndex(); i < target; i++) {
+                    chooser.keyDown(Input.Keys.DPAD_DOWN);
+                }
+                Assert.assertEquals(list.getSelectedIndex(), target, "selection moved to '" + pick + "'");
+            }
+        }
+        pane.setResult(0);
+    }
+
+    /** Tap a battlefield card's own panel in the centre, as a click/touch would. */
+    private static void tapPanel(final Card card) throws InterruptedException {
+        final CardView view = card.getView();
+        final boolean tapped = runOnGlBool(() -> {
+            final ArenaDuelScreen arena = (ArenaDuelScreen) MatchController.getView();
+            arena.revalidate();
+            final VCardDisplayArea.CardAreaPanel panel = VCardDisplayArea.CardAreaPanel.get(view);
+            return panel.getWidth() > 0 && panel.tap(panel.getWidth() / 2f, panel.getHeight() / 2f, 1);
+        });
+        Assert.assertTrue(tapped, "card panel for " + card + " must accept the tap");
+        // Modern single taps are deferred past the double-tap window.
+        Thread.sleep((long) (ModernDuelGestures.DOUBLE_TAP_WINDOW_SEC * 1000f) + 250L);
+    }
+
+    private static boolean runOnGlBool(final java.util.concurrent.Callable<Boolean> work) {
+        final Boolean b = AdventureGlTestSupport.runOnGl(work);
+        return b != null && b;
+    }
+
+    private static void advanceUntil(final HostedMatch match, final java.util.function.BooleanSupplier done,
+            final long ms, final String what) throws InterruptedException {
+        final long deadline = System.currentTimeMillis() + ms;
+        while (System.currentTimeMillis() < deadline && !done.getAsBoolean()) {
+            if (topListDialog() != null) {
+                AdventureGlTestSupport.runOnGl(() -> answerListDialog(null));
+            } else {
+                GuiBase.getInterface().invokeInEdtNow(ArenaDuelScriptedDuelTest::pressOk);
+            }
+            Thread.sleep(80);
+        }
+        Assert.assertTrue(done.getAsBoolean(), "timed out waiting for " + what + "; input=" + currentInput(match)
+                + " phase=" + match.getGame().getPhaseHandler().getPhase());
+    }
+
+    private static void waitFor(final java.util.function.BooleanSupplier done, final long ms)
+            throws InterruptedException {
+        final long deadline = System.currentTimeMillis() + ms;
+        while (System.currentTimeMillis() < deadline && !done.getAsBoolean()) {
+            Thread.sleep(50);
+        }
+    }
+
+    private static void pressOk() {
+        if (MatchController.instance.getGameController() != null) {
             try {
                 MatchController.instance.getGameController().selectButtonOk();
             } catch (final RuntimeException ignored) {
-                // ignore
+                // no OK right now
             }
-            final ArenaDuelScreen arena = (ArenaDuelScreen) MatchController.getView();
-            if (arena != null && arena.getTopPlayerPanel() != null
-                    && arena.getTopPlayerPanel().getAvatar() != null) {
-                arena.getTopPlayerPanel().getAvatar().tap(2f, 2f, 1);
-            }
-            flag.set(true);
-        });
-        return true;
+        }
     }
 
-    private static boolean tryBeginCastBolt(final HostedMatch match) {
-        final PlayerView human = localHuman(match);
-        if (human == null || human.getHand() == null) {
-            return false;
-        }
-        CardView bolt = null;
-        for (final CardView c : human.getHand()) {
-            if (c != null && "Lightning Bolt".equals(c.getName())) {
-                bolt = c;
-                break;
+    private static forge.gamemodes.match.input.Input currentInput(final HostedMatch match) {
+        for (final forge.player.PlayerControllerHuman hc : match.getHumanControllers()) {
+            if (hc != null && hc.getInputQueue() != null) {
+                return hc.getInputQueue().getInput();
             }
         }
-        if (bolt == null) {
-            return false;
-        }
-        final CardView toCast = bolt;
-        GuiBase.getInterface().invokeInEdtNow(() ->
-                MatchController.instance.getGameController().selectCard(toCast, null, null));
-        return true;
+        return null;
     }
 
-    private static boolean tryDeclareAttackerUi(final HostedMatch match, final PlayerView human) {
-        if (human.getBattlefield() == null) {
-            return false;
-        }
-        CardView attacker = null;
-        for (final CardView c : human.getBattlefield()) {
-            if (c != null && c.getCurrentState() != null && c.getCurrentState().isCreature()
-                    && !c.isTapped() && !c.hasSickness()) {
-                attacker = c;
-                break;
-            }
-        }
-        if (attacker == null) {
-            return false;
-        }
-        final CardView atk = attacker;
-        MatchController.instance.getGameController().selectCard(atk, null, null);
-        MatchController.instance.getGameController().selectButtonOk();
-        return true;
+    private static boolean humanMainWithPriority(final HostedMatch match, final Player human) {
+        final Game game = match.getGame();
+        final PhaseType phase = game.getPhaseHandler().getPhase();
+        return human.equals(game.getPhaseHandler().getPlayerTurn())
+                && (phase == PhaseType.MAIN1 || phase == PhaseType.MAIN2)
+                && game.getStack().isEmpty()
+                && currentInput(match) instanceof forge.gamemodes.match.input.InputPassPriority;
     }
 
-    private static boolean tryDeclareBlockerUi(final HostedMatch match, final PlayerView human) {
-        if (human.getBattlefield() == null || match.getGameView() == null
-                || match.getGameView().getCombat() == null) {
-            return false;
-        }
-        CardView blocker = null;
-        for (final CardView c : human.getBattlefield()) {
-            if (c != null && c.getCurrentState() != null && c.getCurrentState().isCreature()
-                    && !c.isTapped()) {
-                blocker = c;
-                break;
+    private static Player opponentOf(final Game game, final Player human) {
+        for (final Player p : game.getPlayers()) {
+            if (p != human) {
+                return p;
             }
         }
-        if (blocker == null) {
-            return false;
-        }
-        CardView attacker = null;
-        for (final CardView atk : match.getGameView().getCombat().getAttackers()) {
-            if (atk != null) {
-                attacker = atk;
-                break;
+        return null;
+    }
+
+    private static int countTapped(final Player p, final String name) {
+        int n = 0;
+        for (final Card c : p.getCardsIn(ZoneType.Battlefield)) {
+            if (name.equals(c.getName()) && c.isTapped()) {
+                n++;
             }
         }
-        if (attacker == null) {
-            return false;
+        return n;
+    }
+
+    private static int countTappedLands(final Player p) {
+        int n = 0;
+        for (final Card c : p.getCardsIn(ZoneType.Battlefield)) {
+            if (c.isLand() && c.isTapped()) {
+                n++;
+            }
         }
-        final CardView blk = blocker;
-        final CardView atk = attacker;
-        MatchController.instance.getGameController().selectCard(blk, null, null);
-        MatchController.instance.getGameController().selectCard(atk, null, null);
-        MatchController.instance.getGameController().selectButtonOk();
-        return true;
+        return n;
+    }
+
+    private static boolean inZone(final Player p, final String name, final ZoneType zone) {
+        return firstInZone(p, name, zone) != null;
+    }
+
+    private static Card firstInZone(final Player p, final String name, final ZoneType zone) {
+        for (final Card c : p.getCardsIn(zone)) {
+            if (name.equals(c.getName())) {
+                return c;
+            }
+        }
+        return null;
+    }
+
+    private static Card firstCreature(final Player p, final String name, final java.util.function.Predicate<Card> ok) {
+        for (final Card c : p.getCreaturesInPlay()) {
+            if ((name == null || name.equals(c.getName())) && ok.test(c)) {
+                return c;
+            }
+        }
+        return null;
     }
 
     private static void resetPriorMatch() throws InterruptedException {
@@ -570,47 +671,6 @@ public class ArenaDuelScriptedDuelTest {
         resetPriorMatch();
     }
 
-    /**
-     * Jump the live game to DECLARE_BLOCKERS with one AI attacker so the human UI
-     * gets a real block prompt (same pattern as BasicBlockTests).
-     */
-    private static void forceBlockWindow(final HostedMatch match) {
-        final Game game = match.getGame();
-        if (game == null) {
-            return;
-        }
-        final Player human = localHumanPlayer(game);
-        Player ai = null;
-        for (final Player p : game.getPlayers()) {
-            if (p.isAI()) {
-                ai = p;
-                break;
-            }
-        }
-        if (human == null || ai == null) {
-            return;
-        }
-        Card threat = null;
-        for (final Card c : ai.getCreaturesInPlay()) {
-            if (c != null && !c.isTapped()) {
-                c.setSickness(false);
-                threat = c;
-                break;
-            }
-        }
-        if (threat == null) {
-            return;
-        }
-        try {
-            game.getPhaseHandler().devModeSet(PhaseType.COMBAT_DECLARE_BLOCKERS, ai, false);
-            final Combat combat = new Combat(ai);
-            combat.addAttacker(threat, human);
-            game.getPhaseHandler().setCombat(combat);
-            game.getAction().checkStateEffects(true);
-        } catch (final RuntimeException ignored) {
-            // phase/combat may reject mid-turn
-        }
-    }
 
     private static void prepareArenaPrefs() {
         installDeviceAdapterStub();
