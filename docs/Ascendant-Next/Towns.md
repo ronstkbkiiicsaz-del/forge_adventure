@@ -60,8 +60,29 @@ Known limits:
 
 Small "couple of houses and a dock" islands reuse its pieces.
 
+### Swamp town (black) — APPROVED by Steve 2026-10-13 ("i like it"), with the fix pass
+
+`tools/towns/swamp/`: `swamp_town.tmx` (70x50), previews, generator (`generator/go.sh`), README.
+
+- A bayou town of stilt houses on zigzag boardwalks and a rope bridge, over murky water.
+- Centrepiece: a stilted fishing platform with a big counterweighted lift-net, eel traps, a winch and skiffs.
+- Skiff landing with a poleman's hut is the travel station (`kind=skiff`).
+- Inn on stilts, apothecary, trading post with a furnished plank square, smokehouse and eel racks.
+- Witch's hut on its own knoll.
+- Graveyard on the firm rise with a crypt (`interior=crypt`, a future dungeon entrance) and a bog chapel.
+- Old battlefield on the east mudflat: palisade, ruined wall, toppled catapult, banners, swords, bones, crows.
+- Moss-hung cypress trees, reeds, wisps, mist, and warm lanterns with light pools.
+- `wade` rects mark shallow channels (slow without a skiff).
+- 28 doors, 1 station, 1 quest board, 13 NPC spots, 3 exits (causeway, boardwalk, skiff channel).
+- The previews have a mood tint; the tiles don't.
+
+Known limits:
+- The lift-net is static.
+- One-tile stilts.
+- Wade patches are rectangles.
+- Houses face south.
+
 ## Next templates (proposed order)
 
-1. Swamp town (black): stilt houses, boardwalks, skiff landing, graveyard.
-2. Mining town (red): terraced on a slope, mine entrance, caravan station, forge.
-3. Forest treehouse town (green): built in and around big trees, elf-guide station.
+1. Mining town (red): terraced on a slope, mine entrance, caravan station, forge.
+2. Forest treehouse town (green): built in and around big trees, elf-guide station.
