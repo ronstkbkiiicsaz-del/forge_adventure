@@ -59,6 +59,27 @@ We stop renovating Forge Adventure. We build **our own game** on top of Forge's 
 - **Wild islands** (uninhabited) have no dock; you reach them later by your own boat, glider, flier or swimming mount,
   and they hold rarer finds for doing so.
 
+### Island mix (Steve, 2026-10-13)
+- **Most islands are wild:** dungeons, resources and monsters, no people.
+- **A few inhabited islands** have a real town (the port town template).
+- **A few small ones** have just a couple of houses and a dock.
+
+### Getting around: earn your way out from the centre (Steve, 2026-10-13)
+- You start in the **centre** (Havenbrook and the plains). Each outer biome has a **traversal unlock** that makes it
+  easy to cross. You *can* foray in before you have it; it's just slow and painful.
+  - **Plains:** a regular mount (faster travel on open ground).
+  - **Islands / sea:** a basic boat first, upgraded through play (speed, range, rough water, carrying capacity).
+  - **Swamp:** a skiff (bog and deep water become passable, faster than wading).
+  - **Mountains:** a cliff-climbing mount, e.g. a mountain goat (jump up cliff ledges instead of finding the
+    switchback paths).
+  - **Forest:** to be decided with Steve.
+- Without the unlock, the biome is crossable on foot but slow: wading in swamps, long detours around cliffs, and the
+  sea limited to dock-to-dock ferries.
+- Travel stations still connect towns you've reached. The unlocks are about the **wilderness between them**: dungeons,
+  resources and wild islands.
+- The unlocks are earned (quests, crafting, skill levels) and upgradable; they are the main progression gate besides
+  the cards themselves.
+
 ### Layers
 - Each plane has a **surface** layer, an **underground** layer aligned 1:1 with the surface (more depths later), and
   a **sky** layer aligned above it (see roadmap WG2). Layers share coordinates; a tile is `(plane, layer, x, y)`.
