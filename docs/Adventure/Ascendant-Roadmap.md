@@ -830,6 +830,41 @@ Steve: there should be no reason building a deck here is harder than on Moxfield
   pair, mechanic or single card; the builder drafts a list (owned first, then missing with how to get each), with an
   "only what I own" to "dream deck" slider and a reason on every suggestion. Check Forge's existing deck generation first.
 
+## World generation (Steve + Wren, 2026-10-13)
+
+### WG1. Open, Core Keeper-style surface (prototype in progress)
+Today's overworld places trees/rocks/mountains/water as solid wave-function-collapse blobs with no reachability check,
+so the world becomes a maze. WG1 replaces that with a generator that is **open by default** and **always navigable**.
+A Python prototype renders whole worlds and close-ups for Steve to judge (`A:\GameAssets\worldgen\`, knobs listed in
+its README); once approved it becomes the spec Reed ports to Java, with the prototype's numbers as tuning values.
+- Layout: Havenbrook at the centre in a calm colourless meadow; the five colour biomes as wedges around it (WUBRG),
+  each with an inner and a harder outer ring, then the coast. Irregular, noise-warped borders with soft transitions.
+- Obstacles as clusters with gaps (~20% of land blocked; forest densest, meadow sparsest); ridges only in mountains
+  and outer rings, always with passes.
+- Rivers from highlands to sea/lakes with bridges where roads cross and fords every ~40 tiles; no river may cut the
+  world apart. Roads link all towns (spanning tree plus extra loops).
+- Reachability pass: everything is reachable from spawn; unreachable POIs/areas get a carved path, clearing or bridge.
+- **Every tree is gatherable** with the right Woodcutting level and axe (logs, regrows over in-game days); rocks the
+  same with Mining. Forests are a resource, not just walls.
+- Art: Ninja Adventure tiles (same as Havenbrook), grass tinted per biome. The same generator, with per-set
+  settings, builds every set plane.
+
+### WG2. Layers: underground and sky (design; after WG1)
+- **Underground is 1:1 with the surface**, aligned tile for tile: every surface spot has the ground beneath it.
+  Mostly solid; you open it up yourself.
+- **Getting down:** place a **ladder** item on the surface and interact with it to descend into a small open pocket.
+  Not freeform digging down from anywhere.
+- **Digging** (Mining skill) clears tiles and yields stone and ores; what you find depends on the biome above
+  (and deeper levels, if added, hold rarer ores and more danger).
+- **Hard stops exist but aren't everywhere:** you can't dig under deep ocean, under rivers (water floods in), or
+  through veins of very hard **bedrock** (maybe diggable much later with a top-tier pick). Otherwise you can tunnel
+  between places: underground shortcuts between your bases and towns.
+- **Build underground:** fortress structures (crafting stations, storage, later automation: a factory).
+- **Sky layer:** reached by building up (ladder or tower); aligned above the surface, empty air until you build
+  platforms from materials and put structures and **defenses** on them (ties into fortress defense and the Invasion).
+- Open questions for Steve: can enemies come underground / into the sky (raids on sky defenses, cave creatures)?
+  Do fights on every layer use the normal duel screen when an enemy reaches you?
+
 ## Gathering
 
 ### GN1. More variety in gather nodes (note from play, 2026-10-10)
