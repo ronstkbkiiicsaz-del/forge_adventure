@@ -208,26 +208,18 @@ public final class AscendantGame extends ApplicationAdapter {
             OrthogonalTiledMapRenderer renderer = townMaps.rendererFor(site);
             TiledMap map = townMaps.mapFor(site);
             renderer.getBatch().setProjectionMatrix(camera.combined);
-            // TownMaps loads with flipY=false, so getCell(x,y) matches TMX CSV row y (top=0).
-            // Flip onto world y-up the same way PlaneGenerator.applyStamp does.
+            // Default flipY=true: cellY 0 = TMX bottom = world south = site.y.
+            // Stamp height site.h excludes top backdrop rows (those sit at cellY >= site.h).
             renderer.getBatch().begin();
             for (com.badlogic.gdx.maps.MapLayer layer : map.getLayers()) {
                 if (!(layer instanceof TiledMapTileLayer tileLayer) || !layer.isVisible()) {
                     continue;
                 }
-                String name = layer.getName();
-                if ("Background".equals(name) && site.skipRowsTop > 0) {
-                    // Havenbrook backdrop strip — skip entirely for stage 1
-                    continue;
-                }
-                for (int y = site.skipRowsTop; y < tileLayer.getHeight(); y++) {
-                    int local = y - site.skipRowsTop;
-                    if (local < 0 || local >= site.h) {
-                        continue;
-                    }
-                    int worldY = site.y + (site.h - 1 - local);
-                    for (int x = 0; x < tileLayer.getWidth(); x++) {
-                        TiledMapTileLayer.Cell cell = tileLayer.getCell(x, y);
+                int maxY = Math.min(site.h, tileLayer.getHeight());
+                for (int cellY = 0; cellY < maxY; cellY++) {
+                    int worldY = site.y + cellY;
+                    for (int x = 0; x < tileLayer.getWidth() && x < site.w; x++) {
+                        TiledMapTileLayer.Cell cell = tileLayer.getCell(x, cellY);
                         if (cell == null || cell.getTile() == null) {
                             continue;
                         }
@@ -236,7 +228,6 @@ public final class AscendantGame extends ApplicationAdapter {
                         float rh = region.getRegionHeight();
                         float dx = (site.x + x) * tile;
                         float dy = worldY * tile;
-                        // anchor bottom of tall sprites on the tile
                         if (rh > tile) {
                             dy -= (rh - tile);
                         }

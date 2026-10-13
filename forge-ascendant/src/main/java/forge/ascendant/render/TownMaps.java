@@ -35,11 +35,9 @@ public final class TownMaps implements Disposable {
 
     private TiledMap load(String relative) {
         FileHandle fh = new FileHandle(mapsRoot.resolve(relative).toFile());
-        // Keep TMX CSV row 0 = getCell(x, 0). Default flipY=true would invert against
-        // TmxStamp / drawTown, which both treat file-row 0 as the top of the stamp.
-        TmxMapLoader.Parameters params = new TmxMapLoader.Parameters();
-        params.flipY = false;
-        return loader.load(fh.path(), params);
+        // Default flipY=true: getCell(x, 0) is the TMX south / bottom row — matches
+        // OrthogonalTiledMapRenderer and site.y as the stamp's southern edge.
+        return loader.load(fh.path());
     }
 
     @Override

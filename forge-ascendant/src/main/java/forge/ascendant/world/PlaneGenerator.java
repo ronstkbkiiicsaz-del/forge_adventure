@@ -61,12 +61,13 @@ public final class PlaneGenerator {
         }
         double rot = noise.value2d(0, 0, "rot") * Math.PI * 2;
         float seaStart = profile.sea.get("SEA_START").getAsFloat();
+        float rCoast = L.get("R_COAST").getAsFloat();
 
         for (int y = 0; y < n; y++) {
             for (int x = 0; x < n; x++) {
                 float r = (float) Math.hypot(x - cx, y - cy);
                 float theta = (float) Math.atan2(y - cy, x - cx);
-                float rw = warpedRadius(noise, x, y, r, theta, warpR);
+                float rw = warpedRadius(noise, x, y, r, theta, warpR, rCoast);
                 float wa = noise.fbm(x, y, "warpA", 3, 140f);
                 float tw = (float) (theta + warpA * (wa - 0.5f) * 2f + rot);
                 byte b;
@@ -95,7 +96,7 @@ public final class PlaneGenerator {
                 int i = y * n + x;
                 float r = (float) Math.hypot(x - cx, y - cy);
                 float theta = (float) Math.atan2(y - cy, x - cx);
-                float rw = warpedRadius(noise, x, y, r, theta, warpR);
+                float rw = warpedRadius(noise, x, y, r, theta, warpR, rCoast);
                 float coastN = noise.fbm(x, y, "coast", 5, 45f);
                 float bayN = noise.fbm(x, y, "bay", 3, 160f);
                 boolean ocean = rw > rCoast
@@ -357,14 +358,18 @@ public final class PlaneGenerator {
 
     /**
      * Same radial warp for biomes and coastline so wedges and shore stay aligned.
-     * Combines fbm with a few angular lobes so the silhouette is clearly non-circular.
+     * Large angular lobes + fbm so the silhouette reads as a blob, not a noisy circle.
      */
-    static float warpedRadius(HashNoise noise, int x, int y, float r, float theta, float warpR) {
+    static float warpedRadius(HashNoise noise, int x, int y, float r, float theta,
+                              float warpR, float rCoast) {
         float wr = noise.fbm(x, y, "warpR", 3, 90f);
+        float ph0 = noise.value2d(0, 0, "lobePh") * (float) (Math.PI * 2);
         float ph1 = noise.value2d(1, 0, "lobePh") * (float) (Math.PI * 2);
         float ph2 = noise.value2d(2, 0, "lobePh") * (float) (Math.PI * 2);
-        float lobes = 0.55f * (float) Math.sin(3 * theta + ph1)
-                + 0.35f * (float) Math.sin(5 * theta + ph2);
-        return r + warpR * (wr - 0.5f) * 2f + warpR * 0.75f * lobes;
+        // ~±25% radius from 2–3 large lobes, plus finer 5-lobe ripples and fbm.
+        float lobes = 0.70f * (float) Math.sin(2 * theta + ph0)
+                + 0.45f * (float) Math.sin(3 * theta + ph1)
+                + 0.20f * (float) Math.sin(5 * theta + ph2);
+        return r + warpR * (wr - 0.5f) * 2f + rCoast * 0.22f * lobes;
     }
 }

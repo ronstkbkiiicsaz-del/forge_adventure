@@ -99,7 +99,7 @@ public class PlaneGeneratorTest {
             min = Math.min(min, radii[i]);
             max = Math.max(max, radii[i]);
         }
-        Assert.assertTrue("coast radius span too circular: min=" + min + " max=" + max, max - min > 140f);
+        Assert.assertTrue("coast radius span too circular: min=" + min + " max=" + max, max - min > 250f);
     }
 
     private static Path resolveMaps() {
