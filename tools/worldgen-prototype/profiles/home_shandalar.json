@@ -1,0 +1,58 @@
+{
+  "id": "home_shandalar",
+  "name": "Shandalar (home plane)",
+  "size": 2000,
+  "chunk": 64,
+  "layout": {
+    "type": "wedges",
+    "core_biome": "wastes",
+    "order": ["white", "blue", "black", "red", "green"],
+    "R_CORE": 200, "R_INNER": 550, "R_OUTER": 835, "R_COAST": 925,
+    "BORDER_WARP_ANGLE": 0.20, "BORDER_WARP_RADIUS": 100, "TRANSITION_BAND": 12
+  },
+  "home_town": {"name": "Havenbrook", "tmx": "hb/havenbrook.tmx", "tileset_dir": "hb", "skip_rows_top": 8},
+  "terrain": {
+    "CLUSTER_SCALE": 13, "LANE_WIDTH": 0.10, "LANE_SCALE": 90,
+    "OUTER_BONUS": 0.06, "JUNGLE_BONUS": 0.06,
+    "LAKE_SCALE": 34, "BOG_SCALE": 10,
+    "RIDGE_SCALE": 80, "RIDGE_RED": 0.88, "RIDGE_OTHER_OUTER": 0.975, "RIDGE_GAP_EVERY": 0.35,
+    "RIVER_COUNT": 22, "RIVER_SPACING": 230, "RIVER_MIN_LEN": 140, "RIVER_WIDTH": [1.6, 2.8], "FORD_SPACING": 40
+  },
+  "sea": {"biome": "blue", "SEA_START": 330, "ISLAND_SHARE": 0.30, "ISLAND_SCALE": 48, "MIN_ISLAND": 400, "PIER_LEN": 4},
+  "islands": {"INHABITED_AREA_SHARE": 0.65, "TOWN_MIN_AREA": 5000, "VILLAGE_MIN_AREA": 900,
+              "port_town": {"w": [40, 60], "h": [30, 45]}, "village": {"w": [20, 20], "h": [14, 14]},
+              "HARBOUR_MAX_SHORE_DIST": 8, "AREA_PER_EXTRA_SETTLEMENT": 6000, "MAX_SETTLEMENTS_PER_ISLAND": 5, "SETTLEMENT_SPACING": 70,
+              "inhabited_landmarks": ["lighthouse", "shrine", "shipwreck", "sea_cave", "pirate_cove"],
+              "inhabited_landmark_count": [1, 2],
+              "wild_landmarks": ["ruin", "treasure_cove", "rare_resource"]},
+  "volcanoes": {"biome": "red", "COUNT": [3, 4], "SPACING": 260, "CONE_RADIUS": 7.5, "CONE_TOP_RADIUS": 4.3,
+                "CRATER_RADIUS": 1.8, "LAVA_FLOWS": [2, 3], "ASH_RADIUS": 40},
+  "biomes": {
+    "wastes": {"density": 0.07, "lake": 0.006, "station": "stagecoach", "houses": "farm",
+               "per100k": {"town": 0.0, "hamlet": 5.0, "farmstead": 4.0, "standing_stones": 2.0, "ruin": 2.0,
+                           "lone_tower": 0.5, "cave": 0.5, "dungeon": 0.5}},
+    "white":  {"density": 0.06, "lake": 0.012, "station": "stagecoach", "houses": "farm",
+               "per100k": {"town": 1.5, "hamlet": 4.0, "farmstead": 16.0, "orchard": 3.0, "standing_stones": 0.8,
+                           "ruin": 0.8, "lone_tower": 0.4, "cave": 1.2, "dungeon": 1.5, "graveyard": 0.4, "battlefield": 0.3}},
+    "blue":   {"density": 0.18, "lake": 0.0, "station": "dock", "houses": "island",
+               "per100k": {"town": 1.4, "hamlet": 4.0, "standing_stones": 0.8, "ruin": 1.2, "lone_tower": 0.8,
+                           "cave": 2.0, "dungeon": 2.0, "graveyard": 0.3}},
+    "black":  {"density": 0.15, "lake": 0.14, "station": "skiff", "houses": "swamp",
+               "per100k": {"town": 1.2, "hamlet": 3.0, "graveyard": 3.0, "battlefield": 2.0, "ruin": 2.0,
+                           "lone_tower": 1.2, "cave": 1.5, "dungeon": 3.0, "standing_stones": 0.8}},
+    "red":    {"density": 0.14, "lake": 0.008, "station": "caravan", "houses": "mountain",
+               "per100k": {"town": 1.2, "hamlet": 3.0, "farmstead": 0.5, "battlefield": 1.0, "ruin": 1.2,
+                           "lone_tower": 1.0, "cave": 4.0, "dungeon": 1.5, "standing_stones": 0.5}},
+    "green":  {"density": 0.22, "lake": 0.02, "station": "elfgrove", "houses": "forest",
+               "per100k": {"town": 1.2, "hamlet": 3.5, "farmstead": 1.0, "standing_stones": 1.5, "ruin": 1.5,
+                           "lone_tower": 0.6, "cave": 2.0, "dungeon": 2.5, "graveyard": 0.3}}
+  },
+  "settlements": {
+    "town": {"w": [40, 70], "h": [30, 50], "min_dist": 150},
+    "hamlet": {"w": [15, 15], "h": [12, 12], "min_dist": 60},
+    "farmstead": {"w": [8, 20], "h": [8, 16], "min_dist": 30}
+  },
+  "roads": {"EXTRA_LINKS_PER_100_NODES": 12, "WIDTH": 2, "MAX_LINK": 420, "HAMLETS_ON_ROADS": true},
+  "stations": {"MAX_GAP": 200, "MIN_SPACING": 60, "SPUR_MAX": 90, "REMOTE_MAX": 80, "PASS_CAMPS": 8, "PASS_SPACING": 150},
+  "reachability": {"MIN_POCKET": 40}
+}
