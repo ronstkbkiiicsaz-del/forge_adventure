@@ -76,6 +76,16 @@ public class Game {
     private final PlayerCollection ingamePlayers = new PlayerCollection();
     private final PlayerCollection lostPlayers = new PlayerCollection();
     private GameEntityViewMap<Player, PlayerView> playerCache = new GameEntityViewMap<Player, PlayerView>();
+    /**
+     * Serializes zone walks with concede. The match thread holds this except while
+     * it is blocked for input, so {@code onPlayerLost} cannot iterate live lists
+     * in parallel with the match. Not taken by {@link #forEachCardInGame}.
+     */
+    private final java.util.concurrent.locks.ReentrantLock mutationLock =
+            new java.util.concurrent.locks.ReentrantLock(true);
+    /** Games whose mutation lock this thread currently holds, outermost first. */
+    private static final ThreadLocal<Deque<Game>> MUTATION_LOCK_STACK =
+            ThreadLocal.withInitial(ArrayDeque::new);
 
     private List<Card> activePlanes = null;
 
@@ -996,6 +1006,7 @@ public class Game {
         }
         visitor.visitAll(getStackZone().getCards());
     }
+
     public CardCollectionView getCardsInGame() {
         final CardCollection all = new CardCollection();
         Visitor<Card> visitor = new Visitor<Card>() {
@@ -1007,6 +1018,58 @@ public class Game {
         };
         forEachCardInGame(visitor);
         return all;
+    }
+
+    /**
+     * Hold exclusive access to this game's zone lists. The match thread takes this
+     * for the whole game and drops it while blocked for input. No-op if this thread
+     * already holds it.
+     */
+    public void acquireMutationLock() {
+        if (mutationLock.isHeldByCurrentThread()) {
+            return;
+        }
+        mutationLock.lock();
+        MUTATION_LOCK_STACK.get().addLast(this);
+    }
+
+    /** Release a hold taken by {@link #acquireMutationLock()}. */
+    public void releaseMutationLock() {
+        if (!mutationLock.isHeldByCurrentThread()) {
+            return;
+        }
+        MUTATION_LOCK_STACK.get().removeLastOccurrence(this);
+        mutationLock.unlock();
+    }
+
+    public boolean currentThreadHoldsMutationLock() {
+        return mutationLock.isHeldByCurrentThread();
+    }
+
+    /**
+     * Drop every mutation lock this thread holds, run {@code action}, then reacquire
+     * them. Blocking input and GUI waits use this so concede can take the lock
+     * while the match thread is paused.
+     */
+    public static void runWithMutationLocksReleased(final Runnable action) {
+        final Deque<Game> stack = MUTATION_LOCK_STACK.get();
+        if (stack.isEmpty()) {
+            action.run();
+            return;
+        }
+        final List<Game> held = new ArrayList<>(stack);
+        for (int i = held.size() - 1; i >= 0; i--) {
+            held.get(i).mutationLock.unlock();
+        }
+        stack.clear();
+        try {
+            action.run();
+        } finally {
+            for (final Game heldGame : held) {
+                heldGame.mutationLock.lock();
+                stack.addLast(heldGame);
+            }
+        }
     }
 
     public final GameAction getAction() {

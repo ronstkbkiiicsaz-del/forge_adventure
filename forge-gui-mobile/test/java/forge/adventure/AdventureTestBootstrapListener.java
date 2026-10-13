@@ -132,6 +132,13 @@ public final class AdventureTestBootstrapListener implements ISuiteListener {
 
     @Override
     public void onFinish(final ISuite suite) {
+        // AU1: never leave SoundSystem playback hooks / adventure test overrides for
+        // a later Maven module in the same JVM (desktop CoopDuelInProcessTest race).
+        try {
+            forge.adventure.sound.Au1Sounds.resetAllStaticState();
+        } catch (final Throwable ignored) {
+            // Headless suites without AU1 classpath stay quiet.
+        }
         if (realUserDir == null || realSnapshot == null) {
             return;
         }

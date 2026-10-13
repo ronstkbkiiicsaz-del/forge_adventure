@@ -3818,18 +3818,66 @@ public class PlayerControllerHuman extends PlayerController implements IGameCont
 
     @Override
     public void concede() {
-        if (player != null) {
+        if (player == null) {
+            return;
+        }
+        final Game game = getGame();
+        if (game == null) {
             player.concede();
-            getGame().getAction().checkGameOverCondition();
-            if (getGame().isGameOver()) {
-                // Remote-client controllers on the server have no FControlGameEventHandler,
-                // so their input queues won't be released by the normal event path.
-                // Iterate registered players (not getPlayers(), which excludes the
-                // conceding player after onPlayerLost removes them from ingamePlayers).
-                for (Player p : getGame().getRegisteredPlayers()) {
-                    if (p.getController() instanceof PlayerControllerHuman pch) {
-                        pch.getInputQueue().onGameOver(true);
-                    }
+            return;
+        }
+        // onPlayerLost walks live zone lists. Run that on a game thread, and not
+        // until the match thread has dropped its mutation lock (it holds the lock
+        // except while blocked for input). Await so callers see game-over.
+        if (!ThreadUtil.isGameThread()) {
+            final java.util.concurrent.CountDownLatch done = new java.util.concurrent.CountDownLatch(1);
+            final java.util.concurrent.atomic.AtomicReference<RuntimeException> error =
+                    new java.util.concurrent.atomic.AtomicReference<>();
+            game.getAction().invoke(() -> {
+                try {
+                    concede();
+                } catch (final RuntimeException e) {
+                    error.set(e);
+                } finally {
+                    done.countDown();
+                }
+            });
+            try {
+                if (!done.await(60, java.util.concurrent.TimeUnit.SECONDS)) {
+                    throw new RuntimeException("Timed out waiting for concede on the game thread");
+                }
+            } catch (final InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+            if (error.get() != null) {
+                throw error.get();
+            }
+            return;
+        }
+        if (!game.currentThreadHoldsMutationLock()) {
+            game.acquireMutationLock();
+            try {
+                finishConcede(game);
+            } finally {
+                game.releaseMutationLock();
+            }
+            return;
+        }
+        finishConcede(game);
+    }
+
+    private void finishConcede(final Game game) {
+        player.concede();
+        game.getAction().checkGameOverCondition();
+        if (game.isGameOver()) {
+            // Remote-client controllers on the server have no FControlGameEventHandler,
+            // so their input queues won't be released by the normal event path.
+            // Iterate registered players (not getPlayers(), which excludes the
+            // conceding player after onPlayerLost removes them from ingamePlayers).
+            for (Player p : game.getRegisteredPlayers()) {
+                if (p.getController() instanceof PlayerControllerHuman pch) {
+                    pch.getInputQueue().onGameOver(true);
                 }
             }
         }

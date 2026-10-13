@@ -107,18 +107,20 @@ public class GuiDesktop implements IGuiBase {
 
     @Override
     public void invokeInEdtAndWait(final Runnable proc) {
-        if (SwingUtilities.isEventDispatchThread()) {
-            // Just run in the current thread.
-            proc.run();
-        }
-        else {
-            try {
-                SwingUtilities.invokeAndWait(proc);
+        forge.game.Game.runWithMutationLocksReleased(() -> {
+            if (SwingUtilities.isEventDispatchThread()) {
+                // Just run in the current thread.
+                proc.run();
             }
-            catch (final InterruptedException | InvocationTargetException exn) {
-                throw new RuntimeException(exn);
+            else {
+                try {
+                    SwingUtilities.invokeAndWait(proc);
+                }
+                catch (final InterruptedException | InvocationTargetException exn) {
+                    throw new RuntimeException(exn);
+                }
             }
-        }
+        });
     }
 
     @Override

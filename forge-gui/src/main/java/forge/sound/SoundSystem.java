@@ -52,6 +52,17 @@ public class SoundSystem {
         return playbackHooks;
     }
 
+    /**
+     * Notify hooks that the current match/game ended. Clears per-match burst state
+     * (AU1) without dropping Adventure registration for the next duel.
+     */
+    public static void notifyMatchEnded() {
+        final ISoundPlaybackHooks hooks = playbackHooks;
+        if (hooks != null) {
+            hooks.onMatchEnded();
+        }
+    }
+
     private static boolean isUsingAltSystem() {
         return !GuiBase.getInterface().isLibgdxPort() && FModel.getPreferences().getPrefBoolean(FPref.UI_ALT_SOUND_SYSTEM);
     }

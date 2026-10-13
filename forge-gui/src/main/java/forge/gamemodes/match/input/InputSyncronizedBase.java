@@ -1,5 +1,6 @@
 package forge.gamemodes.match.input;
 
+import forge.game.Game;
 import forge.util.IHasForgeLog;
 import forge.gui.FThreads;
 import forge.gui.error.BugReporter;
@@ -21,11 +22,15 @@ public abstract class InputSyncronizedBase extends InputBase implements InputSyn
     public void awaitLatchRelease() {
         FThreads.assertExecutedByEdt(false);
         netLog.trace("awaitLatchRelease() starting on {}, thread = {}", this.getClass().getSimpleName(), Thread.currentThread().getName());
-        try {
-            getController().getGui().awaitInput(cdlDone);
-        } catch (final InterruptedException e) {
-            BugReporter.reportException(e);
-        }
+        // Match thread is paused here. Drop the mutation lock so concede can run
+        // on a game thread without walking zones in parallel with resolution.
+        Game.runWithMutationLocksReleased(() -> {
+            try {
+                getController().getGui().awaitInput(cdlDone);
+            } catch (final InterruptedException e) {
+                BugReporter.reportException(e);
+            }
+        });
         netLog.trace("awaitLatchRelease() UNBLOCKED on {}, thread = {}", this.getClass().getSimpleName(), Thread.currentThread().getName());
     }
 

@@ -93,17 +93,19 @@ public class GuiMobile implements IGuiBase {
 
     @Override
     public void invokeInEdtAndWait(final Runnable proc) {
-        if (isGuiThread()) {
-            proc.run();
-        }
-        else {
-            new WaitRunnable() {
-                @Override
-                public void run() {
-                    proc.run();
-                }
-            }.invokeAndWait();
-        }
+        forge.game.Game.runWithMutationLocksReleased(() -> {
+            if (isGuiThread()) {
+                proc.run();
+            }
+            else {
+                new WaitRunnable() {
+                    @Override
+                    public void run() {
+                        proc.run();
+                    }
+                }.invokeAndWait();
+            }
+        });
     }
 
     private volatile Thread glThread;
