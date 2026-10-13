@@ -76,9 +76,16 @@ public class Game {
     private final PlayerCollection ingamePlayers = new PlayerCollection();
     private final PlayerCollection lostPlayers = new PlayerCollection();
     private GameEntityViewMap<Player, PlayerView> playerCache = new GameEntityViewMap<Player, PlayerView>();
-    /** >0 while {@link #onPlayerLost} / snapshoting {@link #getCardsInGame} runs. */
-    private final java.util.concurrent.atomic.AtomicInteger playerLostCardWalkDepth =
-            new java.util.concurrent.atomic.AtomicInteger();
+    /**
+     * Serializes zone walks with concede. The match thread holds this except while
+     * it is blocked for input, so {@code onPlayerLost} cannot iterate live lists
+     * in parallel with the match. Not taken by {@link #forEachCardInGame}.
+     */
+    private final java.util.concurrent.locks.ReentrantLock mutationLock =
+            new java.util.concurrent.locks.ReentrantLock(true);
+    /** Games whose mutation lock this thread currently holds, outermost first. */
+    private static final ThreadLocal<Deque<Game>> MUTATION_LOCK_STACK =
+            ThreadLocal.withInitial(ArrayDeque::new);
 
     private List<Card> activePlanes = null;
 
@@ -969,18 +976,8 @@ public class Game {
     public void forEachCardInGame(Visitor<Card> visitor) {
         forEachCardInGame(visitor, false);
     }
-    /**
-     * Visit every card in the game. Hot paths (replacement/static/trigger) walk
-     * live zone lists without allocating. During {@link #onPlayerLost}, snapshot
-     * each zone first so a concurrent Game-* pool / net thread mutating zones
-     * cannot throw {@link java.util.ConcurrentModificationException} from
-     * {@code resetActiveTriggers} and similar nested walks.
-     */
+    // Allows visiting cards in game without allocating a temporary list.
     public void forEachCardInGame(Visitor<Card> visitor, boolean withSideboard) {
-        if (playerLostCardWalkDepth.get() > 0) {
-            forEachCardInGameSnapshot(visitor, withSideboard);
-            return;
-        }
         for (final Player player : getPlayers()) {
             if (!visitor.visitAll(player.getZone(ZoneType.Graveyard).getCards())) {
                 return;
@@ -1010,44 +1007,6 @@ public class Game {
         visitor.visitAll(getStackZone().getCards());
     }
 
-    private void forEachCardInGameSnapshot(Visitor<Card> visitor, boolean withSideboard) {
-        // Copy the player list too: onPlayerLost removes from ingamePlayers.
-        final List<Player> players = Lists.newArrayList(getPlayers());
-        for (final Player player : players) {
-            if (!visitor.visitAll(CardCollection.getView(player.getZone(ZoneType.Graveyard).getCards(), true))) {
-                return;
-            }
-            if (!visitor.visitAll(CardCollection.getView(player.getZone(ZoneType.Hand).getCards(), true))) {
-                return;
-            }
-            if (!visitor.visitAll(CardCollection.getView(player.getZone(ZoneType.Library).getCards(), true))) {
-                return;
-            }
-            if (!visitor.visitAll(CardCollection.getView(player.getZone(ZoneType.Battlefield).getCards(false), true))) {
-                return;
-            }
-            if (!visitor.visitAll(CardCollection.getView(player.getZone(ZoneType.Exile).getCards(), true))) {
-                return;
-            }
-            if (!visitor.visitAll(CardCollection.getView(player.getCardsIn(ZoneType.PART_OF_COMMAND_ZONE), true))) {
-                return;
-            }
-            if (withSideboard
-                    && !visitor.visitAll(CardCollection.getView(player.getZone(ZoneType.Sideboard).getCards(), true))) {
-                return;
-            }
-            if (!visitor.visitAll(CardCollection.getView(player.getInboundTokens(), true))) {
-                return;
-            }
-        }
-        visitor.visitAll(CardCollection.getView(getStackZone().getCards(), true));
-    }
-
-    /**
-     * Snapshot every zone into a fresh collection (safe across concurrent zone
-     * mutations). Used by {@link #onPlayerLost} and other callers that need a
-     * stable list rather than a live walk.
-     */
     public CardCollectionView getCardsInGame() {
         final CardCollection all = new CardCollection();
         Visitor<Card> visitor = new Visitor<Card>() {
@@ -1057,14 +1016,60 @@ public class Game {
                 return true;
             }
         };
-        // Always snapshot: return value outlives the walk and onPlayerLost races.
-        playerLostCardWalkDepth.incrementAndGet();
-        try {
-            forEachCardInGame(visitor);
-        } finally {
-            playerLostCardWalkDepth.decrementAndGet();
-        }
+        forEachCardInGame(visitor);
         return all;
+    }
+
+    /**
+     * Hold exclusive access to this game's zone lists. The match thread takes this
+     * for the whole game and drops it while blocked for input. No-op if this thread
+     * already holds it.
+     */
+    public void acquireMutationLock() {
+        if (mutationLock.isHeldByCurrentThread()) {
+            return;
+        }
+        mutationLock.lock();
+        MUTATION_LOCK_STACK.get().addLast(this);
+    }
+
+    /** Release a hold taken by {@link #acquireMutationLock()}. */
+    public void releaseMutationLock() {
+        if (!mutationLock.isHeldByCurrentThread()) {
+            return;
+        }
+        MUTATION_LOCK_STACK.get().removeLastOccurrence(this);
+        mutationLock.unlock();
+    }
+
+    public boolean currentThreadHoldsMutationLock() {
+        return mutationLock.isHeldByCurrentThread();
+    }
+
+    /**
+     * Drop every mutation lock this thread holds, run {@code action}, then reacquire
+     * them. Blocking input and GUI waits use this so concede can take the lock
+     * while the match thread is paused.
+     */
+    public static void runWithMutationLocksReleased(final Runnable action) {
+        final Deque<Game> stack = MUTATION_LOCK_STACK.get();
+        if (stack.isEmpty()) {
+            action.run();
+            return;
+        }
+        final List<Game> held = new ArrayList<>(stack);
+        for (int i = held.size() - 1; i >= 0; i--) {
+            held.get(i).mutationLock.unlock();
+        }
+        stack.clear();
+        try {
+            action.run();
+        } finally {
+            for (final Game heldGame : held) {
+                heldGame.mutationLock.lock();
+                stack.addLast(heldGame);
+            }
+        }
     }
 
     public final GameAction getAction() {
@@ -1136,15 +1141,6 @@ public class Game {
     }
 
     public void onPlayerLost(Player p) {
-        playerLostCardWalkDepth.incrementAndGet();
-        try {
-            onPlayerLostInner(p);
-        } finally {
-            playerLostCardWalkDepth.decrementAndGet();
-        }
-    }
-
-    private void onPlayerLostInner(Player p) {
         //set for Avatar
         p.setHasLost(true);
         // CR 800.4 Losing a Multiplayer game

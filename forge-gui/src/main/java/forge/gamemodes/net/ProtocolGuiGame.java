@@ -1,6 +1,7 @@
 package forge.gamemodes.net;
 
 import forge.LobbyPlayer;
+import forge.game.Game;
 import forge.game.GameState;
 import forge.deck.CardPool;
 import forge.game.GameEntityView;
@@ -168,7 +169,7 @@ public class ProtocolGuiGame extends NetworkGuiGame implements IHasForgeLog {
      */
     private <T> T sendAndWait(final ProtocolMethod method, final Object... args) {
         if (paused) { return null; }
-        return sender.sendAndWait(method, args);
+        return callWithMutationLockReleased(() -> sender.sendAndWait(method, args));
     }
 
     /**
@@ -179,7 +180,14 @@ public class ProtocolGuiGame extends NetworkGuiGame implements IHasForgeLog {
     private <T> T syncAndSendAndWait(final ProtocolMethod method, final Object... args) {
         if (paused) { return null; }
         updateGameView();
-        return sender.sendAndWait(method, args);
+        return callWithMutationLockReleased(() -> sender.sendAndWait(method, args));
+    }
+
+    /** Blocking peer waits must not keep the match mutation lock. */
+    private static <T> T callWithMutationLockReleased(final java.util.function.Supplier<T> call) {
+        final java.util.concurrent.atomic.AtomicReference<T> result = new java.util.concurrent.atomic.AtomicReference<>();
+        Game.runWithMutationLocksReleased(() -> result.set(call.get()));
+        return result.get();
     }
 
     /**

@@ -305,14 +305,21 @@ public class HostedMatch {
             // concurrently clears the `game` field while match.startGame() is wrapping up.
             final Game currentGame = game;
 
-            if (humanCount == 0) {
-                // Create FControlGamePlayback in game thread to allow pausing
-                playbackControl = new FControlGamePlayback(humanControllers.get(0));
-                playbackControl.setGame(currentGame);
-                currentGame.subscribeToEvents(playbackControl);
+            // Hold the mutation lock for the match so concede cannot walk zones
+            // while this thread is resolving. Blocking input drops the lock.
+            currentGame.acquireMutationLock();
+            try {
+                if (humanCount == 0) {
+                    // Create FControlGamePlayback in game thread to allow pausing
+                    playbackControl = new FControlGamePlayback(humanControllers.get(0));
+                    playbackControl.setGame(currentGame);
+                    currentGame.subscribeToEvents(playbackControl);
+                }
+                // Actually start the game!
+                match.startGame(currentGame, startGameHook);
+            } finally {
+                currentGame.releaseMutationLock();
             }
-            // Actually start the game!
-            match.startGame(currentGame, startGameHook);
             // this function waits?
             if (endGameHook != null){
                 endGameHook.run();

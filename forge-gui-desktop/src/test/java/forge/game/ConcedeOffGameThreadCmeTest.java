@@ -25,26 +25,35 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * Regression: conceding off the game thread while the game thread mutates zones
- * must not throw {@link java.util.ConcurrentModificationException} from
- * {@link Game#onPlayerLost} → {@link Game#getCardsInGame}.
- *
- * <p>Fails before the fix when {@link PlayerControllerHuman#concede()} runs
- * {@code checkGameOverCondition} on the caller thread against live zone lists.
- * Passes when concede is marshalled to the game thread and/or {@code getCardsInGame}
- * snapshots zones.
+ * Concede must run on a game thread and must not walk live zone lists while
+ * another thread still holds {@link Game}'s mutation lock. Hot-path
+ * {@link Game#forEachCardInGame} stays a live walk (no zone copies).
  */
 public class ConcedeOffGameThreadCmeTest extends AITest {
 
     private static final class HumanLobby extends LobbyPlayerHuman {
+        private final AtomicReference<String> concedeThread = new AtomicReference<>();
+
         HumanLobby(final String name) {
             super(name);
+        }
+
+        AtomicReference<String> concedeThread() {
+            return concedeThread;
         }
 
         @Override
         public Player createIngamePlayer(final Game game, final int id) {
             final Player player = new Player(getName(), game, id);
-            final PlayerControllerHuman ctrl = new PlayerControllerHuman(game, player, this);
+            final PlayerControllerHuman ctrl = new PlayerControllerHuman(game, player, this) {
+                @Override
+                public void concede() {
+                    if (ThreadUtil.isGameThread()) {
+                        concedeThread.compareAndSet(null, Thread.currentThread().getName());
+                    }
+                    super.concede();
+                }
+            };
             final IGuiGame gui = Mockito.mock(IGuiGame.class, Mockito.RETURNS_DEFAULTS);
             Mockito.when(gui.isLibgdxPort()).thenReturn(true);
             ctrl.setGui(gui);
@@ -55,9 +64,10 @@ public class ConcedeOffGameThreadCmeTest extends AITest {
 
     private Game createHumanVsAiGame() {
         final List<RegisteredPlayer> players = Lists.newArrayList();
-        final Deck d1 = new Deck();
-        players.add(new RegisteredPlayer(d1).setPlayer(new LobbyPlayerAi("ai", null)));
-        players.add(new RegisteredPlayer(d1).setPlayer(new HumanLobby("human")));
+        final Deck deck = new Deck();
+        final HumanLobby humanLobby = new HumanLobby("human");
+        players.add(new RegisteredPlayer(deck).setPlayer(new LobbyPlayerAi("ai", null)));
+        players.add(new RegisteredPlayer(deck).setPlayer(humanLobby));
         final GameRules rules = new GameRules(GameType.Constructed);
         final Match match = new Match(rules, players, "ConcedeCme");
         final Game game = new Game(players, rules, match);
@@ -66,6 +76,10 @@ public class ConcedeOffGameThreadCmeTest extends AITest {
         game.getPhaseHandler().devModeSet(PhaseType.MAIN1, human);
         game.getPhaseHandler().onStackResolved();
         return game;
+    }
+
+    private static HumanLobby humanLobby(final Game game) {
+        return (HumanLobby) find(game, "human").getLobbyPlayer();
     }
 
     private static Player find(final Game game, final String name) {
@@ -78,79 +92,101 @@ public class ConcedeOffGameThreadCmeTest extends AITest {
     }
 
     @Test(timeOut = 30_000)
-    public void concedeWhileGameThreadMutatesZonesDoesNotThrowCme() throws Exception {
-        Assert.assertFalse(ThreadUtil.isGameThread(), "test thread must not be a Game-* pool thread");
+    public void forEachCardInGameWalksLiveZoneLists() {
+        final Game game = createHumanVsAiGame();
+        final Player human = find(game, "human");
+        // Three cards: removing the current element from a two-card ArrayList
+        // makes the iterator's cursor land on the new size, so hasNext() stops
+        // without a fail-fast check. A third card forces next() to notice.
+        addCardToZone("Mountain", human, ZoneType.Hand);
+        addCardToZone("Mountain", human, ZoneType.Hand);
+        addCardToZone("Mountain", human, ZoneType.Hand);
+
+        try {
+            game.forEachCardInGame(c -> {
+                if (c.getZone() != null && c.getZone().is(ZoneType.Hand)) {
+                    c.getZone().remove(c);
+                }
+                return true;
+            });
+            Assert.fail("forEachCardInGame must iterate the live zone list");
+        } catch (final java.util.ConcurrentModificationException expected) {
+            // ArrayList fail-fast: a snapshot walk would have finished instead.
+        }
+    }
+
+    @Test(timeOut = 30_000)
+    public void concedeWaitsForMutationLockAndRunsOnGameThread() throws Exception {
+        Assert.assertFalse(ThreadUtil.isGameThread(), "caller must not already be a game thread");
 
         final Game game = createHumanVsAiGame();
         final Player human = find(game, "human");
+        final HumanLobby lobby = humanLobby(game);
         final PlayerControllerHuman ctrl = (PlayerControllerHuman) human.getController();
+        addCardToZone("Mountain", human, ZoneType.Library);
+        addCardToZone("Mountain", human, ZoneType.Hand);
+        addCardToZone("Mountain", human, ZoneType.Battlefield);
 
-        // Enough cards that a live for-each is likely to collide with remove/add.
-        for (int i = 0; i < 40; i++) {
-            addCardToZone("Mountain", human, ZoneType.Library);
-            addCardToZone("Mountain", human, ZoneType.Hand);
-            addCardToZone("Mountain", human, ZoneType.Battlefield);
-        }
-
-        final AtomicBoolean mutate = new AtomicBoolean(true);
-        final CountDownLatch mutating = new CountDownLatch(1);
-        final AtomicReference<Throwable> mutatorError = new AtomicReference<>();
-        final CountDownLatch mutatorDone = new CountDownLatch(1);
-
-        ThreadUtil.invokeInGameThread(() -> {
+        final AtomicBoolean release = new AtomicBoolean();
+        final CountDownLatch holding = new CountDownLatch(1);
+        final AtomicReference<Throwable> holderError = new AtomicReference<>();
+        final Thread holder = new Thread(() -> {
+            game.acquireMutationLock();
             try {
-                mutating.countDown();
-                while (mutate.get()) {
+                holding.countDown();
+                while (!release.get()) {
                     bumpZone(human, ZoneType.Library);
-                    bumpZone(human, ZoneType.Hand);
-                    bumpZone(human, ZoneType.Battlefield);
-                    // Hot-path style live walk (must stay allocation-free / live).
                     game.forEachCardInGame(c -> true);
+                    Thread.sleep(5);
                 }
             } catch (final Throwable t) {
-                mutatorError.set(t);
+                holderError.set(t);
             } finally {
-                mutatorDone.countDown();
+                release.set(true);
+                game.releaseMutationLock();
             }
-        });
-
-        Assert.assertTrue(mutating.await(5, TimeUnit.SECONDS), "game-thread mutator did not start");
-        // Let the mutator run before conceding off-thread.
-        Thread.sleep(50);
+        }, "mutation-holder");
+        holder.setDaemon(true);
+        holder.start();
+        Assert.assertTrue(holding.await(5, TimeUnit.SECONDS), "holder did not acquire the mutation lock");
 
         final AtomicReference<Throwable> concedeError = new AtomicReference<>();
         final Thread conceder = new Thread(() -> {
             try {
-                for (int i = 0; i < 8; i++) {
-                    if (human.hasLost() || human.conceded()) {
-                        break;
-                    }
-                    ctrl.concede();
-                    Thread.sleep(5);
-                }
+                ctrl.concede();
             } catch (final Throwable t) {
                 concedeError.set(t);
             }
         }, "off-thread-concede");
         conceder.setDaemon(true);
         conceder.start();
-        conceder.join(10_000);
 
         final long deadline = System.currentTimeMillis() + 5_000;
-        while (System.currentTimeMillis() < deadline && !human.hasLost() && !human.conceded()) {
-            Thread.sleep(20);
+        while (lobby.concedeThread().get() == null && System.currentTimeMillis() < deadline) {
+            Thread.sleep(10);
         }
-        mutate.set(false);
-        Assert.assertTrue(mutatorDone.await(5, TimeUnit.SECONDS), "mutator did not stop");
+        final String startedOn = lobby.concedeThread().get();
+        Assert.assertNotNull(startedOn, "concede body never reached a game thread");
+        Assert.assertTrue(startedOn.startsWith("Game"),
+                "concede must run on a game thread, was " + startedOn);
+        Assert.assertNotEquals(startedOn, Thread.currentThread().getName());
+        Assert.assertFalse(human.hasLost() || human.conceded(),
+                "concede must not apply while the mutation lock is still held");
+        Assert.assertTrue(conceder.isAlive(), "concede returned before the mutation lock was released");
 
+        release.set(true);
+        conceder.join(10_000);
+        holder.join(5_000);
+
+        if (holderError.get() != null) {
+            throw new AssertionError("zone walk while holding the mutation lock failed", holderError.get());
+        }
         if (concedeError.get() != null) {
             throw new AssertionError("off-thread concede failed", concedeError.get());
         }
-        if (mutatorError.get() != null) {
-            throw new AssertionError("game-thread mutator failed", mutatorError.get());
-        }
-        Assert.assertTrue(human.hasLost() || human.conceded(),
-                "human must lose after off-thread concede while zones mutate");
+        Assert.assertFalse(conceder.isAlive(), "concede did not finish after the mutation lock was released");
+        Assert.assertTrue(human.hasLost() || human.conceded(), "human must lose once concede runs");
+        Assert.assertTrue(game.isGameOver(), "caller must observe game-over after concede returns");
     }
 
     private static void bumpZone(final Player p, final ZoneType zone) {
