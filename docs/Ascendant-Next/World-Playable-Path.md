@@ -7,10 +7,13 @@ still open. Resources: `Resources-Redesign-Draft.md`. Towns: `Towns.md`. Generat
 ## What we have today
 
 - **Havenbrook** (hand-made, in the repo) and an **approved plains market town** template (`tools/towns/plains/`,
-  "perfect").
+  "perfect") — also copied into `forge-gui/res/adventure/common/maps/map/ascendant/plains_market_town.tmx`.
 - **WG1 Python prototype** at real scale (2000×2000): coastline, biomes, rivers, volcanoes, procedural towns,
-  Havenbrook stamp, reachability — renders only, not a walkable game yet.
-- **No `forge-ascendant` walk loop yet.** Seeing scale in-game is the next real deliverable.
+  Havenbrook stamp, reachability — reference for the Java port.
+- **`forge-ascendant` stage-1 walk loop (in progress):** standalone launcher `play-ascendant-next.sh` /
+  `play-ascendant-next.cmd` generates the home plane, stamps Havenbrook + Plains Market, walk / map / save.
+  Wilderness is palette tiles; towns use Ninja TMX overlays. Full WG1 algorithm parity and Forge shell entry
+  still to come.
 
 ## Feel order (playable slices)
 
