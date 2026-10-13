@@ -65,8 +65,8 @@ public final class PlaneGenerator {
         for (int y = 0; y < n; y++) {
             for (int x = 0; x < n; x++) {
                 float r = (float) Math.hypot(x - cx, y - cy);
-                float rw = warpedRadius(noise, x, y, r, warpR);
                 float theta = (float) Math.atan2(y - cy, x - cx);
+                float rw = warpedRadius(noise, x, y, r, theta, warpR);
                 float wa = noise.fbm(x, y, "warpA", 3, 140f);
                 float tw = (float) (theta + warpA * (wa - 0.5f) * 2f + rot);
                 byte b;
@@ -94,10 +94,13 @@ public final class PlaneGenerator {
             for (int x = 0; x < n; x++) {
                 int i = y * n + x;
                 float r = (float) Math.hypot(x - cx, y - cy);
-                float rw = warpedRadius(noise, x, y, r, warpR);
+                float theta = (float) Math.atan2(y - cy, x - cx);
+                float rw = warpedRadius(noise, x, y, r, theta, warpR);
                 float coastN = noise.fbm(x, y, "coast", 5, 45f);
-                float bayN = noise.fbm(x, y, "bay", 3, 180f);
-                boolean ocean = rw > rCoast + coastAmp * (coastN - 0.35f) + warpR * 0.55f * (bayN - 0.5f);
+                float bayN = noise.fbm(x, y, "bay", 3, 160f);
+                boolean ocean = rw > rCoast
+                        + coastAmp * (coastN - 0.35f)
+                        + warpR * 0.9f * (bayN - 0.5f);
                 if (x < 4 || y < 4 || x >= n - 4 || y >= n - 4) {
                     ocean = true;
                 }
@@ -352,9 +355,16 @@ public final class PlaneGenerator {
         }
     }
 
-    /** Same radial warp used for biomes and coastline so wedges and shore stay aligned. */
-    static float warpedRadius(HashNoise noise, int x, int y, float r, float warpR) {
+    /**
+     * Same radial warp for biomes and coastline so wedges and shore stay aligned.
+     * Combines fbm with a few angular lobes so the silhouette is clearly non-circular.
+     */
+    static float warpedRadius(HashNoise noise, int x, int y, float r, float theta, float warpR) {
         float wr = noise.fbm(x, y, "warpR", 3, 90f);
-        return r + warpR * (wr - 0.5f) * 2f;
+        float ph1 = noise.value2d(1, 0, "lobePh") * (float) (Math.PI * 2);
+        float ph2 = noise.value2d(2, 0, "lobePh") * (float) (Math.PI * 2);
+        float lobes = 0.55f * (float) Math.sin(3 * theta + ph1)
+                + 0.35f * (float) Math.sin(5 * theta + ph2);
+        return r + warpR * (wr - 0.5f) * 2f + warpR * 0.75f * lobes;
     }
 }

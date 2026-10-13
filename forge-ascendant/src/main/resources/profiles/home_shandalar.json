@@ -12,8 +12,8 @@
     "R_INNER": 550,
     "R_OUTER": 835,
     "R_COAST": 925,
-    "BORDER_WARP_ANGLE": 0.20,
-    "BORDER_WARP_RADIUS": 100
+    "BORDER_WARP_ANGLE": 0.28,
+    "BORDER_WARP_RADIUS": 220
   },
   "home_town": {
     "name": "Havenbrook",
