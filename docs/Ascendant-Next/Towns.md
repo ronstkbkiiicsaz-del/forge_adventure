@@ -1,0 +1,48 @@
+# Towns: one hand-made template per biome
+
+*Steve + Wren, 2026-10-13. Towns are seamless parts of the plane (walked into on the road); building interiors are
+instanced (see `Architecture-Brief.md`). Each biome gets one hand-made template town; other towns of that biome
+reuse its pieces with variations. Each template needs Steve's approval of a preview render before it is used.*
+
+## Conventions (all towns)
+
+- Ninja Adventure 16px tiles. Layers: `Background`, `Ground`, `Foreground` (sprite layer; collision comes from
+  per-tile collision in the tilesets), `AboveSprites` (roofs, canopies), and an `Objects` layer.
+- Map properties: `biome`, `townKind`, `seamless=true`.
+- Objects, for later stages:
+  - `door` with `interior` = inn / store / smithy / chapel / home / granary / ... (each loads an instanced interior).
+  - `station` with `kind` = stagecoach / dock / caravan / elf_guide / skiff (the travel station; see the brief).
+  - `quest_board`.
+  - `npc_spot` with `role` = innkeeper / shopkeep / smith / priest / farmer / child / ...
+  - `exit` where a road leaves the town.
+- No boundary walls. A town fades into its biome (fields, hedges, docks, stilts...), and roads continue out.
+- A reachability check (search from one exit to every object) must pass.
+- Generator scripts live with the town so it can be rebuilt and changed.
+
+## Approved
+
+### Plains market town (white) — APPROVED by Steve 2026-10-13 ("perfect")
+
+`tools/towns/plains/`: `plains_market_town.tmx` (70x50), previews, generator (`generator/go.sh`), README.
+
+- A farmland market town on a crossroads with exits N, S, E and W, plus four field tracks.
+- Grain hall in a cobbled market square, with a roofed well, stalls and the notice board.
+- Stagecoach post (coach house plus booking office and yard) at the west gate.
+- Inn, general store, smithy, chapel and churchyard, a windmill on a rise, granary and silos.
+- 24 cottages with gardens; livestock pens; orchards and fields at the edges.
+- 33 doors, 1 station, 1 quest board, 15 NPC spots, 8 exits.
+
+Known limits:
+- All houses face south (the Ninja art has front views only).
+- The windmill rise is a flat plateau.
+- Animals are single frames (they become animated actors later).
+- The stagecoach is a newly drawn sprite.
+
+To move it into the game, follow the steps in its `README.txt`.
+
+## Next templates (proposed order)
+
+1. Port town (blue): docks, boats, fish market, lighthouse; the dock is the travel station.
+2. Swamp town (black): stilt houses, boardwalks, skiff landing, graveyard.
+3. Mining town (red): terraced on a slope, mine entrance, caravan station, forge.
+4. Forest treehouse town (green): built in and around big trees, elf-guide station.
