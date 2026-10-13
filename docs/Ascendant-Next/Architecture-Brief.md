@@ -72,7 +72,11 @@ We stop renovating Forge Adventure. We build **our own game** on top of Forge's 
   - **Swamp:** a skiff (bog and deep water become passable, faster than wading).
   - **Mountains:** a cliff-climbing mount, e.g. a mountain goat (jump up cliff ledges instead of finding the
     switchback paths).
-  - **Forest:** to be decided with Steve.
+  - **Forest:** you choose one of three mounts, each a different way through:
+    - a **stag** that bounds over fallen logs and gaps;
+    - a **panther** that leaps up into the **canopy**, the forest's upper layer (branches and treetop walkways),
+      so you run around up there;
+    - a **bear** that bulls straight through brush and thickets.
 - Without the unlock, the biome is crossable on foot but slow: wading in swamps, long detours around cliffs, and the
   sea limited to dock-to-dock ferries.
 - Travel stations still connect towns you've reached. The unlocks are about the **wilderness between them**: dungeons,
