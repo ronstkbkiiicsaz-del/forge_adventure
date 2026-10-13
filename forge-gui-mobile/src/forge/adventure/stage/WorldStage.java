@@ -122,6 +122,12 @@ public class WorldStage extends GameStage implements SaveFileContent {
     final Rectangle tempBoundingRect = new Rectangle();
     final Vector2 enemyMoveVector = new Vector2();
     boolean collided = false;
+    /** Package K: after a strict-mode deck refusal, ignore this mob briefly (avoids per-frame spam). */
+    private EnemySprite strictRefuseGraceMob;
+    private float strictRefuseGraceSeconds;
+    /** Knock-back distance after a strict refusal (world pixels). */
+    public static final float STRICT_REFUSE_KNOCKBACK_PX = 48f;
+    public static final float STRICT_REFUSE_GRACE_SECONDS = 1.5f;
     private final Vector2 navDirectionVec = new Vector2();
     private final ArrayList<Float> cachedSaveTimeouts = new ArrayList<>(32);
     private final ArrayList<String> cachedSaveNames = new ArrayList<>(32);
@@ -162,6 +168,13 @@ public class WorldStage extends GameStage implements SaveFileContent {
         drawNavigationArrow();
         if (gatherFailNotifyCooldown > 0f)
             gatherFailNotifyCooldown -= delta;
+        if (strictRefuseGraceSeconds > 0f) {
+            strictRefuseGraceSeconds -= delta;
+            if (strictRefuseGraceSeconds <= 0f) {
+                strictRefuseGraceSeconds = 0f;
+                strictRefuseGraceMob = null;
+            }
+        }
 
         boolean moving = player.isMoving();
         boolean channeling = channelNode != null;
@@ -266,6 +279,10 @@ public class WorldStage extends GameStage implements SaveFileContent {
                         cancelGatherChannel("An enemy interrupted you!");
                     if (collided)
                         return;
+                    // Package K: grace after strict-mode refusal — do not re-fire every frame.
+                    if (mob == strictRefuseGraceMob && strictRefuseGraceSeconds > 0f) {
+                        continue;
+                    }
                     collided = true;
                     player.setAnimation(CharacterSprite.AnimationTypes.Attack);
                     player.playEffect(Paths.EFFECT_SPARKS, 0.5f);
@@ -485,15 +502,9 @@ public class WorldStage extends GameStage implements SaveFileContent {
             return;
         }
         // Package K: optional strict overworld deck legality (gyms always enforce).
-        if (Config.ascendant() && forge.adventure.world.PlaneFormat.strictOverworldLegalDecks()
-                && !GymUtil.selectedDeckLegalForRun()) {
-            Forge.advFreezePlayerControls = false;
-            collided = false;
-            currentMob = null;
-            try {
-                GameHUD.getInstance().addNotification(GymUtil.legalityMessage());
-            } catch (Exception ignored) {
-            }
+        // Skipped entirely in co-op — host/guest deck rules must not soft-lock encounters.
+        if (shouldEnforceStrictOverworldDeck(mob)) {
+            refuseStrictOverworldEncounter(mob);
             return;
         }
         currentMob = mob;
@@ -519,6 +530,73 @@ public class WorldStage extends GameStage implements SaveFileContent {
                 }
             });
         });
+    }
+
+    /**
+     * Package K: true when solo Ascendant strict mode should block this encounter.
+     * Co-op sessions never enforce (avoids host/guest soft-locks).
+     */
+    public static boolean shouldEnforceStrictOverworldDeck(final EnemySprite mob) {
+        if (mob == null) {
+            return false;
+        }
+        return shouldEnforceStrictOverworldDeckRules();
+    }
+
+    /**
+     * Package K / tests: strict overworld rules without a mob instance.
+     * Skipped entirely while a co-op session is active.
+     */
+    public static boolean shouldEnforceStrictOverworldDeckRules() {
+        if (!Config.ascendant()) {
+            return false;
+        }
+        if (!forge.adventure.world.PlaneFormat.strictOverworldLegalDecks()) {
+            return false;
+        }
+        try {
+            if (forge.adventure.coop.CoopSession.get().isActive()) {
+                return false;
+            }
+        } catch (Throwable ignored) {
+        }
+        return !GymUtil.selectedDeckLegalForRun();
+    }
+
+    /**
+     * Package K M1: knock the mob away, start a grace period, notify once.
+     * Prevents the refusal toast from re-firing every frame while still overlapping.
+     */
+    void refuseStrictOverworldEncounter(final EnemySprite mob) {
+        Forge.advFreezePlayerControls = false;
+        collided = false;
+        currentMob = null;
+        if (mob != null && player != null) {
+            float dx = mob.getX() - player.getX();
+            float dy = mob.getY() - player.getY();
+            if (Math.abs(dx) < 0.01f && Math.abs(dy) < 0.01f) {
+                dx = 1f;
+            }
+            float len = (float) Math.sqrt(dx * dx + dy * dy);
+            mob.setPosition(
+                    mob.getX() + dx / len * STRICT_REFUSE_KNOCKBACK_PX,
+                    mob.getY() + dy / len * STRICT_REFUSE_KNOCKBACK_PX);
+            strictRefuseGraceMob = mob;
+            strictRefuseGraceSeconds = STRICT_REFUSE_GRACE_SECONDS;
+        }
+        try {
+            GameHUD.getInstance().addNotification(GymUtil.legalityMessage());
+        } catch (Exception ignored) {
+        }
+    }
+
+    /** Package K / tests: remaining grace seconds for the last refused mob. */
+    public float getStrictRefuseGraceSeconds() {
+        return strictRefuseGraceSeconds;
+    }
+
+    public EnemySprite getStrictRefuseGraceMob() {
+        return strictRefuseGraceMob;
     }
 
     /** Enemy currently frozen for an encounter / co-op invite (may be null). */
