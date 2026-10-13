@@ -358,7 +358,7 @@ public final class PlaneGenerator {
 
     /**
      * Same radial warp for biomes and coastline so wedges and shore stay aligned.
-     * Large angular lobes + fbm so the silhouette reads as a blob, not a noisy circle.
+     * Ellipse stretch + large lobes + fbm so the silhouette is clearly not a circle.
      */
     static float warpedRadius(HashNoise noise, int x, int y, float r, float theta,
                               float warpR, float rCoast) {
@@ -366,10 +366,10 @@ public final class PlaneGenerator {
         float ph0 = noise.value2d(0, 0, "lobePh") * (float) (Math.PI * 2);
         float ph1 = noise.value2d(1, 0, "lobePh") * (float) (Math.PI * 2);
         float ph2 = noise.value2d(2, 0, "lobePh") * (float) (Math.PI * 2);
-        // ~±25% radius from 2–3 large lobes, plus finer 5-lobe ripples and fbm.
-        float lobes = 0.70f * (float) Math.sin(2 * theta + ph0)
-                + 0.45f * (float) Math.sin(3 * theta + ph1)
-                + 0.20f * (float) Math.sin(5 * theta + ph2);
-        return r + warpR * (wr - 0.5f) * 2f + rCoast * 0.22f * lobes;
+        // Stretch into an oval first (very readable at minimap scale), then chew the edge.
+        float oval = 1f + 0.28f * (float) Math.cos(2 * (theta + ph0));
+        float lobes = 0.55f * (float) Math.sin(3 * theta + ph1)
+                + 0.30f * (float) Math.sin(5 * theta + ph2);
+        return r / oval + warpR * (wr - 0.5f) * 2f + rCoast * 0.18f * lobes;
     }
 }
