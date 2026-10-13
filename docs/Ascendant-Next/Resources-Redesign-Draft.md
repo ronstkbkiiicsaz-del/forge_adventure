@@ -63,9 +63,10 @@ near you" model (scrap and trees spawning around the player) with resources that
   feathers, hide, brine) map onto the table above; scrap moves to ruins/Kaladesh-style planes; recipes and skills
   stay, with sources changed. Icons we already made carry over.
 
-## Questions for Steve
+## Steve's answers (2026-10-13)
 
-1. Should surface boulders/ore outcrops exist at all, or should **all** ore be underground?
-2. Regrowth speed: trees in a few in-game days, or a full season?
-3. Is fishing in?
-4. Do resources deplete per player save only (yes for single player), and for co-op later shared?
+1. **Some outcrops on the surface**, but most ore is underground.
+2. **Trees regrow over a full season** (SN1 calendar), not a few days.
+3. **Fishing is in** ("what good is a game without fishing").
+4. **Co-op is partner co-op:** the partner lives in the host's world (same plane saves); they can build their own base
+   or live in yours. Resources taken are gone for both.
