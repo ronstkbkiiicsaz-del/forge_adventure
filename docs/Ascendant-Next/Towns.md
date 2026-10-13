@@ -78,6 +78,8 @@ Small "couple of houses and a dock" islands reuse its pieces.
 
 Known limits:
 - The lift-net is static.
+- **Steve art task:** redraw the lift-net counterweight (the stone sling on the short end of the boom reads like a
+  grey cloud). Sprite is in `ninja_SwampExtras` (drawn by `generator/draw_swamp2.py`).
 - One-tile stilts.
 - Wade patches are rectangles.
 - Houses face south.
