@@ -99,7 +99,8 @@ We stop renovating Forge Adventure. We build **our own game** on top of Forge's 
    win gives a reward screen (gold, cards from the current set), lose sends you back. Starting deck from a sealed
    pool like today.
 3. **Gather and travel.** Trees and rocks gatherable by skill (chunk deltas), inventory, a first crafting station;
-   travel stations and the travel map.
+   travel stations and the travel map. Resource placement model: `Resources-Redesign-Draft.md` (surface here;
+   underground digging waits for stage 5).
 4. **Towns, seamless.** Havenbrook and other towns built into the plane at real size; shops, inn, townsfolk working
    in the open world.
 5. **Layers.** Ladders, the underground layer with digging, then the sky layer with platforms.
