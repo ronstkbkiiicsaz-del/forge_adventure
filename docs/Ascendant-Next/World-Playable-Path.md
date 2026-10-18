@@ -67,6 +67,22 @@ that wasn't just your digout; you can start stacking a multi-level base.
   dungeon mouths — so the underground is a place you discover, not only a quarry you excavate.
 - Player dig connects into those voids; veins show in walls; enemies can own sections.
 
+#### Where you build (Steve, 2026-10-18)
+
+Core Keeper is the reference for **down**, not for the home-plane start. Core Keeper begins in solid earth: every wall is diggable, some cells are minerals, some open into caverns, some are already finished rooms. You dig out a hole and that hole is the base.
+
+The home plane still **starts on the surface** (the walk slice). What you clear up there is mostly **trees**. A **ladder you place** is how you change layer, up or down. Layers share XY with the surface.
+
+| Place | What it is for |
+|---|---|
+| Plains | Wide open. Build on the surface. Food is plentiful here. |
+| Heavy trees | Chop on the ground. **Up** is already a canopy walkway. |
+| Up, everywhere else | Not diggable sky. Platforms you build out from the ladder. |
+| Down (land) | Core Keeper dig. Minerals in the wall, caverns, some finished rooms. The base is the hole you dig. |
+| Mountains | More caves. Down should meet those, not only dirt you dug yourself. |
+| Islands | Down is water you can build in. |
+| Swamp | Don't count on a flat surface base. Build higher, or deal with the swamp some other way (still open). |
+
 ### 5. Instanced maps — interiors, dungeons, (later) special sites
 
 Already decided for towns: seamless outside, **instanced interiors**. Same pattern:
