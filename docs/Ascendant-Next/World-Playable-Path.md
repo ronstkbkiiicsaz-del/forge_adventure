@@ -4,6 +4,8 @@
 stand; this doc says what you need to **feel** in what order, and locks a few layer/dungeon decisions that were
 still open. Resources: `Resources-Redesign-Draft.md`. Towns: `Towns.md`. Generator: `WG1-Spec-Stage1.md`.*
 
+*Lucy: `Notes-for-Lucy.md` in this folder is the handoff. `Base-Hall-MTG-Automation-Design.md` (2026-10-16) is the newer lock where it conflicts with the old fortress brief.*
+
 ## What we have today
 
 - **Havenbrook** (hand-made, in the repo) and an **approved plains market town** template (`tools/towns/plains/`,
