@@ -13,6 +13,7 @@ import com.badlogic.gdx.maps.tiled.TiledMap;
 import com.badlogic.gdx.maps.tiled.TiledMapTileLayer;
 import com.badlogic.gdx.maps.tiled.renderers.OrthogonalTiledMapRenderer;
 import com.badlogic.gdx.math.MathUtils;
+import com.badlogic.gdx.math.Vector3;
 import com.badlogic.gdx.utils.viewport.FitViewport;
 import com.badlogic.gdx.utils.viewport.Viewport;
 import forge.ascendant.render.TilePalette;
@@ -20,6 +21,8 @@ import forge.ascendant.render.TownMaps;
 import forge.ascendant.save.SaveGame;
 import forge.ascendant.world.PlaneData;
 import forge.ascendant.world.Site;
+import forge.ascendant.world.Terrain;
+import forge.ascendant.world.WorldEdit;
 
 import java.nio.file.Path;
 
@@ -31,9 +34,15 @@ public final class AscendantGame extends ApplicationAdapter {
     private SpriteBatch batch;
     private BitmapFont font;
     private TownMaps townMaps;
+    private Townsfolk townsfolk;
     private OrthographicCamera uiCamera;
+    private final Vector3 pointer = new Vector3();
+    private int aimX;
+    private int aimY;
+    private float editHold;
 
     private static final float SPEED = 7.5f; // tiles per second
+    private static final float EDIT_REPEAT = 0.16f;
 
     public AscendantGame(AscendantSession session) {
         this.session = session;
@@ -50,6 +59,8 @@ public final class AscendantGame extends ApplicationAdapter {
         batch = new SpriteBatch();
         font = new BitmapFont();
         townMaps = new TownMaps(session.assetRoot);
+        townsfolk = new Townsfolk();
+        townsfolk.spawn(session);
         centerCamera();
     }
 
@@ -63,6 +74,9 @@ public final class AscendantGame extends ApplicationAdapter {
     public void render() {
         float dt = Math.min(0.05f, Gdx.graphics.getDeltaTime());
         handleInput(dt);
+        if (townsfolk != null && session.layer == WorldEdit.SURFACE) {
+            townsfolk.update(dt);
+        }
         session.markExplored();
         if (session.statusTimer > 0) {
             session.statusTimer -= dt;
@@ -100,6 +114,41 @@ public final class AscendantGame extends ApplicationAdapter {
             return;
         }
 
+        for (int i = 0; i < 7; i++) {
+            if (Gdx.input.isKeyJustPressed(Input.Keys.NUM_1 + i)
+                    || Gdx.input.isKeyJustPressed(Input.Keys.NUMPAD_1 + i)) {
+                session.world.tool = WorldEdit.Tool.byIndex(i);
+                session.toast(session.world.tool.label + " — " + session.world.tool.hint);
+            }
+        }
+        if (Gdx.input.isKeyJustPressed(Input.Keys.E)
+                || Gdx.input.isKeyJustPressed(Input.Keys.SPACE)) {
+            float[] pos = {session.playerX, session.playerY};
+            if (session.world.tryClimb(session.plane, pos, session.layer)) {
+                session.playerX = pos[0];
+                session.playerY = pos[1];
+                session.layer = session.layer == WorldEdit.SURFACE ? WorldEdit.UNDER : WorldEdit.SURFACE;
+                session.toast(session.layer == WorldEdit.UNDER ? "Climbed down." : "Climbed up.");
+            }
+        }
+
+        updateAim();
+        if (Gdx.input.isButtonJustPressed(Input.Buttons.LEFT) && townsfolk != null
+                && session.layer == WorldEdit.SURFACE) {
+            townsfolk.click(pointer.x / session.profile.tileSize, pointer.y / session.profile.tileSize);
+        }
+        boolean held = Gdx.input.isButtonPressed(Input.Buttons.LEFT);
+        if (Gdx.input.isButtonJustPressed(Input.Buttons.LEFT) || (held && editHold <= 0f)) {
+            String msg = session.world.apply(session.plane, session.layer, aimX, aimY);
+            session.toast(msg);
+            editHold = EDIT_REPEAT;
+        }
+        if (held) {
+            editHold -= dt;
+        } else {
+            editHold = 0f;
+        }
+
         float dx = 0;
         float dy = 0;
         if (Gdx.input.isKeyPressed(Input.Keys.W) || Gdx.input.isKeyPressed(Input.Keys.UP)) {
@@ -126,6 +175,17 @@ public final class AscendantGame extends ApplicationAdapter {
         }
     }
 
+    private void updateAim() {
+        pointer.set(Gdx.input.getX(), Gdx.input.getY(), 0);
+        viewport.unproject(pointer);
+        int tile = session.profile.tileSize;
+        int mx = MathUtils.floor(pointer.x / tile);
+        int my = MathUtils.floor(pointer.y / tile);
+        int[] a = WorldEdit.aimTile(session.playerX, session.playerY, mx, my);
+        aimX = a[0];
+        aimY = a[1];
+    }
+
     private void tryMove(float dx, float dy) {
         float nx = session.playerX + dx;
         float ny = session.playerY + dy;
@@ -140,7 +200,7 @@ public final class AscendantGame extends ApplicationAdapter {
         for (float[] p : feet) {
             int tx = MathUtils.floor(p[0]);
             int ty = MathUtils.floor(p[1]);
-            if (plane.blocks(tx, ty)) {
+            if (session.world.blocks(plane, session.layer, tx, ty)) {
                 return;
             }
         }
@@ -168,6 +228,7 @@ public final class AscendantGame extends ApplicationAdapter {
         camera.update();
         int tile = session.profile.tileSize;
         PlaneData plane = session.plane;
+        boolean under = session.layer == WorldEdit.UNDER;
 
         int minX = Math.max(0, MathUtils.floor((camera.position.x - camera.viewportWidth * 0.5f) / tile) - 1);
         int maxX = Math.min(plane.size - 1, MathUtils.ceil((camera.position.x + camera.viewportWidth * 0.5f) / tile) + 1);
@@ -176,21 +237,53 @@ public final class AscendantGame extends ApplicationAdapter {
 
         shapes.setProjectionMatrix(camera.combined);
         shapes.begin(ShapeRenderer.ShapeType.Filled);
-        for (int y = minY; y <= maxY; y++) {
-            for (int x = minX; x <= maxX; x++) {
-                Color c = TilePalette.color(plane.terrainAt(x, y), plane.biomeAt(x, y));
-                shapes.setColor(c);
-                shapes.rect(x * tile, y * tile, tile, tile);
+        if (under) {
+            for (int y = minY; y <= maxY; y++) {
+                for (int x = minX; x <= maxX; x++) {
+                    float light = session.world.lightAt(plane, WorldEdit.UNDER, x, y);
+                    if (session.world.isOpenUnder(x, y)) {
+                        shapes.setColor(0.38f * light, 0.24f * light, 0.13f * light, 1f);
+                    } else {
+                        float d = 0.04f + 0.06f * light;
+                        shapes.setColor(d, d * 0.85f, d * 0.9f, 1f);
+                    }
+                    shapes.rect(x * tile, y * tile, tile, tile);
+                }
+            }
+        } else {
+            for (int y = minY; y <= maxY; y++) {
+                for (int x = minX; x <= maxX; x++) {
+                    byte t = session.world.surfaceAt(plane, x, y);
+                    if (t == Terrain.PIT) {
+                        shapes.setColor(0.07f, 0.05f, 0.04f, 1f);
+                    } else if (t == Terrain.STUMP) {
+                        shapes.setColor(0.34f, 0.24f, 0.12f, 1f);
+                    } else {
+                        shapes.setColor(TilePalette.color(t, plane.biomeAt(x, y)));
+                    }
+                    shapes.rect(x * tile, y * tile, tile, tile);
+                }
             }
         }
         shapes.end();
 
-        // Town TMX overlays
-        for (Site site : plane.sites) {
-            if (site.x > maxX || site.y > maxY || site.x + site.w < minX || site.y + site.h < minY) {
-                continue;
+        if (!under) {
+            for (Site site : plane.sites) {
+                if (site.x > maxX || site.y > maxY || site.x + site.w < minX || site.y + site.h < minY) {
+                    continue;
+                }
+                drawTown(site, tile);
             }
-            drawTown(site, tile);
+        }
+
+        shapes.setProjectionMatrix(camera.combined);
+        shapes.begin(ShapeRenderer.ShapeType.Filled);
+        drawBuilds(plane, minX, maxX, minY, maxY, tile, under);
+        drawAim(tile);
+        shapes.end();
+
+        if (!under && townsfolk != null) {
+            townsfolk.draw(batch, camera, tile, session.playerY, true);
         }
 
         // Player
@@ -201,6 +294,63 @@ public final class AscendantGame extends ApplicationAdapter {
         shapes.setColor(0.2f, 0.5f, 0.95f, 1f);
         shapes.rect(session.playerX * tile - 4, session.playerY * tile, 8, 8);
         shapes.end();
+
+        if (!under && townsfolk != null) {
+            townsfolk.draw(batch, camera, tile, session.playerY, false);
+        }
+    }
+
+    private void drawBuilds(PlaneData plane, int minX, int maxX, int minY, int maxY, int tile, boolean under) {
+        int layer = session.layer;
+        for (int y = minY; y <= maxY; y++) {
+            for (int x = minX; x <= maxX; x++) {
+                float light = under ? session.world.lightAt(plane, layer, x, y) : 1f;
+                if (session.world.floorAt(layer, x, y) == WorldEdit.Fixture.FLOOR) {
+                    shapes.setColor(0.50f * light, 0.34f * light, 0.18f * light, 1f);
+                    shapes.rect(x * tile + 1, y * tile + 1, tile - 2, tile - 2);
+                }
+                WorldEdit.Fixture fix = session.world.fixtureAt(layer, x, y);
+                if (fix == null) {
+                    continue;
+                }
+                float px = x * tile;
+                float py = y * tile;
+                switch (fix) {
+                    case WALL -> {
+                        shapes.setColor(0.46f * light, 0.42f * light, 0.38f * light, 1f);
+                        shapes.rect(px + 1, py + 1, tile - 2, tile - 2);
+                    }
+                    case DOOR -> {
+                        shapes.setColor(0.38f * light, 0.22f * light, 0.10f * light, 1f);
+                        shapes.rect(px + 4, py + 1, tile - 8, tile - 2);
+                    }
+                    case TORCH -> {
+                        shapes.setColor(1f * Math.max(0.35f, light), 0.62f * Math.max(0.35f, light), 0.12f, 1f);
+                        shapes.rect(px + tile * 0.38f, py + tile * 0.32f, tile * 0.24f, tile * 0.48f);
+                    }
+                    case LADDER -> {
+                        shapes.setColor(0.62f * light, 0.42f * light, 0.16f * light, 1f);
+                        shapes.rect(px + 3, py + 2, 3, tile - 4);
+                        shapes.rect(px + tile - 6, py + 2, 3, tile - 4);
+                        shapes.rect(px + 3, py + tile * 0.28f, tile - 6, 2);
+                        shapes.rect(px + 3, py + tile * 0.55f, tile - 6, 2);
+                    }
+                    default -> {
+                    }
+                }
+            }
+        }
+    }
+
+    private void drawAim(int tile) {
+        float x = aimX * tile;
+        float y = aimY * tile;
+        float t = 2f;
+        shapes.setColor(1f, 0.92f, 0.25f, 1f);
+        shapes.rect(x, y, tile, t);
+        shapes.rect(x, y + tile - t, tile, t);
+        shapes.rect(x, y, t, tile);
+        shapes.rect(x + tile - t, y, t, tile);
     }
 
     private void drawTown(Site site, int tile) {
@@ -297,13 +447,32 @@ public final class AscendantGame extends ApplicationAdapter {
         PlaneData plane = session.plane;
         Site here = nearestSite(plane, (int) session.playerX, (int) session.playerY, 6);
         String loc = here != null ? here.name : BiomeIdName(plane.biomeAt((int) session.playerX, (int) session.playerY));
-        font.draw(batch, String.format("Shandalar Ascendant Next  |  %s  |  (%.0f, %.0f)  |  seed %d",
-                loc, session.playerX, session.playerY, plane.seed), 12, Gdx.graphics.getHeight() - 12);
-        font.draw(batch, "WASD/Arrows move  |  M map  |  F5 save  |  F9 load  |  Esc quit",
+        String layerName = session.layer == WorldEdit.UNDER ? "under" : "surface";
+        font.draw(batch, String.format("Shandalar Ascendant Next  |  %s  |  (%.0f, %.0f)  |  seed %d  |  %s",
+                loc, session.playerX, session.playerY, plane.seed, layerName), 12, Gdx.graphics.getHeight() - 12);
+        font.draw(batch, "WASD move  |  1-7 tools  |  click/hold use  |  E/Space climb  |  M map  |  F5 save  |  F9 load",
                 12, Gdx.graphics.getHeight() - 32);
+        WorldEdit.Tool tool = session.world.tool;
+        font.setColor(1f, 0.92f, 0.55f, 1f);
+        font.draw(batch, tool.label + " — " + tool.hint, 12, Gdx.graphics.getHeight() - 52);
+        font.setColor(0.85f, 0.82f, 0.72f, 1f);
+        font.draw(batch, String.format("wood %d   stone %d   dirt %d   |   %s",
+                session.world.wood, session.world.stone, session.world.dirt, layerName),
+                12, Gdx.graphics.getHeight() - 72);
+        int px = MathUtils.floor(session.playerX);
+        int py = MathUtils.floor(session.playerY);
+        String climb = session.world.climbHint(px, py, session.layer);
+        if (!climb.isEmpty()) {
+            font.setColor(0.55f, 0.95f, 0.65f, 1f);
+            font.draw(batch, climb, 12, Gdx.graphics.getHeight() - 92);
+        }
         if (session.statusTimer > 0) {
             font.setColor(Color.GOLD);
             font.draw(batch, session.statusMessage, 12, 28);
+        }
+        if (townsfolk != null && session.layer == WorldEdit.SURFACE && !townsfolk.speech().isEmpty()) {
+            font.setColor(Color.GOLD);
+            font.draw(batch, townsfolk.speech(), 12, 52);
         }
         // minimap
         drawMinimap(batch);
@@ -363,8 +532,11 @@ public final class AscendantGame extends ApplicationAdapter {
                     bits[i / 8] |= (byte) (1 << (i % 8));
                 }
             }
-            SaveGame.write(path, new SaveGame(SaveGame.VERSION, session.plane.seed, session.profile.id,
-                    session.playerX, session.playerY, bits));
+            SaveGame snapshot = new SaveGame(SaveGame.VERSION, session.plane.seed, session.profile.id,
+                    session.playerX, session.playerY, bits,
+                    session.world.wood, session.world.stone, session.world.dirt, session.layer,
+                    session.world.copySurfaceEdits(), session.world.copyUnderCells(), session.world.copyBuilds());
+            SaveGame.write(path, snapshot, session.world);
             session.toast("Saved " + path.getFileName());
         } catch (Exception e) {
             session.toast("Save failed: " + e.getMessage());
@@ -381,6 +553,9 @@ public final class AscendantGame extends ApplicationAdapter {
             }
             session.playerX = s.playerX;
             session.playerY = s.playerY;
+            session.layer = s.layer;
+            session.world = new WorldEdit();
+            s.applyTo(session.world);
             if (s.explored != null) {
                 for (int i = 0; i < session.exploredChunks.length; i++) {
                     session.exploredChunks[i] = ((s.explored[i / 8] >> (i % 8)) & 1) == 1;
@@ -399,5 +574,8 @@ public final class AscendantGame extends ApplicationAdapter {
         batch.dispose();
         font.dispose();
         townMaps.dispose();
+        if (townsfolk != null) {
+            townsfolk.dispose();
+        }
     }
 }

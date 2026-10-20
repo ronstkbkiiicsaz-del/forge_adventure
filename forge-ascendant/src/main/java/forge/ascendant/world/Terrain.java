@@ -12,11 +12,21 @@ public final class Terrain {
     public static final byte BRIDGE = 7;
     public static final byte TOWN = 8;
     public static final byte HOUSE = 9;
+    public static final byte STUMP = 10;
+    public static final byte PIT = 11;
 
     private Terrain() {}
 
     public static boolean blocksMovement(byte t) {
         return t == TREE || t == ROCK || t == RIDGE || t == WATER || t == OCEAN || t == HOUSE;
+    }
+
+    public static boolean isHarvestable(byte t) {
+        return t == TREE || t == ROCK || t == RIDGE || t == STUMP;
+    }
+
+    public static boolean canDigSurface(byte t) {
+        return t == GRASS || t == STUMP || t == ROAD;
     }
 
     public static boolean isWater(byte t) {

@@ -2,6 +2,7 @@ package forge.ascendant;
 
 import forge.ascendant.world.PlaneData;
 import forge.ascendant.world.PlaneProfile;
+import forge.ascendant.world.WorldEdit;
 
 import java.nio.file.Path;
 
@@ -11,6 +12,8 @@ public final class AscendantSession {
     public final Path saveDir;
     public final PlaneProfile profile;
     public PlaneData plane;
+    public WorldEdit world = new WorldEdit();
+    public int layer = WorldEdit.SURFACE;
     public float playerX;
     public float playerY;
     public final boolean[] exploredChunks;
